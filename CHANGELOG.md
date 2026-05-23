@@ -141,6 +141,11 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   now restricted to `AbstractVector` / `Tuple` / `NamedTuple` /
   `AbstractSet`, and other types hit a clear `cls: don't know how
   to handle …` error.
+- `on(:event, action; …)` docstring converted to `jldoctest` for
+  the four canonical modifier shapes: bare, `:submit` auto-prevent,
+  `prevent=false` opt-out, and the `__window` modifier. Pins the
+  attribute-name format so a regression in the modifier-stack
+  ordering breaks the doc build immediately.
 - `docs/src/api.md` now includes the module-level docstring under
   "Module overview", removing the Documenter "1 docstring not
   included in the manual" warning.

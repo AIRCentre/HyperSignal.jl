@@ -142,19 +142,21 @@ Modifiers:
   (the click-outside-to-close pattern).
 
 # Examples
-```julia
-button("Submit", on(:click, ds_post("/api/x"; form=true)))
+```jldoctest
+julia> on(:click, ds_post("/api/x"; form=true)).key
+Symbol("data-on:click")
 
-# Raw JS expression (no DSAction)
-button("Toggle", on(:click, "\$open = !\$open"))
+julia> on(:submit, ds_post("/save")).key                    # auto __prevent on :submit
+Symbol("data-on:submit__prevent")
 
-# Window-level hotkey listener
-div(on(:keydown, "if(event.key==='?') \$showHelp = true"; window=true))
+julia> on(:submit, ds_post("/save"); prevent=false).key     # opt-out
+Symbol("data-on:submit")
 
-# Live-count, debounced 300ms
-form(on(:submit, ds_post("/save"; form=true)),
-     on(:change, ds_get("/api/count"; form=true); debounce=300),
-     fieldset(…))
+julia> on(:change, ds_get("/c"); debounce=300).key
+Symbol("data-on:change__debounce.300ms")
+
+julia> on(:keydown, "\$open = true"; window=true).key
+Symbol("data-on:keydown__window")
 ```
 """
 function on(event::Symbol, action::Union{DSAction, AbstractString};
