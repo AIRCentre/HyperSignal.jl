@@ -99,6 +99,14 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Stress tests for `SubString` escape: slice landing on
   metacharacters at both ends, and a slice past a multi-byte UTF-8
   codepoint, both render byte-stable.
+
+### Perf
+- `patch_svg`'s id-namespacing now walks the SVG once with a single
+  alternation regex instead of four sequential `replace` passes.
+  Measured: `patch_svg` on a 200-path SVG drops from ~180µs to
+  ~130µs (-27%), and on a 1000-path SVG from ~880µs to ~630µs (-28%).
+  Same output; pinned by the existing tests including the prefix
+  backslash / dollar reliability cases.
 - `docs/src/api.md` now includes the module-level docstring under
   "Module overview", removing the Documenter "1 docstring not
   included in the manual" warning.

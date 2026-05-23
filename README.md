@@ -330,12 +330,12 @@ Indicative numbers on a typical workstation (`v0.1.0`):
 
 | benchmark                           | time      |
 |-------------------------------------|-----------|
-| render small fragment               | ~270 ns   |
-| render 50-row table                 | ~12 µs    |
-| render 100-field form               | ~22 µs    |
-| escape 10k adversarial chars        | ~46 µs    |
-| `patch_svg` on a 200-path SVG       | ~180 µs   |
-| `patch_svg` on a 1000-path SVG      | ~880 µs   |
+| render small fragment               | ~290 ns   |
+| render 50-row table                 | ~14 µs    |
+| render 100-field form               | ~24 µs    |
+| escape 10k adversarial chars        | ~48 µs    |
+| `patch_svg` on a 200-path SVG       | ~130 µs   |
+| `patch_svg` on a 1000-path SVG      | ~630 µs   |
 
 ## Contributing
 
