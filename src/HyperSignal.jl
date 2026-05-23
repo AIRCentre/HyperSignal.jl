@@ -1,0 +1,117 @@
+"""
+    HyperSignal
+
+Datastar-flavored HTML for Julia. Compose pages from typed AST nodes,
+render to streamed HTML, and bind Datastar actions without ever
+hand-typing `data-on:click="@post('/x', {…})"` or escaping HTML by hand.
+
+# Quickstart
+
+```julia
+using HyperSignal
+HyperSignal.@using_tags                 # brings div / select / summary
+
+# Build with tag constructors. Children go positional, attributes go kw.
+page = Frag(
+    DOCTYPE,
+    html(lang="en",
+        head(meta(charset="UTF-8"), title("My App")),
+        body(
+            h1("Hello"),
+            form(on_submit(ds_post("/save"; form=true)),
+                radio_field("size", "S", "Small"),
+                radio_field("size", "L", "Large"; checked=true),
+                button(type="submit", "Save")),
+        )),
+)
+
+html_response(page)                   # full-page Response
+fragment_response(page, "#card")      # Datastar morph with selector header
+```
+
+# What's exported
+
+- AST primitives: [`Element`](@ref), [`Raw`](@ref), [`Frag`](@ref),
+  [`Attribute`](@ref), [`DOCTYPE`](@ref).
+- Tag constructors: every common HTML element (`div`, `h1`, `form`, …).
+  Names that overlap with Base (`div`, `select`, `summary`) are
+  brought into scope with the [`@using_tags`](@ref) macro.
+- Datastar actions: [`ds_get`](@ref), [`ds_post`](@ref), [`ds_put`](@ref),
+  [`ds_delete`](@ref), bound via [`on`](@ref) /
+  [`on_click`](@ref) / [`on_submit`](@ref) /
+  [`on_change_debounced`](@ref) / [`on_interval`](@ref). `on(...)` accepts
+  raw JS expressions alongside `DSAction` and a `window=true` modifier
+  for global listeners.
+- Datastar attributes: [`ds_indicator`](@ref), [`ds_ignore_morph`](@ref),
+  [`ds_bind`](@ref), [`ds_signal`](@ref), [`ds_signals`](@ref),
+  [`ds_show`](@ref), [`ds_text`](@ref), [`ds_ref`](@ref),
+  [`ds_attr`](@ref), [`ds_class`](@ref), [`ds_effect`](@ref),
+  [`ds_init`](@ref).
+- Datastar signal decoding: [`parse_signals`](@ref) (read the JSON body
+  of a non-form Datastar action into a `Dict{String, Any}`).
+- Form helpers: [`cls`](@ref), [`radio_field`](@ref),
+  [`checkbox_field`](@ref), [`form_legend`](@ref), [`form_section`](@ref),
+  [`help_tooltip`](@ref), [`preset_button`](@ref).
+- Dialog helper: [`signal_dialog`](@ref) (native `<dialog>` driven by a
+  Datastar expression).
+- Rendering: [`render(io, x)`](@ref render) for streaming, [`render(x)`](@ref)
+  for the String you usually want at the response boundary.
+- Responses: [`html_response`](@ref), [`fragment_response`](@ref),
+  [`redirect_via_fragment`](@ref), [`redirect_to`](@ref).
+
+# Safety model
+
+Strings and numbers in children / attribute values are auto-escaped at
+render time. Use [`Raw`](@ref) at the boundary to inject pre-built HTML
+(SVG snippets, audited generators) — never wrap user input in `Raw`.
+JS-string interpolation inside Datastar actions is the renderer's job;
+build a [`DSAction`](@ref) and let it through.
+"""
+module HyperSignal
+
+using HTTP
+using JSON
+
+include("elements.jl")
+include("datastar.jl")
+include("render.jl")
+include("response.jl")
+include("helpers.jl")
+include("svg.jl")
+
+# Element tree
+export Element, Raw, Frag, Attribute, DOCTYPE
+
+# Tag constructors (the common set — extend as needed)
+export html, head, body, title, meta, link, script, style
+export div, span, p, a, h1, h2, h3, h4, h5, h6, hr, br
+export ul, ol, li, dl, dt, dd
+export form, input, button, label, fieldset, legend, select, option, textarea
+export table, thead, tbody, tr, th, td
+export article, section, nav, header, footer, main, aside, figure, figcaption
+export img, svg, path, circle, polygon
+export small, strong, em, code, pre
+export progress, details, summary, dialog, u
+
+# Datastar
+export DSAction, ds_get, ds_post, ds_put, ds_delete
+export ds_indicator, ds_ignore_morph, ds_bind, ds_signal, ds_signals, ds_show, ds_text
+export ds_ref, ds_attr, ds_class, ds_effect, ds_init
+export on, on_click, on_submit, on_change_debounced, on_interval
+export parse_signals
+
+# Component helpers
+export cls, radio_field, checkbox_field, text_field, redirect_to
+export help_tooltip, form_legend, form_section, preset_button, signal_dialog
+
+# Rendering + responses
+export render
+export fragment_response, html_response, redirect_via_fragment
+
+# SVG inlining (CairoMakie etc.)
+export patch_svg, inline_svg
+
+# Macros
+export @using_tags
+
+end

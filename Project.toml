@@ -1,0 +1,27 @@
+name = "HyperSignal"
+uuid = "0aa5b41a-51a1-41e7-8512-17ccb31a7c30"
+authors = ["AIR Centre <joao.goncalves@aircentre.org>"]
+version = "0.1.0"
+
+[deps]
+HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"
+JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
+
+[weakdeps]
+Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
+
+[extensions]
+HyperSignalMakieExt = "Makie"
+
+[compat]
+HTTP = "1"
+JSON = "0.21, 1"
+Makie = "0.20, 0.21, 0.22, 0.23"
+julia = "1.10"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+
+[targets]
+test = ["Test", "CairoMakie"]
