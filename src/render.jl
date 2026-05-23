@@ -297,9 +297,36 @@ function _render_attr(io::IO, k::Symbol, v)
         escape_html(io, v)
     elseif v isa Number
         print(io, v)
+    elseif v isa AbstractVector
+        # Vector attribute values almost always mean "join these" — most
+        # commonly a class list (`class=["btn", "primary"]`), but the
+        # same intuition holds for `aria-describedby` (multiple ids
+        # separated by space) and Datastar's space-separated lists. The
+        # alternative (dumping the Vector repr) emits hostile output
+        # like `class="[&quot;btn&quot;, &quot;primary&quot;]"`.
+        _render_attr_vector(io, v)
     else
         escape_html(io, string(v))
     end
     print(io, "\"")
     nothing
+end
+
+# Join a Vector value with spaces, skipping nothing/missing/empty
+# entries so a conditional class list survives optional pieces.
+function _render_attr_vector(io::IO, v::AbstractVector)
+    first = true
+    for x in v
+        (x === nothing || x === missing) && continue
+        if x isa AbstractString
+            isempty(x) && continue
+            first || print(io, ' ')
+            escape_html(io, x)
+            first = false
+        else
+            first || print(io, ' ')
+            escape_html(io, string(x))
+            first = false
+        end
+    end
 end

@@ -75,8 +75,14 @@ Convenience: `Raw(patch_svg(svg; kwargs...))`. Use this directly inside
 an element tree.
 
 # Examples
-```julia
-article(class="card", h2("Quarterly"), inline_svg(read("plot.svg", String); id_prefix="q_"))
+```jldoctest
+julia> r = inline_svg("<svg viewBox=\\"0 0 1 1\\"><g/></svg>"; aria_label="Plot");
+
+julia> r isa Raw
+true
+
+julia> r.html
+"<svg viewBox=\\"0 0 1 1\\" role=\\"img\\" aria-label=\\"Plot\\"><g/></svg>"
 ```
 """
 inline_svg(svg::AbstractString; kwargs...) = Raw(patch_svg(svg; kwargs...))

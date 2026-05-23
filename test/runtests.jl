@@ -716,6 +716,25 @@ using HyperSignal: div, select, summary
         @test !occursin("<?xml", out)
     end
 
+    @testset "Vector attribute values are space-joined (class-list semantics)" begin
+        # Why: `class=["btn", "primary"]` is the natural way to build a
+        # class list, and aria-describedby / aria-labelledby take
+        # space-separated ids. The previous fallback dumped the Vector
+        # repr — `class="[&quot;btn&quot;, ...]"` — which is hostile.
+        @test render(div(class=["btn", "primary"], "x")) == "<div class=\"btn primary\">x</div>"
+        @test render(input(type="text", "aria-describedby" => ["hint1", "hint2"])) ==
+              "<input type=\"text\" aria-describedby=\"hint1 hint2\">"
+        # Nothing/missing/empty entries drop, so an optional class
+        # survives without coalesce gymnastics.
+        @test render(div(class=["btn", nothing, "active", missing, ""])) ==
+              "<div class=\"btn active\"></div>"
+        # Non-string entries get string()-converted.
+        @test render(div(:rowspan => [2, 3])) == "<div rowspan=\"2 3\"></div>"
+        # Empty vector → empty attribute value (still emitted because
+        # the attr name was passed; user opted in).
+        @test render(div(class=String[], "x")) == "<div class=\"\">x</div>"
+    end
+
     @testset "string(::DSAction) returns the JS expression, not a struct dump" begin
         # Why: symmetric with Element/Frag/Raw — every HyperSignal
         # value should `string()` to what the lib would put in the
