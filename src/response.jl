@@ -9,11 +9,22 @@ with `Content-Type: text/html; charset=utf-8`. Use this for full-page
 GETs.
 
 # Examples
-```julia
-function handle_dashboard(ctx, session)
-    page = Frag(DOCTYPE, html(lang="en", head(…), body(…)))
-    html_response(page)
-end
+```jldoctest
+julia> r = html_response(p("ok"));
+
+julia> r.status
+200
+
+julia> Dict(r.headers)["Content-Type"]
+"text/html; charset=utf-8"
+
+julia> String(r.body)
+"<p>ok</p>"
+
+julia> r2 = html_response(p("created"); status=201, headers=["X-Tag" => "v1"]);
+
+julia> r2.status, Dict(r2.headers)["X-Tag"]
+(201, "v1")
 ```
 """
 function html_response(body; status::Int=200, headers=Pair{String,String}[])
@@ -30,12 +41,14 @@ swaps a fragment of an existing page (the common case for Datastar
 @get/@post actions).
 
 # Examples
-```julia
-function handle_count_estimate(req, ctx, session)
-    n = compute_count(…)
-    fragment_response(div(id="count-estimate", small("\$(n) results")),
-                      "#count-estimate")
-end
+```jldoctest
+julia> r = fragment_response(p("ok"), "#count");
+
+julia> r.status, Dict(r.headers)["datastar-selector"]
+(200, "#count")
+
+julia> String(r.body)
+"<p>ok</p>"
 ```
 """
 function fragment_response(body, selector::AbstractString;
