@@ -16,7 +16,8 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   input, and `patch_svg` on synthetic 200- and 1000-path SVGs.
 - Stress tests: 5000-deep nesting, 2000-attribute element,
   ~470KB synthetic SVG patching, 9KB metacharacter round-trip parity,
-  MIME show round-trip parity.
+  and one canonical fixture pinned across `MIME"text/html"`,
+  `MIME"text/plain"`, and `html_response(...).body`.
 - `precompile()` block in the module top so the first `render(...)` in
   a user's session doesn't pay JIT cost for the common shapes.
 

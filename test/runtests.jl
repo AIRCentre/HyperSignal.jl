@@ -1170,6 +1170,27 @@ using HyperSignal: div, select, summary
         @test String(take!(io)) == "<b>x</b>"
     end
 
+    @testset "one fixture stays byte-stable across text/html, text/plain, and HTTP.Response sinks" begin
+        # Why: these are the three places callers actually consume a
+        # HyperSignal value — notebook display, REPL/plain-text display,
+        # and an HTTP response body. One canonical fixture should say they
+        # all agree on the rendered bytes.
+        el = div(class="card", h2("Hi"), p("a < b"))
+        html = render(el)
+
+        html_io = IOBuffer()
+        show(html_io, MIME"text/html"(), el)
+        @test String(take!(html_io)) == html
+
+        plain_io = IOBuffer()
+        show(plain_io, MIME"text/plain"(), el)
+        @test String(take!(plain_io)) == "HyperSignal.Element: " * html
+
+        resp = html_response(el)
+        @test resp.body == codeunits(html)
+        @test String(resp.body) == html
+    end
+
     @testset "patch_svg with CairoMakie figure renders + namespaces collision-safely" begin
         # Why: prove the front-row CairoMakie story actually works end-to-end
         # — produce a real figure, run it through inline_svg, drop two of
