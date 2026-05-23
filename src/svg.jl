@@ -54,9 +54,10 @@ function patch_svg(svg::AbstractString;
                    add_class::Union{AbstractString, Nothing} = nothing,
                    aria_label::Union{AbstractString, Nothing} = nothing)
     s = String(svg)
-    s = replace(s, r"<\?xml[^>]*\?>\s*"s => "")
-    s = replace(s, r"<!DOCTYPE[^>]*>\s*"s => "")
-    s = replace(s, r"<!--.*?-->"s => "")
+    # One pass for all three prolog forms that can't appear inside HTML.
+    # Folded into a single alternation so the input is walked once
+    # instead of three times — meaningful on the larger figures.
+    s = replace(s, r"<\?xml[^>]*\?>\s*|<!DOCTYPE[^>]*>\s*|<!--.*?-->"s => "")
     if !isempty(id_prefix)
         s = _namespace_ids(s, id_prefix)
     end

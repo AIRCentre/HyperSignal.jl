@@ -1,6 +1,7 @@
 # HyperSignal.jl
 
 [![CI](https://github.com/AIRCentre/HyperSignal.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/AIRCentre/HyperSignal.jl/actions/workflows/CI.yml)
+[![Docs](https://img.shields.io/badge/docs-stable-blue.svg)](https://AIRCentre.github.io/HyperSignal.jl/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Datastar-flavored HTML for Julia, with front-row support for inlining

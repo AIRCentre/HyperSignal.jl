@@ -33,6 +33,19 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   template. The prefix is now escaped before splicing; pinned with a
   test exercising both `$` (literal in Julia `SubstitutionString`)
   and `\\` (needs escaping).
+- `DSAction` string extras only escaped single quotes; a value with a
+  backslash silently became a JS escape character, and a `</script>`
+  substring could close an enclosing `<script>` tag. Now escapes
+  backslash, single-quote, and `</` in that order — same hardening
+  already applied to `redirect_via_fragment`.
+- `radio_field`'s docstring was attached to the preceding internal
+  helper instead of the public function. Moved so `@doc radio_field`
+  resolves and the API page renders it.
+
+### Docs
+- Documenter-driven docs site (`docs/`) with index, CairoMakie guide,
+  and a full API reference. Built and deployed in CI via
+  `.github/workflows/Docs.yml`.
 
 ## 0.1.0 — 2026-05-23
 

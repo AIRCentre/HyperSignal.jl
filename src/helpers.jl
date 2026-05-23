@@ -79,23 +79,6 @@ function redirect_to(location::AbstractString; cookies::AbstractVector=String[])
     HTTP.Response(303, headers)
 end
 
-"""
-    radio_field(name::AbstractString, value::AbstractString, text::AbstractString; checked=false)
-
-Render a `<label><input type="radio" name=… value=… [checked]> text</label>`
-— the label-around-input convention used across this codebase. One call
-replaces ~6 lines of hand-built input-and-label boilerplate per choice.
-
-# Examples
-```julia
-fieldset(
-    legend("Confidence"),
-    radio_field("confidence", "all", "0.0 – 1.0"; checked=true),
-    radio_field("confidence", "medium", "0.3 – 0.7"),
-    radio_field("confidence", "hard", "0.4 – 0.6"),
-)
-```
-"""
 # Shared body for radio_field / checkbox_field. The wrapping `<label>`
 # convention (label around input, with a leading space before the visible
 # text) is the same for both controls; only the input `type` and the
@@ -109,6 +92,23 @@ _named_input_field(itype::AbstractString,
                  value=String(value), checked=checked),
           " $(text)")
 
+"""
+    radio_field(name::AbstractString, value::AbstractString, text::AbstractString; checked=false)
+
+Render a `<label><input type="radio" name=… value=… [checked]> text</label>`
+— the label-around-input convention. One call replaces ~6 lines of
+hand-built input-and-label boilerplate per choice.
+
+# Examples
+```julia
+fieldset(
+    legend("Confidence"),
+    radio_field("confidence", "all", "0.0 – 1.0"; checked=true),
+    radio_field("confidence", "medium", "0.3 – 0.7"),
+    radio_field("confidence", "hard", "0.4 – 0.6"),
+)
+```
+"""
 radio_field(name::AbstractString, value::AbstractString, text::AbstractString;
              checked::Bool=false) =
     _named_input_field("radio", name, value, text, checked)
