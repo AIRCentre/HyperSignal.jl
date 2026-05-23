@@ -771,6 +771,13 @@ using HyperSignal: div, select, summary
         # Empty vector → empty attribute value (still emitted because
         # the attr name was passed; user opted in).
         @test render(div(class=String[], "x")) == "<div class=\"\">x</div>"
+        # Tuples space-join the same way (ergonomic symmetry with
+        # vectors — both mean "join these" in attribute position).
+        @test render(div(class=("btn", "primary"), "x")) ==
+              "<div class=\"btn primary\">x</div>"
+        @test render(div(class=("btn", nothing, false, "active"))) ==
+              "<div class=\"btn active\"></div>"
+        @test render(div(class=())) == "<div class=\"\"></div>"
     end
 
     @testset "string(::DSAction) returns the JS expression, not a struct dump" begin

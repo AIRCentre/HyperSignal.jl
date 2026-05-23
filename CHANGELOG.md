@@ -175,6 +175,9 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Symbol children render as their text — status enums like
   `span(:Pending)` now Just Work, where they used to raise a
   MethodError. Same auto-escape pass as String children.
+- `Tuple` attribute values space-join the same as `AbstractVector`,
+  so `class=("btn", "primary")` is symmetric with the bracket form.
+  Same `nothing` / `missing` / `false` / `true` / empty filtering.
 - `examples/Manifest.toml` added to `.gitignore` so a contributor
   running `julia --project=examples examples/counter_app.jl` doesn't
   end up staging the generated manifest.

@@ -312,13 +312,14 @@ function _render_attr(io::IO, k::Symbol, v)
         escape_html(io, v)
     elseif v isa Number
         print(io, v)
-    elseif v isa AbstractVector
-        # Vector attribute values almost always mean "join these" — most
-        # commonly a class list (`class=["btn", "primary"]`), but the
-        # same intuition holds for `aria-describedby` (multiple ids
-        # separated by space) and Datastar's space-separated lists. The
-        # alternative (dumping the Vector repr) emits hostile output
-        # like `class="[&quot;btn&quot;, &quot;primary&quot;]"`.
+    elseif v isa AbstractVector || v isa Tuple
+        # Vector/Tuple attribute values almost always mean "join these"
+        # — most commonly a class list (`class=["btn", "primary"]` or
+        # `class=("btn", "primary")`), but the same intuition holds for
+        # `aria-describedby` (multiple ids separated by space) and
+        # Datastar's space-separated lists. The alternative (dumping
+        # the container repr) emits hostile output like
+        # `class="[&quot;btn&quot;, &quot;primary&quot;]"`.
         _render_attr_vector(io, v)
     else
         escape_html(io, string(v))
@@ -334,7 +335,7 @@ end
 # to `false`, and we want that to mean "skip", not "include the
 # literal text 'false'". `true` is dropped too for symmetry — a bare
 # `true` in a class list never means anything useful.
-function _render_attr_vector(io::IO, v::AbstractVector)
+function _render_attr_vector(io::IO, v)
     first = true
     for x in v
         (x === nothing || x === missing || x === false || x === true) && continue
