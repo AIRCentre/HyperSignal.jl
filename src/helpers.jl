@@ -49,11 +49,18 @@ _push_cls!(out, p::Pair{<:AbstractString, Bool}) =
     (p.second && push!(out, String(p.first)); nothing)
 _push_cls!(out, p::Pair{<:AbstractString, <:Any}) =
     error("cls: Pair value must be Bool, got $(typeof(p.second))")
-function _push_cls!(out, xs)
+# Restrict the recursive walk to actual collection types. Without this
+# guard, `cls("a", 1)` matched the generic Any fallback, which iterated
+# the Int (Julia treats Number as a 1-iterable yielding itself) straight
+# back into the same fallback — a stack overflow rather than a useful
+# error.
+function _push_cls!(out, xs::Union{AbstractVector, Tuple, NamedTuple, AbstractSet})
     for x in xs
         _push_cls!(out, x)
     end
 end
+_push_cls!(out, x) =
+    error("cls: don't know how to handle $(typeof(x)) ($(repr(x))); pass a String, a Pair{String,Bool}, or a Vector/Tuple of those")
 
 """
     redirect_to(location::AbstractString; cookies=String[]) -> HTTP.Response

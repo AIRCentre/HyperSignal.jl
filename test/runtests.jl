@@ -716,6 +716,21 @@ using HyperSignal: div, select, summary
         @test !occursin("<?xml", out)
     end
 
+    @testset "cls rejects non-collection scalars cleanly (no stack overflow)" begin
+        # Why: `_push_cls!` previously had an Any fallback that iterated
+        # its arg. Number is a 1-iterable in Julia (yields itself), so
+        # `cls("a", 1)` recursed forever and stack-overflowed. Now the
+        # iterator path is restricted to actual collection types, and
+        # everything else hits a clear error message.
+        @test_throws ErrorException cls("a", 1)
+        @test_throws ErrorException cls("a", 3.14)
+        @test_throws ErrorException cls("a", :symbol_input)
+        # Collections still flatten correctly.
+        @test cls("a", ["b", "c"]) == "a b c"
+        @test cls("a", ("b", "c")) == "a b c"
+        @test cls("a", Set(["b"])) == "a b"
+    end
+
     @testset "tag names that would break the HTML parser raise ArgumentError" begin
         # Why: Element(Symbol(...), ...) is the documented escape hatch
         # for runtime-chosen tags. Without validation, Symbol("<script>")

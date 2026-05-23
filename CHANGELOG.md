@@ -135,6 +135,12 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `html_response` of a small fragment lands at ~460 ns,
   `fragment_response` at ~670 ns, `parse_signals` at ~640 ns for a
   4-key body and ~5 µs for 50 keys. README perf table updated.
+- `cls("a", 1)` previously stack-overflowed: the iterator fallback
+  walked any non-collection input, and `Number` is a 1-iterable in
+  Julia (yields itself) — instant infinite recursion. The walk is
+  now restricted to `AbstractVector` / `Tuple` / `NamedTuple` /
+  `AbstractSet`, and other types hit a clear `cls: don't know how
+  to handle …` error.
 - `docs/src/api.md` now includes the module-level docstring under
   "Module overview", removing the Documenter "1 docstring not
   included in the manual" warning.
