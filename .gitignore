@@ -1,6 +1,7 @@
 /Manifest.toml
 /benchmark/Manifest.toml
 /docs/Manifest.toml
+/examples/Manifest.toml
 /docs/build/
 /docs/site/
 *.jl.cov

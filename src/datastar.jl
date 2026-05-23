@@ -107,6 +107,12 @@ function action_js(a::DSAction)
     String(take!(io))
 end
 
+# 1-arg show on a DSAction: `string(a)` and `"$(a)"` return the JS
+# expression that the renderer would emit. Symmetric with the
+# Element/Frag/Raw show methods — every HyperSignal value prints as
+# the thing the lib would actually put in the page, not a struct dump.
+Base.show(io::IO, a::DSAction) = print(io, action_js(a))
+
 _js_value(v::Bool)   = v ? "true" : "false"
 _js_value(v::Number) = string(v)
 # Escape order matters: backslashes first (so we don't re-escape escapes

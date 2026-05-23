@@ -152,6 +152,13 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   String-keyed form silently became a child and MethodError'd at
   render time. The render-time attribute-name validation still
   fires, so this is a syntactic relaxation only.
+- `Base.show(::IO, ::DSAction)` returns the JS expression, so
+  `string(ds_post("/x"))` is `"@post('/x')"` instead of a struct
+  dump. Symmetric with the Element/Frag/Raw show methods — every
+  HyperSignal value `string`s to what the lib would put in the page.
+- `examples/Manifest.toml` added to `.gitignore` so a contributor
+  running `julia --project=examples examples/counter_app.jl` doesn't
+  end up staging the generated manifest.
 - `docs/src/api.md` now includes the module-level docstring under
   "Module overview", removing the Documenter "1 docstring not
   included in the manual" warning.

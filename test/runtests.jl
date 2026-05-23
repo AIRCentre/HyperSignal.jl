@@ -716,6 +716,16 @@ using HyperSignal: div, select, summary
         @test !occursin("<?xml", out)
     end
 
+    @testset "string(::DSAction) returns the JS expression, not a struct dump" begin
+        # Why: symmetric with Element/Frag/Raw — every HyperSignal
+        # value should `string()` to what the lib would put in the
+        # page, not the internal record. Useful for log lines, error
+        # messages, and a clean REPL.
+        @test string(ds_post("/api/save")) == "@post('/api/save')"
+        @test string(ds_get("/c"; form=true)) == "@get('/c', {contentType: 'form'})"
+        @test "$(ds_post("/x"))" == "@post('/x')"
+    end
+
     @testset "String-keyed Pair args are accepted as attributes (auto-symbolize)" begin
         # Why: `div("id" => "foo", "x")` was a footgun — String keys
         # silently fell into the children path and MethodError'd at
