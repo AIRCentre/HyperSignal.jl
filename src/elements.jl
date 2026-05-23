@@ -186,15 +186,25 @@ end
 #     button(type="submit", on(:click, ds_post("/api/x")), "Go"))
 # ```
 const _TAGS = (
-    :html, :head, :body, :title, :meta, :link, :script, :style,
-    :div, :span, :p, :a, :h1, :h2, :h3, :h4, :h5, :h6, :hr, :br,
+    :html, :head, :body, :title, :meta, :link, :script, :style, :noscript,
+    :div, :span, :p, :a, :h1, :h2, :h3, :h4, :h5, :h6, :hr, :br, :wbr,
     :ul, :ol, :li, :dl, :dt, :dd,
-    :input, :button, :label, :fieldset, :legend, :select, :option, :textarea,
-    :table, :thead, :tbody, :tr, :th, :td,
-    :article, :section, :nav, :header, :footer, :main, :aside, :figure, :figcaption,
-    :img, :svg, :path, :circle, :polygon,
-    :small, :strong, :em, :code, :pre,
-    :progress, :details, :summary, :dialog, :u,
+    :input, :button, :label, :fieldset, :legend, :select, :option, :optgroup, :textarea, :datalist,
+    :table, :thead, :tbody, :tfoot, :tr, :th, :td, :caption, :colgroup, :col,
+    :article, :section, :nav, :header, :footer, :main, :aside, :figure, :figcaption, :address,
+    :img, :svg, :path, :circle, :polygon, :rect, :line, :ellipse, :polyline, :g, :defs, :use,
+    :small, :strong, :em, :code, :pre, :b, :i, :s, :u, :mark, :kbd, :samp, :var, :cite, :q,
+    :sub, :sup, :blockquote,
+    :progress, :details, :summary, :dialog, :meter, :output, :data, :time,
+    :audio, :video, :picture, :source, :track, :iframe, :embed, :object, :param,
+    :area,
+    # Deliberately excluded: <map> and <base> overlap with `Base.map`
+    # and `Base.base` and shadowing those for the rare HTML use case
+    # isn't worth the friction. Build via `Element(:map, …)` /
+    # `Element(:base, …)` at the call site that needs them. Note
+    # `<time>` IS listed: `Base.time` clashes but is opted in via
+    # `_BASE_SHADOWED` below, so the @using_tags macro brings the
+    # HTML version in explicitly without re-binding the global.
 )
 
 for tag in _TAGS
@@ -226,15 +236,15 @@ end
 # needs it. `<map>` is similarly absent: no HyperSignal-defined `map`
 # constructor exists (it's not in `_TAGS`), so importing it would just
 # re-bind Base.map for no gain.
-const _BASE_SHADOWED = (:div, :select, :summary)
+const _BASE_SHADOWED = (:div, :select, :summary, :mark, :time)
 
 """
     @using_tags
 
-Bring the Base-shadowed tag constructors (`div`, `select`, `summary`)
-into the current module's scope. Equivalent to the explicit `using
-HyperSignal: div, select, summary` line — saves callers from memorizing
-which names conflict.
+Bring the Base-shadowed tag constructors (`div`, `select`, `summary`,
+`mark`, `time`) into the current module's scope. Equivalent to the
+explicit `using HyperSignal: div, select, summary, mark, time` line
+— saves callers from memorizing which names conflict.
 
 Plain `using HyperSignal` already imports every other tag (`h1`, `form`,
 `button`, …) automatically; only the Base-shadowed set needs this.

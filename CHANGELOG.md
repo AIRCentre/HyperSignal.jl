@@ -199,6 +199,20 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   to `jldoctest`. Pins the exact `<label><input …> text</label>`
   shape, including the leading space before the visible text and
   the bare `checked` attribute on truthy values.
+- Tag constructor set extended to cover the rest of HTML5 in
+  common use: `noscript`, `wbr`, `tfoot`, `caption`, `colgroup`,
+  `col`, `address`, `optgroup`, `datalist`, `blockquote`,
+  `mark`, `kbd`, `samp`, `var`, `cite`, `q`, `b`, `i`, `s`,
+  `sub`, `sup`, `meter`, `output`, `data`, `time`, `audio`,
+  `video`, `picture`, `source`, `track`, `iframe`, `embed`,
+  `object`, `param`, `area`, and the common SVG primitives
+  (`rect`, `line`, `ellipse`, `polyline`, `g`, `defs`, `use`).
+  `mark` and `time` clash with `Base.mark` and `Base.time`, so
+  they join `div`/`select`/`summary` in the `_BASE_SHADOWED`
+  set — pull them in with `@using_tags`. `<map>` and `<base>`
+  are deliberately omitted (`Base.map`, `Base.base` are too
+  load-bearing to shadow); use `Element(:map, …)` / `Element(:base, …)`
+  at the call site that needs them.
 - `examples/Manifest.toml` added to `.gitignore` so a contributor
   running `julia --project=examples examples/counter_app.jl` doesn't
   end up staging the generated manifest.

@@ -82,16 +82,18 @@ include("svg.jl")
 # Element tree
 export Element, Raw, Frag, Attribute, DOCTYPE
 
-# Tag constructors (the common set — extend as needed)
-export html, head, body, title, meta, link, script, style
-export div, span, p, a, h1, h2, h3, h4, h5, h6, hr, br
+# Tag constructors (the common HTML5 set — extend as needed)
+export html, head, body, title, meta, link, script, style, noscript
+export div, span, p, a, h1, h2, h3, h4, h5, h6, hr, br, wbr
 export ul, ol, li, dl, dt, dd
-export form, input, button, label, fieldset, legend, select, option, textarea
-export table, thead, tbody, tr, th, td
-export article, section, nav, header, footer, main, aside, figure, figcaption
-export img, svg, path, circle, polygon
-export small, strong, em, code, pre
-export progress, details, summary, dialog, u
+export form, input, button, label, fieldset, legend, select, option, optgroup, textarea, datalist
+export table, thead, tbody, tfoot, tr, th, td, caption, colgroup, col
+export article, section, nav, header, footer, main, aside, figure, figcaption, address
+export img, svg, path, circle, polygon, rect, line, ellipse, polyline, g, defs, use
+export small, strong, em, code, pre, b, i, s, u, mark, kbd, samp, var, cite, q
+export sub, sup, blockquote
+export progress, details, summary, dialog, meter, output, data, time
+export audio, video, picture, source, track, iframe, embed, object, param, area
 
 # Datastar
 export DSAction, ds_get, ds_post, ds_put, ds_delete
