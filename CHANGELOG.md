@@ -167,6 +167,11 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (`aria-describedby`, Datastar lists).
 - `inline_svg(::AbstractString)` docstring example converted to
   `jldoctest`, pinning the wrap-in-Raw + aria_label shape.
+- Bool children now render as nothing, symmetric with the attr-
+  vector treatment from the previous entry. Means `div(header,
+  cond && extra, footer)` works for conditional rendering without
+  having to write `cond ? extra : nothing` at every call site.
+  Passing `string(b)` still emits the literal text if needed.
 - `examples/Manifest.toml` added to `.gitignore` so a contributor
   running `julia --project=examples examples/counter_app.jl` doesn't
   end up staging the generated manifest.

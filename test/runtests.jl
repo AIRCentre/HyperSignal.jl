@@ -716,6 +716,25 @@ using HyperSignal: div, select, summary
         @test !occursin("<?xml", out)
     end
 
+    @testset "Bool children are skipped so cond && elem renders conditionally" begin
+        # Why: `div(header, cond && extra, footer)` is the natural Julia
+        # idiom for conditional rendering. Without a Bool-skip method,
+        # `cond && extra` evaluates to bare false on falsy and the
+        # Number dispatch emits the literal text 'false'. With the new
+        # method bool children land in the same skip bucket as
+        # nothing/missing.
+        @test render(div("a", false, "b")) == "<div>ab</div>"
+        @test render(div("a", true, "b")) == "<div>ab</div>"
+        show_extra = false
+        @test render(div("a", show_extra && span("extra"), "b")) == "<div>ab</div>"
+        show_extra = true
+        @test render(div("a", show_extra && span("extra"), "b")) ==
+              "<div>a<span>extra</span>b</div>"
+        # If the user really wants the literal text 'true'/'false',
+        # they can pass it via string() — no method override to undo.
+        @test render(div(string(true))) == "<div>true</div>"
+    end
+
     @testset "Vector attribute values are space-joined (class-list semantics)" begin
         # Why: `class=["btn", "primary"]` is the natural way to build a
         # class list, and aria-describedby / aria-labelledby take

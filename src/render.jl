@@ -124,7 +124,9 @@ library — every renderable type lands here. Standard methods cover:
 - [`Raw`](@ref): writes the wrapped string verbatim.
 - `AbstractString`: writes auto-escaped (`&`, `<`, `>`, `"`, `'`).
 - `Number`: writes as-is.
-- `nothing` / `missing`: writes nothing — handy for conditional children.
+- `nothing` / `missing` / `Bool`: writes nothing — so
+  `cond && extra` (which evaluates to bare `false` when `cond` is
+  false) drops out of the children list cleanly.
 - `AbstractVector`: walks elements in order.
 
 To make a custom type renderable, add a method:
@@ -199,6 +201,14 @@ Base.show(io::IO, r::Raw)     = render(io, r)
 render(io::IO, s::AbstractString) = escape_html(io, s)
 render(io::IO, c::Char) = escape_html(io, c)
 render(io::IO, n::Number) = print(io, n)
+# Bool children render as nothing — symmetric with the attr-vector
+# fix and matches the natural Julia idiom `div(header, cond && extra,
+# footer)`, where `cond && extra` evaluates to bare `false` when cond
+# is false. Without this method Bool routed through the Number dispatch
+# and emitted the literal text "false" / "true" — never what the user
+# wants in a conditional-render context. Pass `string(b)` if you
+# genuinely want to print the word.
+render(io::IO, ::Bool) = nothing
 render(io::IO, ::Nothing) = nothing
 render(io::IO, ::Missing) = nothing
 function render(io::IO, xs::AbstractVector)
