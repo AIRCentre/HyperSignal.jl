@@ -80,9 +80,17 @@ String for an HTTP body or a test assertion; reach for `render(io, x)`
 when you already hold an `IO`.
 
 # Examples
-```julia
-render(div(class="card", h2("Hi"), p("hello")))
-# => "<div class=\"card\"><h2>Hi</h2><p>hello</p></div>"
+```jldoctest
+julia> using HyperSignal: div
+
+julia> render(div(class="card", h2("Hi"), p("hello")))
+"<div class=\\"card\\"><h2>Hi</h2><p>hello</p></div>"
+
+julia> render("a < b & \\"c\\"")
+"a &lt; b &amp; &quot;c&quot;"
+
+julia> render(nothing)
+""
 ```
 """
 render(x) = (io = IOBuffer(); render(io, x); String(take!(io)))

@@ -57,6 +57,9 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `HTTP.Request` / `Vector{UInt8}` / `AbstractString` methods.
 - `.JuliaFormatter.toml` so a `JuliaFormatter` pass is a no-op on
   `main` and contributor formatting stays stable.
+- Doctests enabled in the Documenter build. Canonical examples for
+  `render`, `cls`, and `patch_svg` are now `jldoctest` blocks, so any
+  drift between the docs and behavior is caught on every doc build.
 
 ## 0.1.0 — 2026-05-23
 

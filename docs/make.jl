@@ -18,6 +18,7 @@ makedocs(
         "API reference" => "api.md",
     ],
     checkdocs = :exports,
+    doctest   = true,
     warnonly  = [:missing_docs, :cross_references],
 )
 

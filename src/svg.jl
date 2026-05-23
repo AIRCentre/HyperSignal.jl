@@ -42,10 +42,13 @@ surrounding text — the SVG is the figure, and screen readers traverse
 it in isolation.
 
 # Examples
-```julia
-svg_text = read("plot.svg", String)
-patched = patch_svg(svg_text; id_prefix="fig1_", aria_label="Sales by quarter")
-div(class="figure", Raw(patched))
+```jldoctest
+julia> patch_svg(""\"<?xml version="1.0"?><svg width="800" height="600" viewBox="0 0 8 6"><g/></svg>""\")
+"<svg viewBox=\\"0 0 8 6\\"><g/></svg>"
+
+julia> patch_svg(""\"<svg viewBox="0 0 1 1"><defs><clipPath id="c0"><rect/></clipPath></defs><g clip-path="url(#c0)"/></svg>""\";
+                 id_prefix="fig_")
+"<svg viewBox=\\"0 0 1 1\\"><defs><clipPath id=\\"fig_c0\\"><rect/></clipPath></defs><g clip-path=\\"url(#fig_c0)\\"/></svg>"
 ```
 """
 function patch_svg(svg::AbstractString;

@@ -20,13 +20,18 @@ even when nothing matches. Pair values that aren't `Bool` raise a loud
 include the class.
 
 # Examples
-```julia
-button(class=cls("btn", "primary", "active" => is_active))
-# is_active=true  → class="btn primary active"
-# is_active=false → class="btn primary"
+```jldoctest
+julia> cls("btn", "primary", "active" => true)
+"btn primary active"
 
-button(class=cls("btn", ["large", "rounded"], "loading" => loading))
-# class="btn large rounded loading"  (or without "loading" if false)
+julia> cls("btn", "primary", "active" => false)
+"btn primary"
+
+julia> cls("btn", ["large", "rounded"], "loading" => false)
+"btn large rounded"
+
+julia> cls()
+""
 ```
 """
 function cls(parts...)
