@@ -716,6 +716,24 @@ using HyperSignal: div, select, summary
         @test !occursin("<?xml", out)
     end
 
+    @testset "ds_post extras: string values are JS-escaped against \\, ', </script>" begin
+        # Why: an `extras` value that contains a backslash or </script>
+        # would otherwise corrupt the JS string and either break parsing
+        # or — for </script> in an inline-script context — let an HTML
+        # parser close the wrapping <script>.
+        a = ds_post("/x"; note="he said: 'hi' \\path </script>")
+        out = render(button("Save", on_click(a)))
+        # Backslash doubled, single-quote escaped, </ broken with backslash:
+        @test occursin("note: 'he said: \\&#39;hi\\&#39; \\\\path &lt;\\/script&gt;'", out) ||
+              occursin("note: 'he said: \\'hi\\' \\\\path <\\/script>'",            # pre-HTML-escape view
+                        HyperSignal.action_js(a))
+        # action_js view (pre HTML escape) for the precise contract:
+        js = HyperSignal.action_js(a)
+        @test occursin("\\\\path", js)        # backslash doubled
+        @test occursin("\\'hi\\'", js)        # quotes escaped
+        @test occursin("<\\/script>", js)     # </ broken
+    end
+
     @testset "stress: 5000-deep nesting renders without stack overflow" begin
         # Why: render() recurses on children. A pathological component
         # that nests 5000 deep is unrealistic but proves the recursion

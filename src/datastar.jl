@@ -111,7 +111,13 @@ end
 
 _js_value(v::Bool)   = v ? "true" : "false"
 _js_value(v::Number) = string(v)
-_js_value(v::String) = "'$(replace(v, "'" => "\\'"))'"
+# Escape order matters: backslashes first (so we don't re-escape escapes
+# we ourselves introduce), then single-quote (the string delimiter), then
+# `</` (the HTML parser will close an enclosing <script> on `</script>`
+# regardless of JS quoting — break the sequence at the HTML level by
+# inserting a backslash, which the JS parser ignores).
+_js_value(v::String) =
+    "'$(replace(replace(replace(v, "\\" => "\\\\"), "'" => "\\'"), "</" => "<\\/"))'"
 _js_value(v)         = string(v)  # fallback; caller's responsibility
 
 """
