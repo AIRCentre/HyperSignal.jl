@@ -126,6 +126,15 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the security-disclosure address.
 - `redirect_to` example converted to `jldoctest`, pinning the 303
   status, Location header, and Set-Cookie attachment shape.
+- Precompile statements expanded to cover the methods added across
+  recent iterations: `SubString` escape fast-path, `Vector{UInt8}`
+  render, `Missing` render, name validation, `html_response` /
+  `fragment_response`, `patch_svg` / `inline_svg`, and
+  `parse_signals` of bytes / string.
+- Benchmark suite extended with `response` and `signals` groups:
+  `html_response` of a small fragment lands at ~460 ns,
+  `fragment_response` at ~670 ns, `parse_signals` at ~640 ns for a
+  4-key body and ~5 µs for 50 keys. README perf table updated.
 - `docs/src/api.md` now includes the module-level docstring under
   "Module overview", removing the Documenter "1 docstring not
   included in the manual" warning.

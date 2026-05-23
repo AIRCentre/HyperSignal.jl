@@ -334,8 +334,12 @@ Indicative numbers on a typical workstation (`v0.1.0`):
 | render 50-row table                 | ~14 µs    |
 | render 100-field form               | ~24 µs    |
 | escape 10k adversarial chars        | ~48 µs    |
+| `html_response` of a small fragment | ~460 ns   |
+| `fragment_response` with selector   | ~670 ns   |
 | `patch_svg` on a 200-path SVG       | ~130 µs   |
 | `patch_svg` on a 1000-path SVG      | ~630 µs   |
+| `parse_signals` of a 4-key body     | ~640 ns   |
+| `parse_signals` of a 50-key body    | ~5 µs     |
 
 ## Contributing
 

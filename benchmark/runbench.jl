@@ -63,6 +63,19 @@ SUITE["svg"]["patch 200-path makie-like"] =
 SUITE["svg"]["patch 1k-path makie-like"] =
     @benchmarkable patch_svg($(synthetic_makie_svg(1000)); id_prefix="fig_")
 
+SUITE["response"] = BenchmarkGroup()
+SUITE["response"]["html_response of a small fragment"] =
+    @benchmarkable html_response($(small_fragment()))
+SUITE["response"]["fragment_response with selector"] =
+    @benchmarkable fragment_response($(small_fragment()), "#count-estimate")
+
+const JSON_SMALL = "{\"a\":1,\"b\":\"two\",\"c\":true,\"d\":null}"
+const JSON_LARGE = "{" * join(["\"k$i\":$i" for i in 1:50], ",") * "}"
+
+SUITE["signals"] = BenchmarkGroup()
+SUITE["signals"]["parse 4-key JSON body"]  = @benchmarkable parse_signals($JSON_SMALL)
+SUITE["signals"]["parse 50-key JSON body"] = @benchmarkable parse_signals($JSON_LARGE)
+
 if abspath(PROGRAM_FILE) == @__FILE__
     results = run(SUITE; verbose=true)
     show(stdout, MIME"text/plain"(), results)

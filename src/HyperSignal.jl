@@ -120,20 +120,41 @@ export @using_tags
 # stays runtime-cheap and adds no dep — for richer workload-driven
 # precompilation, a downstream project can layer PrecompileTools on top.
 let
+    # Render hot path
     precompile(Tuple{typeof(render), IOBuffer, Element})
     precompile(Tuple{typeof(render), IOBuffer, Frag})
     precompile(Tuple{typeof(render), IOBuffer, Raw})
     precompile(Tuple{typeof(render), IOBuffer, String})
+    precompile(Tuple{typeof(render), IOBuffer, SubString{String}})
     precompile(Tuple{typeof(render), IOBuffer, Char})
     precompile(Tuple{typeof(render), IOBuffer, Int})
     precompile(Tuple{typeof(render), IOBuffer, Nothing})
+    precompile(Tuple{typeof(render), IOBuffer, Missing})
     precompile(Tuple{typeof(render), IOBuffer, Vector{Any}})
+    precompile(Tuple{typeof(render), IOBuffer, Vector{UInt8}})
     precompile(Tuple{typeof(render), Element})
     precompile(Tuple{typeof(render), Frag})
+    precompile(Tuple{typeof(render), Raw})
     precompile(Tuple{typeof(render), String})
+    # Escape paths (String + SubString fast paths)
     precompile(Tuple{typeof(escape_html), IOBuffer, String})
+    precompile(Tuple{typeof(escape_html), IOBuffer, SubString{String}})
     precompile(Tuple{typeof(escape_html), IOBuffer, Char})
+    # Name validation cache hits
+    precompile(Tuple{typeof(_check_attr_name), Symbol})
+    precompile(Tuple{typeof(_check_tag_name), Symbol})
+    # Datastar serialization
     precompile(Tuple{typeof(action_js), DSAction})
+    # Response wrappers
+    precompile(Tuple{typeof(html_response), Element})
+    precompile(Tuple{typeof(html_response), Frag})
+    precompile(Tuple{typeof(fragment_response), Element, String})
+    # SVG patching for the CairoMakie story
+    precompile(Tuple{typeof(patch_svg), String})
+    precompile(Tuple{typeof(inline_svg), String})
+    # Signal decoding
+    precompile(Tuple{typeof(parse_signals), Vector{UInt8}})
+    precompile(Tuple{typeof(parse_signals), String})
 end
 
 end
