@@ -150,6 +150,14 @@ function _make_element(tag::Symbol, args::Tuple, kwargs)
             for c in a
                 push!(children, c)
             end
+        elseif a isa Base.Generator
+            # `div(p(i) for i in 1:n)` is the natural comprehension
+            # form. Consume the generator into children eagerly so
+            # the element stays renderable multiple times (generators
+            # are single-pass).
+            for c in a
+                push!(children, c)
+            end
         else
             push!(children, a)
         end

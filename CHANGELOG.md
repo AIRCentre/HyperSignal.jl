@@ -184,6 +184,9 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (destructure targets, splat receivers, heterogeneous
   comprehensions) and the previous behavior was a MethodError at
   render time.
+- `Base.Generator` children also unpack — `div(p(i) for i in 1:n)`
+  now Just Works. Consumed eagerly so the element survives multiple
+  renders (generators are single-pass).
 - `examples/Manifest.toml` added to `.gitignore` so a contributor
   running `julia --project=examples examples/counter_app.jl` doesn't
   end up staging the generated manifest.

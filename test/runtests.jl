@@ -716,6 +716,25 @@ using HyperSignal: div, select, summary
         @test !occursin("<?xml", out)
     end
 
+    @testset "Generator-of-children unpacks (and is re-renderable)" begin
+        # Why: `div(p(i) for i in 1:n)` is the natural Julia
+        # comprehension form for a list of children. Without
+        # generator-unpacking, the generator landed as a single
+        # child and MethodError'd at render time. Consume eagerly
+        # into the children vector so the element can be rendered
+        # multiple times — generators are single-pass.
+        el = div(p(i) for i in 1:3)
+        @test render(el) == "<div><p>1</p><p>2</p><p>3</p></div>"
+        # Re-render must produce the same output (generator would
+        # be exhausted if we stored it instead of consuming).
+        @test render(el) == "<div><p>1</p><p>2</p><p>3</p></div>"
+        # Empty generator collapses cleanly.
+        @test render(div(p(i) for i in 1:0)) == "<div></div>"
+        # Generator yielding skip-types (nothing) drops them.
+        @test render(div(i % 2 == 0 ? nothing : p(i) for i in 1:4)) ==
+              "<div><p>1</p><p>3</p></div>"
+    end
+
     @testset "Tuple-of-children unpacks like a Vector at construction" begin
         # Why: callers occasionally have children in a tuple (a
         # destructure target, a splat-receiver, a heterogeneously-typed
