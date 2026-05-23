@@ -177,7 +177,9 @@ Every escape boundary in one paragraph:
   attribute, so a user-supplied option value can't break out of the
   JS string or the wrapping `<script>` tag.
 
-Full write-up: see the **Security** page of the docs site.
+Full write-up: [Security page of the docs site][docs-security].
+
+[docs-security]: https://aircentre.github.io/HyperSignal.jl/
 
 ## What it deliberately doesn't do
 

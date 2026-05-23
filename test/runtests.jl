@@ -716,6 +716,17 @@ using HyperSignal: div, select, summary
         @test !occursin("<?xml", out)
     end
 
+    @testset "Symbol children render as their text (auto-escaped)" begin
+        # Why: status enums (`span(:Pending)`) are the common case. The
+        # caller pulled the value from a model field; no reason to make
+        # them string() it themselves. The Symbol's bytes get the same
+        # escape treatment as a String.
+        @test render(span(:Pending)) == "<span>Pending</span>"
+        @test render(div(:foo, " ", :bar)) == "<div>foo bar</div>"
+        # Escape still fires on the bytes (paranoid case).
+        @test render(div(Symbol("a<b"))) == "<div>a&lt;b</div>"
+    end
+
     @testset "Bool children are skipped so cond && elem renders conditionally" begin
         # Why: `div(header, cond && extra, footer)` is the natural Julia
         # idiom for conditional rendering. Without a Bool-skip method,

@@ -211,6 +211,11 @@ render(io::IO, n::Number) = print(io, n)
 render(io::IO, ::Bool) = nothing
 render(io::IO, ::Nothing) = nothing
 render(io::IO, ::Missing) = nothing
+# Symbol children render as their text. The common case is a status
+# enum (`span(:Pending)`) where the caller pulled the value straight
+# from a model field without wanting to `string()` first. The escape
+# walks the Symbol's bytes the same as a String.
+render(io::IO, sym::Symbol) = escape_html(io, String(sym))
 function render(io::IO, xs::AbstractVector)
     for x in xs
         render(io, x)

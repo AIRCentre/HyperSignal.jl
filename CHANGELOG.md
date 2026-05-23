@@ -172,6 +172,9 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   cond && extra, footer)` works for conditional rendering without
   having to write `cond ? extra : nothing` at every call site.
   Passing `string(b)` still emits the literal text if needed.
+- Symbol children render as their text — status enums like
+  `span(:Pending)` now Just Work, where they used to raise a
+  MethodError. Same auto-escape pass as String children.
 - `examples/Manifest.toml` added to `.gitignore` so a contributor
   running `julia --project=examples examples/counter_app.jl` doesn't
   end up staging the generated manifest.
