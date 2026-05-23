@@ -158,10 +158,13 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   HyperSignal value `string`s to what the lib would put in the page.
 - Vector attribute values are now space-joined: `class=["btn",
   "primary"]` emits `class="btn primary"` instead of dumping the
-  Vector repr. `nothing` / `missing` / empty entries drop, so a
-  conditional class list `class=["btn", active ? "on" : nothing]`
-  survives optional pieces without a coalesce. Works for any
-  space-separated attribute (`aria-describedby`, Datastar lists).
+  Vector repr. `nothing` / `missing` / `false` / `true` / empty
+  entries drop, so the natural Julia idiom
+  `class=["btn", is_active && "active"]` works without coalesce
+  gymnastics — `cond && "x"` returns `false` when `cond` is false,
+  and the renderer treats that as "skip" instead of emitting the
+  literal text "false". Works for any space-separated attribute
+  (`aria-describedby`, Datastar lists).
 - `inline_svg(::AbstractString)` docstring example converted to
   `jldoctest`, pinning the wrap-in-Raw + aria_label shape.
 - `examples/Manifest.toml` added to `.gitignore` so a contributor

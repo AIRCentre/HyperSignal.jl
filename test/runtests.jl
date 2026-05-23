@@ -728,6 +728,14 @@ using HyperSignal: div, select, summary
         # survives without coalesce gymnastics.
         @test render(div(class=["btn", nothing, "active", missing, ""])) ==
               "<div class=\"btn active\"></div>"
+        # The Julia idiom `cond && "active"` evaluates to `false` when
+        # cond is false. Drop `false` and `true` so the idiom works
+        # without stringifying the literal bool.
+        @test render(div(class=["btn", false, "primary", true])) ==
+              "<div class=\"btn primary\"></div>"
+        is_active = false
+        @test render(div(class=["btn", is_active && "active", "default"])) ==
+              "<div class=\"btn default\"></div>"
         # Non-string entries get string()-converted.
         @test render(div(:rowspan => [2, 3])) == "<div rowspan=\"2 3\"></div>"
         # Empty vector → empty attribute value (still emitted because

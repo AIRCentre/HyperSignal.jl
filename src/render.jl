@@ -312,12 +312,17 @@ function _render_attr(io::IO, k::Symbol, v)
     nothing
 end
 
-# Join a Vector value with spaces, skipping nothing/missing/empty
-# entries so a conditional class list survives optional pieces.
+# Join a Vector value with spaces, skipping nothing/missing/false/
+# empty entries so a conditional class list survives optional pieces.
+# `false` is dropped (not stringified) so the natural Julia idiom
+# `cond && "active"` works: when cond is false the entry evaluates
+# to `false`, and we want that to mean "skip", not "include the
+# literal text 'false'". `true` is dropped too for symmetry — a bare
+# `true` in a class list never means anything useful.
 function _render_attr_vector(io::IO, v::AbstractVector)
     first = true
     for x in v
-        (x === nothing || x === missing) && continue
+        (x === nothing || x === missing || x === false || x === true) && continue
         if x isa AbstractString
             isempty(x) && continue
             first || print(io, ' ')
