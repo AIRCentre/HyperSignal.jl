@@ -623,6 +623,9 @@ using HyperSignal: div, select, summary
         @test :div in names
         @test :select in names
         @test :summary in names
+        # iter 33 added mark and time to the Base-shadowed set
+        @test :mark in names
+        @test :time in names
     end
 
     @testset "patch_svg strips XML prolog and DOCTYPE so HTML parsing isn't broken" begin

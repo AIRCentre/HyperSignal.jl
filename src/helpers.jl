@@ -293,13 +293,14 @@ Render `<legend class="muted">text [help-tooltip]</legend>`. Pass
 Without a tooltip the result is just a plain muted legend.
 
 # Examples
-```julia
-fieldset(
-    form_legend("Size"; tooltip="Number of items per batch."),
-    radio_field("size", "10", "10"),
-    radio_field("size", "25", "25"; checked=true),
-)
+```jldoctest
+julia> render(form_legend("Size"))
+"<legend class=\\"muted\\">Size</legend>"
 ```
+
+For the with-tooltip variant the output includes a hashed id that
+isn't byte-stable across the tooltip text, so see the help_tooltip
+docstring for the structural details.
 """
 function form_legend(text::AbstractString; tooltip::Union{Nothing, AbstractString}=nothing)
     if isnothing(tooltip)
