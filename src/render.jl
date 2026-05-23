@@ -29,6 +29,10 @@ end
 function escape_html(io::IO, s::AbstractString)
     if s isa String
         _escape_html_string(io, s)
+    elseif s isa SubString{String}
+        # SubString of a String can use the same codeunit fast path
+        # by walking the parent buffer between the view's bounds.
+        _escape_html_substring(io, s)
     else
         for c in s
             escape_html(io, c)
@@ -39,10 +43,25 @@ end
 
 function _escape_html_string(io::IO, s::String)
     data = codeunits(s)
-    n = length(data)
-    i = 1
-    run_start = 1
-    @inbounds while i <= n
+    _escape_html_codeunits(io, data, pointer(data), 1, length(data))
+end
+
+function _escape_html_substring(io::IO, s::SubString{String})
+    parent = s.string
+    data = codeunits(parent)
+    offset = s.offset                  # 0-based byte offset into parent
+    n = sizeof(s)                      # SubString length in bytes
+    base = pointer(data, offset + 1)
+    _escape_html_codeunits(io, data, base, offset + 1, offset + n)
+end
+
+# Walk codeunits in [first_idx, last_idx], writing safe runs via one
+# `unsafe_write` and emitting the entity for each metacharacter.
+@inline function _escape_html_codeunits(io::IO, data, base_ptr::Ptr{UInt8},
+                                        first_idx::Int, last_idx::Int)
+    i = first_idx
+    run_start = first_idx
+    @inbounds while i <= last_idx
         b = data[i]
         if b == 0x26 || b == 0x3c || b == 0x3e || b == 0x22 || b == 0x27
             i > run_start && unsafe_write(io, pointer(data, run_start), i - run_start)
@@ -63,8 +82,8 @@ function _escape_html_string(io::IO, s::String)
             i += 1
         end
     end
-    @inbounds if run_start <= n
-        unsafe_write(io, pointer(data, run_start), n - run_start + 1)
+    @inbounds if run_start <= last_idx
+        unsafe_write(io, pointer(data, run_start), last_idx - run_start + 1)
     end
     nothing
 end

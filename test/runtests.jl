@@ -716,6 +716,34 @@ using HyperSignal: div, select, summary
         @test !occursin("<?xml", out)
     end
 
+    @testset "SubString of String escapes correctly via the codeunit fast path" begin
+        # Why: SubString{String} is the result of any slice/interpolation
+        # on a String. Ensure it walks the parent buffer correctly and
+        # produces the same output as the equivalent String value.
+        base = "ab<c&d>ef\"gh'ij"
+        sub = SubString(base, 2, 14)  # "b<c&d>ef\"gh'i"
+        @test render(sub) == "b&lt;c&amp;d&gt;ef&quot;gh&#39;i"
+        # An all-safe SubString uses a single unsafe_write run.
+        @test render(SubString("hello world", 1, 5)) == "hello"
+        # An empty SubString writes nothing.
+        @test render(SubString("xyz", 1, 0)) == ""
+    end
+
+    @testset "parse_signals raises a labeled ArgumentError on malformed JSON" begin
+        # Why: JSON.jl's own message doesn't name parse_signals, so a
+        # service log shows just \"ArgumentError: Expected …\" with no
+        # hint that the request body was the culprit. The wrapper
+        # prefixes the error with parse_signals and a body snippet.
+        try
+            parse_signals("{not json}")
+            @test false  # expected to throw
+        catch err
+            @test err isa ArgumentError
+            @test occursin("parse_signals", err.msg)
+            @test occursin("{not json}", err.msg)
+        end
+    end
+
     @testset "missing attribute value is omitted, mirroring nothing semantics" begin
         # Why: lets `value = optional_string()` (a function that may
         # return missing on DB nulls) flow into attr position without

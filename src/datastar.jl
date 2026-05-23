@@ -307,10 +307,14 @@ signals at once (e.g. a card with `showDetails` + `confirmDialogOpen` +
 `{"x": false, "y": false}` strings drop into client-side silence.
 
 # Examples
-```julia
-div(ds_signals((showDetails=false, confirmDialogOpen=false)),
-    span(ds_show("\$showDetails"), "Details…"))
-# → <div data-signals='{"showDetails":false,"confirmDialogOpen":false}'>…</div>
+```jldoctest
+julia> a = ds_signals((showDetails=false, count=0));
+
+julia> a.value
+"{\\"showDetails\\":false,\\"count\\":0}"
+
+julia> a.key
+Symbol("data-signals")
 ```
 """
 ds_signals(state) = Attribute(Symbol("data-signals"), JSON.json(state))
@@ -345,7 +349,16 @@ parse_signals(body::AbstractVector{UInt8}) =
 parse_signals(io::IO) = parse_signals(read(io))
 function parse_signals(body::AbstractString)
     isempty(body) && return Dict{String, Any}()
-    parsed = JSON.parse(String(body))
+    parsed = try
+        JSON.parse(String(body))
+    catch err
+        # JSON.jl raises ArgumentError with a position-tagged message;
+        # re-throw with the call site's name so a panicked handler log
+        # makes the source of the failure obvious. Truncate the body
+        # snippet so a giant malformed payload doesn't flood logs.
+        snippet = SubString(body, 1, min(lastindex(body), 80))
+        throw(ArgumentError("parse_signals: invalid JSON body (first 80 chars: $(repr(snippet))) — $(err)"))
+    end
     parsed isa AbstractDict ? Dict{String, Any}(parsed) :
         error("parse_signals: expected a JSON object at the top level, got $(typeof(parsed))")
 end

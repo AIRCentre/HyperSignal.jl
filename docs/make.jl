@@ -1,4 +1,5 @@
 using Documenter, HyperSignal
+using Documenter: Remotes
 
 DocMeta.setdocmeta!(HyperSignal, :DocTestSetup, :(using HyperSignal); recursive=true)
 
@@ -6,7 +7,7 @@ makedocs(
     sitename = "HyperSignal.jl",
     modules  = [HyperSignal],
     authors  = "AIR Centre and contributors",
-    repo     = "https://github.com/AIRCentre/HyperSignal.jl/blob/{commit}{path}#{line}",
+    repo     = Remotes.GitHub("AIRCentre", "HyperSignal.jl"),
     format   = Documenter.HTML(
         canonical = "https://AIRCentre.github.io/HyperSignal.jl",
         edit_link = "main",

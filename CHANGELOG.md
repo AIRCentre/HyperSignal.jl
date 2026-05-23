@@ -65,6 +65,16 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `string(el)`, `print(io, el)`, and `"$(el)"` interpolation all
   return the rendered HTML instead of a struct dump. Vectors of
   elements print as readable markup too.
+- `SubString{String}` arguments to `escape_html` now use the same
+  codeunit fast path as `String`, so an interpolated text slice
+  doesn't fall back to the per-`Char` loop.
+- `parse_signals` raises a labeled `ArgumentError` on malformed JSON
+  with a truncated body snippet, so a panicked handler log names the
+  origin of the failure instead of just relaying JSON.jl's
+  position-tagged message.
+- `docs/make.jl` now uses `Remotes.GitHub(...)` for the `repo` arg,
+  silencing the Documenter "Unable to determine the repository
+  root URL" warning.
 
 ## 0.1.0 — 2026-05-23
 
