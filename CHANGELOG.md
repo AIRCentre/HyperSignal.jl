@@ -47,6 +47,10 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and a full API reference. Built and deployed in CI via
   `.github/workflows/Docs.yml`. Live at
   <https://aircentre.github.io/HyperSignal.jl/>.
+- `Element`'s docstring now carries a `jldoctest` pinning boolean
+  attribute rendering: `true` emits a bare attribute name, while
+  `false`, `nothing`, and `missing` omit it and ordinary strings stay
+  quoted.
 
 ### Added (later)
 - `missing` is now treated like `nothing` in attribute values

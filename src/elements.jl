@@ -104,6 +104,25 @@ you're building a custom element with a non-static tag name.
 heading(level::Int, text) = Element(Symbol("h", level), Pair{Symbol,Any}[], Any[text])
 heading(2, "Hello")                                          # ≡ h2("Hello")
 ```
+
+```jldoctest
+julia> HyperSignal.@using_tags
+
+julia> render(input(type="checkbox", checked=true))
+"<input type=\"checkbox\" checked>"
+
+julia> render(input(type="checkbox", checked=false))
+"<input type=\"checkbox\">"
+
+julia> render(input(type="checkbox", checked=nothing))
+"<input type=\"checkbox\">"
+
+julia> render(input(type="checkbox", checked=missing))
+"<input type=\"checkbox\">"
+
+julia> render(input(type="checkbox", checked="some-string"))
+"<input type=\"checkbox\" checked=\"some-string\">"
+```
 """
 struct Element
     tag::Symbol
