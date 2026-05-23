@@ -153,6 +153,32 @@ article(h2("Q4"), Raw(patched))
 - **`Frag(…)` for grouping without a wrapper.** Useful when a component
   needs to return multiple siblings.
 
+## Safety model
+
+Every escape boundary in one paragraph:
+
+- **Element text content** and **attribute values** are auto-escaped
+  at render time. The five HTML metacharacters (`<`, `>`, `&`, `"`,
+  `'`) get entity-encoded; the codeunit-fast-path walker keeps this
+  branch-free on the safe-byte runs.
+- **Attribute and tag *names*** that contain parser-breaking chars
+  (whitespace, `<`, `>`, `"`, `'`, `/`, `=`, NUL) raise
+  `ArgumentError`. There is no escape syntax for names; rejecting
+  them is the only correct option. The check is cached by `Symbol`
+  identity, so the amortized cost is zero.
+- **`Raw(...)` is the only opt-out.** SVG icons, audited HTML
+  generators, the output of `patch_svg` / `inline_svg`. Never wrap
+  user input.
+- **`Vector{UInt8}`** renders as a verbatim byte buffer — same trust
+  model as `Raw`. The common case is a pre-rendered, cached HTML
+  fragment.
+- **Datastar JS extras** (string values inside `ds_post("/x"; foo=...)`)
+  are escaped against `\`, `'`, and `</script>` before going into the
+  attribute, so a user-supplied option value can't break out of the
+  JS string or the wrapping `<script>` tag.
+
+Full write-up: see the **Security** page of the docs site.
+
 ## What it deliberately doesn't do
 
 - No client-side templating, hydration, or virtual DOM. The whole point of
