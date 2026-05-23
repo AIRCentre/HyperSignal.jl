@@ -3,6 +3,12 @@
 Every exported name. Docstrings live alongside the source — this page
 just indexes them so the rendered docs site has clickable cross-references.
 
+## Module overview
+
+```@docs
+HyperSignal
+```
+
 ## Element tree
 
 ```@docs

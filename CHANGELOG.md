@@ -80,6 +80,13 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   instead of unpacking each `UInt8` into a per-byte Number. Lets a
   caller drop a pre-rendered HTML cache between ordinary children
   without going through `Raw(String(...))`.
+- `examples/counter_app.jl` — a 50-line Datastar counter app that
+  exercises `html_response`, `fragment_response`, `on_click` +
+  `ds_post`, and the `datastar-selector` morph header in the smallest
+  pasteable shape. Linked from the README.
+- `docs/src/api.md` now includes the module-level docstring under
+  "Module overview", removing the Documenter "1 docstring not
+  included in the manual" warning.
 
 ## 0.1.0 — 2026-05-23
 

@@ -286,6 +286,20 @@ For form-mode submits (`@post('/x', {contentType: 'form'})`), parse the
 body with your service's form parser — that wire format and the
 JSON-mode signals payload are distinct.
 
+## Runnable example
+
+A 50-line Datastar counter app lives in
+[`examples/counter_app.jl`](examples/counter_app.jl):
+
+```bash
+julia --project=. examples/counter_app.jl
+# → serving on http://127.0.0.1:8080
+```
+
+It uses every part of the public surface — `html_response`,
+`fragment_response`, `on_click(ds_post(...))`, fragment morph via the
+`datastar-selector` header — in the smallest pasteable shape.
+
 ## Notebook display
 
 `Element`, `Frag`, and `Raw` define `Base.show(::IO, ::MIME"text/html", …)`,
