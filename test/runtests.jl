@@ -664,6 +664,21 @@ using HyperSignal: div, select, summary
         @test !occursin("xlink:href=\"#fig1_fig1_", out)  # idempotency guard
     end
 
+    @testset "patch_svg id_prefix containing \$ or \\ is treated literally, not as a backreference" begin
+        # Why: the renamespacing uses SubstitutionString, which would
+        # interpret `\1` / `$1` as backreferences if we let the caller's
+        # prefix through verbatim. Callers that derive prefix from a
+        # session id or hash easily land on a `$` — verify it lands as
+        # text, not as a regex capture.
+        src = """<svg><defs><clipPath id="c0"><rect/></clipPath></defs><g clip-path="url(#c0)"/></svg>"""
+        out = patch_svg(src; id_prefix="\$ses1_")
+        @test occursin("id=\"\$ses1_c0\"", out)
+        @test occursin("url(#\$ses1_c0)", out)
+        out2 = patch_svg(src; id_prefix="a\\b_")
+        @test occursin("id=\"a\\b_c0\"", out2)
+        @test occursin("url(#a\\b_c0)", out2)
+    end
+
     @testset "patch_svg leaves non-fragment href values alone" begin
         src = """<svg viewBox="0 0 1 1"><a href="https://example.com"><text>x</text></a></svg>"""
         out = patch_svg(src; id_prefix="p_")

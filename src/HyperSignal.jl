@@ -114,4 +114,26 @@ export patch_svg, inline_svg
 # Macros
 export @using_tags
 
+# Drive precompilation of the render hot path so the first call in a
+# user's session doesn't pay JIT cost for the most common shapes.
+# `precompile` pins method specializations without executing them, so it
+# stays runtime-cheap and adds no dep — for richer workload-driven
+# precompilation, a downstream project can layer PrecompileTools on top.
+let
+    precompile(Tuple{typeof(render), IOBuffer, Element})
+    precompile(Tuple{typeof(render), IOBuffer, Frag})
+    precompile(Tuple{typeof(render), IOBuffer, Raw})
+    precompile(Tuple{typeof(render), IOBuffer, String})
+    precompile(Tuple{typeof(render), IOBuffer, Char})
+    precompile(Tuple{typeof(render), IOBuffer, Int})
+    precompile(Tuple{typeof(render), IOBuffer, Nothing})
+    precompile(Tuple{typeof(render), IOBuffer, Vector{Any}})
+    precompile(Tuple{typeof(render), Element})
+    precompile(Tuple{typeof(render), Frag})
+    precompile(Tuple{typeof(render), String})
+    precompile(Tuple{typeof(escape_html), IOBuffer, String})
+    precompile(Tuple{typeof(escape_html), IOBuffer, Char})
+    precompile(Tuple{typeof(action_js), DSAction})
+end
+
 end

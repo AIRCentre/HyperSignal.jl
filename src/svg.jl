@@ -104,13 +104,25 @@ function inline_svg end
 #   xlink:href="#foo"  -> xlink:href="#<prefix>foo"
 #   href="#foo"        -> href="#<prefix>foo"   (svg2; both forms occur)
 # Skips href values that aren't pure fragments (anything not starting with "#").
+#
+# The prefix is escaped before being embedded in the SubstitutionString
+# template — otherwise a prefix containing `\1` or `$1` would be (mis)
+# interpreted as a backreference and corrupt the output for any caller
+# that uses a dollar sign or backslash in their namespace (e.g. tying
+# the prefix to a session id).
 function _namespace_ids(s::AbstractString, prefix::AbstractString)
-    s = replace(s, r"\bid=\"([^\"]+)\""             => SubstitutionString("id=\"$(prefix)\\1\""))
-    s = replace(s, r"url\(#([^)]+)\)"               => SubstitutionString("url(#$(prefix)\\1)"))
-    s = replace(s, r"xlink:href=\"#([^\"]+)\""      => SubstitutionString("xlink:href=\"#$(prefix)\\1\""))
-    s = replace(s, r"(?<!xlink:)href=\"#([^\"]+)\"" => SubstitutionString("href=\"#$(prefix)\\1\""))
+    p = _escape_subst(prefix)
+    s = replace(s, r"\bid=\"([^\"]+)\""             => SubstitutionString("id=\"$(p)\\1\""))
+    s = replace(s, r"url\(#([^)]+)\)"               => SubstitutionString("url(#$(p)\\1)"))
+    s = replace(s, r"xlink:href=\"#([^\"]+)\""      => SubstitutionString("xlink:href=\"#$(p)\\1\""))
+    s = replace(s, r"(?<!xlink:)href=\"#([^\"]+)\"" => SubstitutionString("href=\"#$(p)\\1\""))
     s
 end
+
+# Julia's `SubstitutionString` uses `\N` for backreferences; `$` is
+# literal (unlike Perl/JS). Only `\` needs escaping so a user-supplied
+# prefix lands as text.
+_escape_subst(s::AbstractString) = replace(String(s), "\\" => "\\\\")
 
 # Mutate the root <svg ...> opening tag: optionally strip width/height,
 # append a class, and add ARIA attrs. We do this with a single regex
