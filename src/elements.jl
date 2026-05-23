@@ -15,6 +15,11 @@ const SPINNER = Raw("<svg viewBox=\"0 0 24 24\">…</svg>")
 
 div(class="loading", SPINNER, " Working…")  # SVG kept verbatim, " Working…" escaped
 ```
+
+```jldoctest
+julia> render(div(Raw("<img src=x onerror=alert(1)>")))
+"<div><img src=x onerror=alert(1)></div>"
+```
 """
 struct Raw
     html::String

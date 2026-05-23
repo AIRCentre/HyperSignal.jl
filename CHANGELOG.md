@@ -47,6 +47,9 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and a full API reference. Built and deployed in CI via
   `.github/workflows/Docs.yml`. Live at
   <https://aircentre.github.io/HyperSignal.jl/>.
+- The security guide now leads with a `Raw` warning callout, and
+  `Raw`'s docstring carries an adversarial `jldoctest` that proves the
+  payload is emitted verbatim.
 
 ### Added (later)
 - `missing` is now treated like `nothing` in attribute values

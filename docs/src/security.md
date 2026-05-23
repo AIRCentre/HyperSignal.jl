@@ -7,6 +7,21 @@ the order they get crossed.
 
 ## Element text content
 
+!!! warning "`Raw` is the only documented escape hatch"
+    [`Raw`](@ref) is the only supported way to bypass auto-escaping.
+    Use it for SVG icons, audited HTML generators, and the output of
+    [`patch_svg`](@ref) / [`inline_svg`](@ref). **Never wrap user input
+    in `Raw`.**
+
+```julia
+const SPINNER = Raw("""<svg viewBox="0 0 24 24">…</svg>""")
+div(class="loading", SPINNER, " Working…")
+```
+
+`Raw` writes its payload byte-for-byte with no escape. That is exactly
+what you want for trusted HTML snippets, and exactly what makes it
+unsafe for user-controlled input.
+
 ```julia
 div("user said: $(user_input)")
 ```
