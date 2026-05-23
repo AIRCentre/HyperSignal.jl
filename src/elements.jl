@@ -127,6 +127,12 @@ function _make_element(tag::Symbol, args::Tuple, kwargs)
             # attribute names that aren't valid Julia kwarg identifiers
             # (e.g. `:for => "x"`, `Symbol("aria-label") => "..."`).
             push!(attrs, a.first => a.second)
+        elseif a isa Vector{UInt8}
+            # Keep byte buffers as a single child — render handles them
+            # as a verbatim write. Without this branch a buffer would
+            # get unpacked into individual UInt8 Number children, each
+            # emitting its decimal value.
+            push!(children, a)
         elseif a isa Vector
             append!(children, a)
         else

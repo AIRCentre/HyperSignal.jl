@@ -205,6 +205,13 @@ function render(io::IO, xs::AbstractVector)
     nothing
 end
 
+# A byte buffer is almost always a pre-rendered HTML response cached
+# upstream — write it verbatim instead of falling through the generic
+# AbstractVector path, which would emit each byte as a decimal Number.
+# If a caller really wants the per-byte interpretation, they can wrap
+# the bytes in `Any[b for b in v]` to opt back in.
+render(io::IO, v::AbstractVector{UInt8}) = (write(io, v); nothing)
+
 # Attribute writer. Boolean true → bare attr. false / nothing / missing
 # → omit (symmetric with HyperSignal.render's nothing/missing handling
 # for children, so `value = optional_string()` can return `missing`

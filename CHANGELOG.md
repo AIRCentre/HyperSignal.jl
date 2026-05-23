@@ -75,6 +75,11 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `docs/make.jl` now uses `Remotes.GitHub(...)` for the `repo` arg,
   silencing the Documenter "Unable to determine the repository
   root URL" warning.
+- `Vector{UInt8}` is now rendered as a verbatim byte buffer (one
+  `write`), and `_make_element` keeps byte buffers as a single child
+  instead of unpacking each `UInt8` into a per-byte Number. Lets a
+  caller drop a pre-rendered HTML cache between ordinary children
+  without going through `Raw(String(...))`.
 
 ## 0.1.0 — 2026-05-23
 

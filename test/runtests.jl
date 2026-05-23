@@ -716,6 +716,26 @@ using HyperSignal: div, select, summary
         @test !occursin("<?xml", out)
     end
 
+    @testset "Vector{UInt8} renders as a verbatim byte buffer, not per-byte numbers" begin
+        # Why: the generic AbstractVector path used to walk a byte
+        # buffer and emit each UInt8 as a decimal number, which is
+        # never what the caller wants. The common case is a
+        # pre-rendered, possibly cached HTML body — write it verbatim.
+        bytes = Vector{UInt8}("<b>hi</b>")
+        @test render(bytes) == "<b>hi</b>"
+        # The bytes path even bypasses auto-escape — by design,
+        # mirroring `Raw`'s trust model: bytes are emitted as-is.
+        @test render(Vector{UInt8}("<>&")) == "<>&"
+        # An empty byte vector renders to the empty string.
+        @test render(Vector{UInt8}()) == ""
+        # A byte buffer as an element child is kept whole, not unpacked
+        # into per-byte Number children. The pre-rendered fragment
+        # caching use case: stick a cached buffer between two ordinary
+        # children and only the buffer is emitted verbatim.
+        @test render(div(class="card", "x", Vector{UInt8}("<i>cached</i>"), "y")) ==
+              "<div class=\"card\">x<i>cached</i>y</div>"
+    end
+
     @testset "SubString of String escapes correctly via the codeunit fast path" begin
         # Why: SubString{String} is the result of any slice/interpolation
         # on a String. Ensure it walks the parent buffer correctly and
