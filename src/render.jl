@@ -143,6 +143,7 @@ String(take!(io))   # "<h1>Hello, world</h1>"
 ```
 """
 function render(io::IO, e::Element)
+    _check_tag_name(e.tag)
     print(io, "<", e.tag)
     for (k, v) in e.attrs
         _render_attr(io, k, v)
@@ -213,6 +214,34 @@ end
 # If a caller really wants the per-byte interpretation, they can wrap
 # the bytes in `Any[b for b in v]` to opt back in.
 render(io::IO, v::AbstractVector{UInt8}) = (write(io, v); nothing)
+
+# Tag names are written verbatim into the open/close tags. A hostile
+# Symbol("…") passed to the bare Element(...) constructor (the one
+# documented for runtime-chosen tag names) could otherwise emit raw
+# HTML. Tag-name grammar is stricter than attribute names — only
+# letters, digits, and a few markers — but we only reject the
+# parser-breaking subset for parity and to keep the rule learnable.
+const _VALID_TAG_NAMES = Set{Symbol}()
+
+@inline function _check_tag_name(t::Symbol)
+    t in _VALID_TAG_NAMES && return nothing
+    _check_tag_name_uncached(t)
+    push!(_VALID_TAG_NAMES, t)
+    nothing
+end
+
+@noinline function _check_tag_name_uncached(t::Symbol)
+    s = String(t)
+    isempty(s) && throw(ArgumentError("HyperSignal: empty tag name"))
+    @inbounds for b in codeunits(s)
+        if b == 0x20 || b == 0x09 || b == 0x0a || b == 0x0c || b == 0x0d ||
+           b == 0x22 || b == 0x27 || b == 0x3e || b == 0x3c ||
+           b == 0x2f || b == 0x3d || b == 0x00
+            throw(ArgumentError("HyperSignal: tag name $(repr(s)) contains a character that would break HTML parsing"))
+        end
+    end
+    nothing
+end
 
 # HTML5's attribute-name grammar is permissive but bans the chars that
 # would break the parser: whitespace (incl. tab/LF/FF/CR/space), '"',

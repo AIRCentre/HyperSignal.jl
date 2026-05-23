@@ -716,6 +716,23 @@ using HyperSignal: div, select, summary
         @test !occursin("<?xml", out)
     end
 
+    @testset "tag names that would break the HTML parser raise ArgumentError" begin
+        # Why: Element(Symbol(...), ...) is the documented escape hatch
+        # for runtime-chosen tags. Without validation, Symbol("<script>")
+        # would emit literal '<' and '>' bytes into the open tag and
+        # break HTML parsing (or worse, smuggle in markup). Reject the
+        # same parser-breaking subset we reject for attribute names.
+        for bad in ["<script>", "div onerror=x", "tag>injected",
+                    "with space", "tag\"x", "tag\0x", ""]
+            @test_throws ArgumentError render(Element(Symbol(bad), Pair{Symbol,Any}[], Any[]))
+        end
+        # Custom but valid tag names (Web Components / SVG) pass through.
+        for ok in ["my-element", "svg:circle", "x-tag123"]
+            out = render(Element(Symbol(ok), Pair{Symbol,Any}[], Any["x"]))
+            @test occursin("<$ok>x</$ok>", out)
+        end
+    end
+
     @testset "attribute names that would break the HTML parser raise ArgumentError" begin
         # Why: every legal Datastar attr name fits in [A-Za-z0-9:_.-]+,
         # which is well inside HTML5's attribute-name grammar. But the

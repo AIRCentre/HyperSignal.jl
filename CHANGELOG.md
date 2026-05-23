@@ -115,6 +115,10 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the Pair-attrs path) could introduce a real attribute mid-tag.
   The check is cached per Symbol so the amortized cost is zero on
   the bounded attribute-name vocabulary the lib actually uses.
+- Same validation applied to tag names. `Element(Symbol(...), ...)`
+  is the documented escape hatch for runtime-chosen tags; without
+  validation `Symbol("<script>")` would smuggle markup into the
+  open tag. Empty tag names also rejected. Cached the same way.
 - `docs/src/api.md` now includes the module-level docstring under
   "Module overview", removing the Documenter "1 docstring not
   included in the manual" warning.
