@@ -223,6 +223,18 @@ function render(io::IO, xs::AbstractVector)
     nothing
 end
 
+# A Generator can reach render time when nested inside a Vector or
+# another container that doesn't get expanded at element construction
+# (the construction-time generator-unpack only handles top-level
+# positional args). Iterating here is a single pass — the same single
+# pass `for c in e.children; render(io, c)` would do.
+function render(io::IO, xs::Base.Generator)
+    for x in xs
+        render(io, x)
+    end
+    nothing
+end
+
 # A byte buffer is almost always a pre-rendered HTML response cached
 # upstream — write it verbatim instead of falling through the generic
 # AbstractVector path, which would emit each byte as a decimal Number.

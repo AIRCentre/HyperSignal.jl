@@ -716,6 +716,17 @@ using HyperSignal: div, select, summary
         @test !occursin("<?xml", out)
     end
 
+    @testset "Generators nested inside collections render via iteration" begin
+        # Why: the construction-time generator-unpack only handles
+        # top-level positional args. A Generator nested inside a
+        # Vector — `div([gen1, gen2])` — would otherwise MethodError
+        # at render. The render-side method walks them once.
+        out = render(div([(p(i) for i in 1:2), (p(i) for i in 3:4)]))
+        @test out == "<div><p>1</p><p>2</p><p>3</p><p>4</p></div>"
+        # A bare generator passed directly to render works the same.
+        @test render(p(i) for i in 1:3) == "<p>1</p><p>2</p><p>3</p>"
+    end
+
     @testset "Generator-of-children unpacks (and is re-renderable)" begin
         # Why: `div(p(i) for i in 1:n)` is the natural Julia
         # comprehension form for a list of children. Without

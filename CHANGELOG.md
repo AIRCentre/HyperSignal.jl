@@ -187,6 +187,9 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `Base.Generator` children also unpack — `div(p(i) for i in 1:n)`
   now Just Works. Consumed eagerly so the element survives multiple
   renders (generators are single-pass).
+- A `Base.Generator` that reaches render time (e.g. nested inside
+  a Vector — `div([gen1, gen2])`) is now iterated by the render
+  walker. Closes the last MethodError path on the generator surface.
 - `examples/Manifest.toml` added to `.gitignore` so a contributor
   running `julia --project=examples examples/counter_app.jl` doesn't
   end up staging the generated manifest.
