@@ -821,6 +821,20 @@ using HyperSignal: div, select, summary
         @test !occursin(">", out)
     end
 
+    @testset "string(::Element)/print(io, ::Element) returns the rendered HTML" begin
+        # Why: without a 1-arg Base.show method, `string(el)` and
+        # interpolation fall back to a struct dump. Make HyperSignal
+        # values consistently behave like HTML in every path.
+        el = div(class="card", "hi")
+        @test string(el) == "<div class=\"card\">hi</div>"
+        @test "$(el)" == render(el)
+        @test sprint(print, el) == render(el)
+        @test sprint(print, Frag(p("a"), p("b"))) == "<p>a</p><p>b</p>"
+        @test sprint(print, Raw("<b>x</b>")) == "<b>x</b>"
+        # Vector-of-elements prints as readable markup, not as a struct dump.
+        @test sprint(show, [p("a"), p("b")]) == "Element[<p>a</p>, <p>b</p>]"
+    end
+
     @testset "Base.show(MIME\"text/html\") returns the rendered HTML for notebooks" begin
         # Why: Pluto / IJulia / VS Code use the text/html MIME to display
         # interactive previews. Without this hook every cell would have

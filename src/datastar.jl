@@ -36,12 +36,12 @@ Build a `@get('url', {…})` Datastar action. Pass `form=true` to add
 `{k: v}` entries on the JS options object.
 
 # Examples
-```julia
-# Live-count under a session form: GET /api/count with the form's fields
-on_change_debounced(ds_get("/api/session/count"; form=true))
+```jldoctest
+julia> HyperSignal.action_js(ds_get("/api/refresh"))
+"@get('/api/refresh')"
 
-# A bare GET with no options
-button("Refresh", on_click(ds_get("/api/refresh")))
+julia> HyperSignal.action_js(ds_get("/api/session/count"; form=true))
+"@get('/api/session/count', {contentType: 'form'})"
 ```
 """
 ds_get(url; kwargs...) = _action(:get, url; kwargs...)
@@ -55,14 +55,12 @@ common case of submitting a form; the rendered attribute is then
 [`on_submit`](@ref) / [`on_click`](@ref)) to bind to a DOM event.
 
 # Examples
-```julia
-# Form submit
-form(on(:submit, ds_post("/session/new"; form=true)),
-    fieldset(…),
-    button(type="submit", "Start"))
+```jldoctest
+julia> HyperSignal.action_js(ds_post("/api/like"))
+"@post('/api/like')"
 
-# Click action that fires a JSON POST (no form encoding)
-button("Like", on_click(ds_post("/api/like")))
+julia> HyperSignal.action_js(ds_post("/session/new"; form=true))
+"@post('/session/new', {contentType: 'form'})"
 ```
 """
 ds_post(url; kwargs...) = _action(:post, url; kwargs...)

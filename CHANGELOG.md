@@ -58,8 +58,13 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `.JuliaFormatter.toml` so a `JuliaFormatter` pass is a no-op on
   `main` and contributor formatting stays stable.
 - Doctests enabled in the Documenter build. Canonical examples for
-  `render`, `cls`, and `patch_svg` are now `jldoctest` blocks, so any
-  drift between the docs and behavior is caught on every doc build.
+  `render`, `cls`, `patch_svg`, `ds_get`, and `ds_post` are now
+  `jldoctest` blocks, so any drift between the docs and behavior is
+  caught on every doc build.
+- `Base.show(::IO, ::Element|::Frag|::Raw)` 1-arg method, so
+  `string(el)`, `print(io, el)`, and `"$(el)"` interpolation all
+  return the rendered HTML instead of a struct dump. Vectors of
+  elements print as readable markup too.
 
 ## 0.1.0 — 2026-05-23
 

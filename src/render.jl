@@ -164,6 +164,16 @@ function Base.show(io::IO, ::MIME"text/plain", f::Frag)
     print(io, "HyperSignal.Frag: ")
     render(io, f)
 end
+
+# 1-arg `show` is what `string(el)`, `print(io, el)`, and `"$(el)"`
+# interpolation all dispatch to. Without this method, those paths fall
+# back to a struct dump. Making `string(::Element)` mean the rendered
+# HTML matches what every other side of the API already returns and
+# makes a vector of elements print as readable markup instead of
+# Element(:div, ..., ...).
+Base.show(io::IO, e::Element) = render(io, e)
+Base.show(io::IO, f::Frag)    = render(io, f)
+Base.show(io::IO, r::Raw)     = render(io, r)
 render(io::IO, s::AbstractString) = escape_html(io, s)
 render(io::IO, c::Char) = escape_html(io, c)
 render(io::IO, n::Number) = print(io, n)
