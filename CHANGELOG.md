@@ -178,6 +178,12 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `Tuple` attribute values space-join the same as `AbstractVector`,
   so `class=("btn", "primary")` is symmetric with the bracket form.
   Same `nothing` / `missing` / `false` / `true` / empty filtering.
+- `Tuple`-of-children unpacks at element construction the same as a
+  `Vector` does, so `div((span("a"), span("b")))` works alongside
+  `div([span("a"), span("b")])`. Both shapes show up in real code
+  (destructure targets, splat receivers, heterogeneous
+  comprehensions) and the previous behavior was a MethodError at
+  render time.
 - `examples/Manifest.toml` added to `.gitignore` so a contributor
   running `julia --project=examples examples/counter_app.jl` doesn't
   end up staging the generated manifest.

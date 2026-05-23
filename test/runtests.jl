@@ -716,6 +716,19 @@ using HyperSignal: div, select, summary
         @test !occursin("<?xml", out)
     end
 
+    @testset "Tuple-of-children unpacks like a Vector at construction" begin
+        # Why: callers occasionally have children in a tuple (a
+        # destructure target, a splat-receiver, a heterogeneously-typed
+        # comprehension). Without unpacking, render(::Tuple) MethodErrors.
+        # Mirror the existing Vector behavior so both shapes work.
+        @test render(div((span("a"), span("b")))) == "<div><span>a</span><span>b</span></div>"
+        @test render(div(("hello", " ", "world"))) == "<div>hello world</div>"
+        # Mixed types in the tuple flatten cleanly.
+        @test render(div(("x", nothing, h2("y"), 7))) == "<div>x<h2>y</h2>7</div>"
+        # Empty tuple → no children added.
+        @test render(div((), "a")) == "<div>a</div>"
+    end
+
     @testset "Symbol children render as their text (auto-escaped)" begin
         # Why: status enums (`span(:Pending)`) are the common case. The
         # caller pulled the value from a model field; no reason to make

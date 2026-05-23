@@ -142,6 +142,14 @@ function _make_element(tag::Symbol, args::Tuple, kwargs)
             push!(children, a)
         elseif a isa Vector
             append!(children, a)
+        elseif a isa Tuple
+            # Tuple-of-children mirrors the Vector unpacking: a caller
+            # who has children in a tuple (destructure, comprehension
+            # result via collect-to-tuple, splat receiver) gets the
+            # same flatten behavior as if they'd passed a vector.
+            for c in a
+                push!(children, c)
+            end
         else
             push!(children, a)
         end
