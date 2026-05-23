@@ -69,13 +69,21 @@ For Datastar form submits that need to navigate after success, use
 won't follow a 303.
 
 # Examples
-```julia
-# Bare redirect
-return redirect_to("/dashboard")
+```jldoctest
+julia> r = redirect_to("/dashboard");
 
-# Login: redirect + set session cookie atomically
-return redirect_to("/dashboard";
-    cookies=["sid=\$token; HttpOnly; Path=/; SameSite=Lax"])
+julia> r.status
+303
+
+julia> Dict(r.headers)["Location"]
+"/dashboard"
+
+julia> r2 = redirect_to("/home";
+                        cookies=["sid=abc; HttpOnly; Path=/"]);
+
+julia> [v for (k, v) in r2.headers if k == "Set-Cookie"]
+1-element Vector{SubString{String}}:
+ "sid=abc; HttpOnly; Path=/"
 ```
 """
 function redirect_to(location::AbstractString; cookies::AbstractVector=String[])

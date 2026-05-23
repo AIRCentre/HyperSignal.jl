@@ -119,6 +119,13 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   is the documented escape hatch for runtime-chosen tags; without
   validation `Symbol("<script>")` would smuggle markup into the
   open tag. Empty tag names also rejected. Cached the same way.
+- New [Security](https://aircentre.github.io/HyperSignal.jl/security)
+  docs page documenting every escape boundary the lib draws: child
+  text, attribute values, attribute and tag *names*, the `Raw` /
+  `Vector{UInt8}` opt-outs, CairoMakie inlining, Datastar JS, and
+  the security-disclosure address.
+- `redirect_to` example converted to `jldoctest`, pinning the 303
+  status, Location header, and Set-Cookie attachment shape.
 - `docs/src/api.md` now includes the module-level docstring under
   "Module overview", removing the Documenter "1 docstring not
   included in the manual" warning.

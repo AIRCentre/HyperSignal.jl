@@ -16,6 +16,7 @@ makedocs(
     pages = [
         "Home"          => "index.md",
         "CairoMakie"    => "cairomakie.md",
+        "Security"      => "security.md",
         "API reference" => "api.md",
     ],
     checkdocs = :exports,
