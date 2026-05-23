@@ -1,0 +1,13 @@
+# JuliaFormatter config. Run with:
+#   julia -e 'using JuliaFormatter; format(".")'
+#
+# Style choices match the existing source so a fresh format pass is a
+# no-op on `main`.
+margin = 92
+indent = 4
+always_for_in = true
+whitespace_in_kwargs = false
+whitespace_typedefs = false
+always_use_return = false
+normalize_line_endings = "unix"
+remove_extra_newlines = true

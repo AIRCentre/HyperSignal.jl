@@ -168,11 +168,15 @@ function render(io::IO, xs::AbstractVector)
     nothing
 end
 
-# Attribute writer. Boolean true → bare attr. Boolean false / nothing → omit.
-# DSAction → render its JS expression. Everything else → quoted, escaped.
+# Attribute writer. Boolean true → bare attr. false / nothing / missing
+# → omit (symmetric with HyperSignal.render's nothing/missing handling
+# for children, so `value = optional_string()` can return `missing`
+# without changing the call site). DSAction → render its JS expression.
+# Everything else → quoted, escaped.
 function _render_attr(io::IO, k::Symbol, v)
     v === false && return nothing
     v === nothing && return nothing
+    v === missing && return nothing
     print(io, " ", k)
     v === true && return nothing
     print(io, "=\"")

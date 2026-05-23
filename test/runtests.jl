@@ -716,6 +716,27 @@ using HyperSignal: div, select, summary
         @test !occursin("<?xml", out)
     end
 
+    @testset "missing attribute value is omitted, mirroring nothing semantics" begin
+        # Why: lets `value = optional_string()` (a function that may
+        # return missing on DB nulls) flow into attr position without
+        # the caller juggling a coalesce — symmetric with how render
+        # already treats `missing` children as omitted.
+        @test render(input(type="text", value=missing)) == "<input type=\"text\">"
+        @test render(div(class=missing, "x")) == "<div>x</div>"
+    end
+
+    @testset "parse_signals reads JSON body from a plain IO too" begin
+        # Why: services that pipeline through an IO (e.g. a gzip-decoded
+        # buffer wrapped in IOBuffer) don't always have a Vector{UInt8}
+        # in hand. Round-trip the same JSON via three input shapes.
+        json = """{"count": 3, "name": "ok"}"""
+        d_str   = parse_signals(json)
+        d_bytes = parse_signals(Vector{UInt8}(json))
+        d_io    = parse_signals(IOBuffer(json))
+        @test d_str == d_bytes == d_io == Dict{String, Any}("count" => 3, "name" => "ok")
+        @test parse_signals(IOBuffer("")) == Dict{String, Any}()
+    end
+
     @testset "ds_post extras: string values are JS-escaped against \\, ', </script>" begin
         # Why: an `extras` value that contains a backslash or </script>
         # would otherwise corrupt the JS string and either break parsing

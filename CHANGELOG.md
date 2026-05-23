@@ -45,7 +45,18 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Docs
 - Documenter-driven docs site (`docs/`) with index, CairoMakie guide,
   and a full API reference. Built and deployed in CI via
-  `.github/workflows/Docs.yml`.
+  `.github/workflows/Docs.yml`. Live at
+  <https://aircentre.github.io/HyperSignal.jl/>.
+
+### Added (later)
+- `missing` is now treated like `nothing` in attribute values
+  (omitted). Lets `value = optional_string()` flow into attr position
+  without the caller juggling a coalesce.
+- `parse_signals(::IO)` accepts a plain `IO` (e.g. an `IOBuffer`
+  around a gzip-decoded body) alongside the existing
+  `HTTP.Request` / `Vector{UInt8}` / `AbstractString` methods.
+- `.JuliaFormatter.toml` so a `JuliaFormatter` pass is a no-op on
+  `main` and contributor formatting stays stable.
 
 ## 0.1.0 — 2026-05-23
 

@@ -344,6 +344,7 @@ end
 parse_signals(req::HTTP.Request) = parse_signals(req.body)
 parse_signals(body::AbstractVector{UInt8}) =
     isempty(body) ? Dict{String, Any}() : parse_signals(String(body))
+parse_signals(io::IO) = parse_signals(read(io))
 function parse_signals(body::AbstractString)
     isempty(body) && return Dict{String, Any}()
     parsed = JSON.parse(String(body))
