@@ -212,7 +212,11 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   set — pull them in with `@using_tags`. `<map>` and `<base>`
   are deliberately omitted (`Base.map`, `Base.base` are too
   load-bearing to shadow); use `Element(:map, …)` / `Element(:base, …)`
-  at the call site that needs them.
+  at the call site that needs them. Behavioral test set pins the
+  rendered shape for the most user-facing additions (`blockquote`,
+  `audio`+`controls`, `iframe`, `kbd`, `b`, `i`, `sub`, `sup`,
+  `wbr` as void, `caption`, `meter`, qualified `mark`/`time`, and
+  SVG primitives composed inside `svg(...)`).
 - `examples/Manifest.toml` added to `.gitignore` so a contributor
   running `julia --project=examples examples/counter_app.jl` doesn't
   end up staging the generated manifest.

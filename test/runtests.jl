@@ -716,6 +716,34 @@ using HyperSignal: div, select, summary
         @test !occursin("<?xml", out)
     end
 
+    @testset "Expanded HTML5 tag set renders correctly" begin
+        # Why: the tag-set expansion (iter 33) added ~35 new tag
+        # constructors. The Aqua-style sanity test confirms each
+        # exported name resolves, but a behavioral spot-check pins
+        # the actual emitted shape for the most user-facing additions.
+        @test render(blockquote(p("Quoted"))) == "<blockquote><p>Quoted</p></blockquote>"
+        @test render(audio(src="x.mp3", controls=true)) == "<audio src=\"x.mp3\" controls></audio>"
+        @test render(iframe(src="https://e.com", "fallback")) ==
+              "<iframe src=\"https://e.com\">fallback</iframe>"
+        @test render(kbd("Ctrl+C")) == "<kbd>Ctrl+C</kbd>"
+        @test render(b("bold")) == "<b>bold</b>"
+        @test render(i("italic")) == "<i>italic</i>"
+        @test render(sub("2")) == "<sub>2</sub>"
+        @test render(sup("3")) == "<sup>3</sup>"
+        @test render(wbr()) == "<wbr>"           # void
+        @test render(caption("Table")) == "<caption>Table</caption>"
+        @test render(meter(value="0.7", "70%")) == "<meter value=\"0.7\">70%</meter>"
+        # Base-shadowed new tags: pull in via @using_tags or qualify.
+        @test render(HyperSignal.mark("hi")) == "<mark>hi</mark>"
+        @test render(HyperSignal.time(datetime="2026-05-23", "today")) ==
+              "<time datetime=\"2026-05-23\">today</time>"
+        # SVG primitives compose with the existing svg() tag.
+        out = render(svg(viewBox="0 0 10 10", rect(width="10", height="10"), circle(cx="5", cy="5", r="3")))
+        @test occursin("<svg viewBox=\"0 0 10 10\">", out)
+        @test occursin("<rect", out)
+        @test occursin("<circle", out)
+    end
+
     @testset "Generators nested inside collections render via iteration" begin
         # Why: the construction-time generator-unpack only handles
         # top-level positional args. A Generator nested inside a
