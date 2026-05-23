@@ -292,13 +292,18 @@ A 50-line Datastar counter app lives in
 [`examples/counter_app.jl`](examples/counter_app.jl):
 
 ```bash
-julia --project=. examples/counter_app.jl
+julia --project=examples examples/counter_app.jl
 # → serving on http://127.0.0.1:8080
 ```
 
 It uses every part of the public surface — `html_response`,
 `fragment_response`, `on_click(ds_post(...))`, fragment morph via the
 `datastar-selector` header — in the smallest pasteable shape.
+
+A CairoMakie dashboard with two figures on one page lives in
+[`examples/cairomakie_dashboard.jl`](examples/cairomakie_dashboard.jl) —
+the proof that `inline_svg(::Figure)` lets two plots share a page
+without `clip0` / `glyph0` collisions.
 
 ## Notebook display
 

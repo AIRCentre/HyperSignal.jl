@@ -716,6 +716,34 @@ using HyperSignal: div, select, summary
         @test !occursin("<?xml", out)
     end
 
+    @testset "package sanity: no method ambiguities or unbound-arg generics" begin
+        # Why: ambiguities are easy to introduce silently when adding
+        # methods like Base.show on a struct that overlaps with an
+        # existing AbstractDisplay path, or when a new dispatch on
+        # Vector{T} crosses an existing Vector{S}. Without an Aqua dep,
+        # Base.detect_ambiguities is enough to catch the common case.
+        # Skip recursion into Base / loaded modules to keep noise down.
+        ambs = Test.detect_ambiguities(HyperSignal; recursive=false)
+        @test isempty(ambs)
+        # Unbound type parameters in method signatures are the second
+        # most common silent bug. They surface as MethodErrors only on
+        # very specific call shapes, so static detection is cheaper.
+        unbounds = Test.detect_unbound_args(HyperSignal; recursive=false)
+        @test isempty(unbounds)
+    end
+
+    @testset "package sanity: every export resolves to a defined binding" begin
+        # Why: a typo in the `export` lists at the bottom of
+        # HyperSignal.jl (or a renamed helper whose export wasn't
+        # updated) only fires at `using HyperSignal: <name>` time on a
+        # consumer machine — too late. Walk the exported names once
+        # and assert each is defined.
+        for name in names(HyperSignal)
+            name === :HyperSignal && continue  # the module itself
+            @test isdefined(HyperSignal, name)
+        end
+    end
+
     @testset "Vector{UInt8} renders as a verbatim byte buffer, not per-byte numbers" begin
         # Why: the generic AbstractVector path used to walk a byte
         # buffer and emit each UInt8 as a decimal number, which is

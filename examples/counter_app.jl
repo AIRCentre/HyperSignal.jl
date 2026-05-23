@@ -1,7 +1,7 @@
 # Minimal Datastar counter app.
 #
 # Run:
-#   julia --project=. examples/counter_app.jl
+#   julia --project=examples examples/counter_app.jl
 # then open http://127.0.0.1:8080 in a browser. The button increments a
 # server-side counter and Datastar morphs the new value into the page.
 #

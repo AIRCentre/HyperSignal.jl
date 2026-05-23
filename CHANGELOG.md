@@ -84,6 +84,15 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   exercises `html_response`, `fragment_response`, `on_click` +
   `ds_post`, and the `datastar-selector` morph header in the smallest
   pasteable shape. Linked from the README.
+- `examples/cairomakie_dashboard.jl` — two CairoMakie figures on one
+  page through `inline_svg`, proving the id-prefix story.
+  `examples/Project.toml` bundles HTTP + CairoMakie so the examples
+  run with `julia --project=examples` without polluting the
+  package's main dep tree.
+- Aqua-style sanity tests using stdlib `Test.detect_ambiguities` /
+  `Test.detect_unbound_args` and a walk over `names(HyperSignal)` to
+  confirm every exported name resolves to a defined binding. No new
+  dep; same guarantee an Aqua test would catch.
 - `docs/src/api.md` now includes the module-level docstring under
   "Module overview", removing the Documenter "1 docstring not
   included in the manual" warning.
