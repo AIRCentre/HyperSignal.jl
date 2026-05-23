@@ -775,6 +775,28 @@ using HyperSignal: div, select, summary
         @test render(SubString("hello world", 1, 5)) == "hello"
         # An empty SubString writes nothing.
         @test render(SubString("xyz", 1, 0)) == ""
+        # SubString that starts and ends on metacharacters: the slice
+        # must respect the offset so we don't bleed into bytes of the
+        # parent that aren't part of the view.
+        @test render(SubString("XX<&>YY", 3, 5)) == "&lt;&amp;&gt;"
+        # SubString past a multi-byte UTF-8 char: the parent's bytes
+        # for "é" are 0xc3 0xa9; the offset must land on a codepoint
+        # boundary (Julia's SubString constructor enforces this).
+        # `"a<é>b"` byte indices: a=1, <=2, é=3..4, >=5, b=6 — so 2..5
+        # is the slice we want.
+        @test render(SubString("a<é>b", 2, 5)) == "&lt;é&gt;"
+    end
+
+    @testset "Base.show(MIME\"text/plain\", ::Raw) shows the raw HTML at the REPL" begin
+        # Why: without this method, REPL-displaying DOCTYPE or a Raw
+        # value falls back to the struct dump. Useful for inspection
+        # of an embedded SVG icon at the prompt.
+        io = IOBuffer()
+        show(io, MIME"text/plain"(), Raw("<svg/>"))
+        @test occursin("HyperSignal.Raw:", String(take!(io)))
+        seekstart(io); truncate(io, 0)
+        show(io, MIME"text/plain"(), DOCTYPE)
+        @test occursin("HyperSignal.Raw: <!DOCTYPE html>", String(take!(io)))
     end
 
     @testset "parse_signals raises a labeled ArgumentError on malformed JSON" begin

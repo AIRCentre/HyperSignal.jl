@@ -93,6 +93,12 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `Test.detect_unbound_args` and a walk over `names(HyperSignal)` to
   confirm every exported name resolves to a defined binding. No new
   dep; same guarantee an Aqua test would catch.
+- `Base.show(::IO, ::MIME"text/plain", ::Raw)` so `DOCTYPE` and other
+  `Raw` values inspect at the REPL as `HyperSignal.Raw: <…>` instead
+  of a struct dump.
+- Stress tests for `SubString` escape: slice landing on
+  metacharacters at both ends, and a slice past a multi-byte UTF-8
+  codepoint, both render byte-stable.
 - `docs/src/api.md` now includes the module-level docstring under
   "Module overview", removing the Documenter "1 docstring not
   included in the manual" warning.

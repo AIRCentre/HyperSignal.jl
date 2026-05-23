@@ -43,21 +43,19 @@ end
 
 function _escape_html_string(io::IO, s::String)
     data = codeunits(s)
-    _escape_html_codeunits(io, data, pointer(data), 1, length(data))
+    _escape_html_codeunits(io, data, 1, length(data))
 end
 
 function _escape_html_substring(io::IO, s::SubString{String})
-    parent = s.string
-    data = codeunits(parent)
+    data = codeunits(s.string)
     offset = s.offset                  # 0-based byte offset into parent
     n = sizeof(s)                      # SubString length in bytes
-    base = pointer(data, offset + 1)
-    _escape_html_codeunits(io, data, base, offset + 1, offset + n)
+    _escape_html_codeunits(io, data, offset + 1, offset + n)
 end
 
 # Walk codeunits in [first_idx, last_idx], writing safe runs via one
 # `unsafe_write` and emitting the entity for each metacharacter.
-@inline function _escape_html_codeunits(io::IO, data, base_ptr::Ptr{UInt8},
+@inline function _escape_html_codeunits(io::IO, data,
                                         first_idx::Int, last_idx::Int)
     i = first_idx
     run_start = first_idx
@@ -182,6 +180,10 @@ end
 function Base.show(io::IO, ::MIME"text/plain", f::Frag)
     print(io, "HyperSignal.Frag: ")
     render(io, f)
+end
+function Base.show(io::IO, ::MIME"text/plain", r::Raw)
+    print(io, "HyperSignal.Raw: ")
+    print(io, r.html)
 end
 
 # 1-arg `show` is what `string(el)`, `print(io, el)`, and `"$(el)"`
