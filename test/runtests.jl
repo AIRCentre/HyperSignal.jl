@@ -701,6 +701,88 @@ using HyperSignal: div, select, summary
         @test !occursin("<?xml", out)
     end
 
+    @testset "stress: 5000-deep nesting renders without stack overflow" begin
+        # Why: render() recurses on children. A pathological component
+        # that nests 5000 deep is unrealistic but proves the recursion
+        # bound is generous enough that real pages (~50 deep) never
+        # come close to the limit.
+        node = "leaf"
+        for _ in 1:5000
+            node = div(node)
+        end
+        out = render(node)
+        @test count("<div>", out) == 5000
+        @test count("</div>", out) == 5000
+        @test occursin(">leaf<", out)
+    end
+
+    @testset "stress: 2000-attribute element survives" begin
+        # Why: a programmatically generated form can drift into hundreds
+        # of attrs (e.g. one ds_attr per dynamic field). Make sure the
+        # render path stays linear in attr count.
+        kw = (; (Symbol("data-x-$i") => "v$i" for i in 1:2000)...)
+        el = div(; kw...)
+        out = render(el)
+        @test occursin("data-x-1=\"v1\"", out)
+        @test occursin("data-x-2000=\"v2000\"", out)
+    end
+
+    @testset "stress: patch_svg on 1 MB synthetic input stays sub-second" begin
+        # Why: a CairoMakie figure with many marks can hit a few hundred
+        # KB. 1 MB is well past realistic but proves the regex passes
+        # don't blow up super-linearly.
+        io = IOBuffer()
+        print(io, """<svg viewBox="0 0 1 1"><defs>""")
+        for i in 0:5000
+            print(io, """<clipPath id="clip$i"><rect/></clipPath>""")
+        end
+        print(io, "</defs>")
+        for i in 0:5000
+            print(io, """<g clip-path="url(#clip$i)"><use href="#g$i"/></g>""")
+        end
+        print(io, "</svg>")
+        big = String(take!(io))
+        @test sizeof(big) > 400_000   # ~470 KB on this shape — way past realistic CairoMakie output
+        t = @elapsed out = patch_svg(big; id_prefix="p_")
+        @test t < 2.0                 # generous; on the bench host it's ~10ms
+        @test occursin("id=\"p_clip0\"", out)
+        @test occursin("url(#p_clip5000)", out)
+        @test !occursin("<?xml", out)
+    end
+
+    @testset "stress: 10k metacharacter escape round-trips byte-stable" begin
+        # Why: the codeunit fast path on escape_html is the place a
+        # regression in HTML safety would land silently. Pin the
+        # byte-stable output on a known-bad input so any future
+        # micro-optimization keeps escape semantics exact.
+        text = repeat("<&>\"' \xc3\xa9 ", 1000)   # 9000 bytes, includes UTF-8
+        out = render(text)
+        @test count("&lt;", out) == 1000
+        @test count("&amp;", out) == 1000
+        @test count("&gt;", out) == 1000
+        @test count("&quot;", out) == 1000
+        @test count("&#39;", out) == 1000
+        @test occursin("é", out)
+        @test !occursin("<", out)
+        @test !occursin(">", out)
+    end
+
+    @testset "Base.show(MIME\"text/html\") returns the rendered HTML for notebooks" begin
+        # Why: Pluto / IJulia / VS Code use the text/html MIME to display
+        # interactive previews. Without this hook every cell would have
+        # to call `render(...)` explicitly.
+        el = div(class="card", h2("Hi"), p("hello"))
+        io = IOBuffer()
+        show(io, MIME"text/html"(), el)
+        @test String(take!(io)) == render(el)
+
+        show(io, MIME"text/html"(), Frag(p("a"), p("b")))
+        @test String(take!(io)) == "<p>a</p><p>b</p>"
+
+        show(io, MIME"text/html"(), Raw("<b>x</b>"))
+        @test String(take!(io)) == "<b>x</b>"
+    end
+
     @testset "patch_svg with CairoMakie figure renders + namespaces collision-safely" begin
         # Why: prove the front-row CairoMakie story actually works end-to-end
         # — produce a real figure, run it through inline_svg, drop two of

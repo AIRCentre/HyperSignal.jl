@@ -1,0 +1,6 @@
+[deps]
+BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+HyperSignal = "0aa5b41a-51a1-41e7-8512-17ccb31a7c30"
+
+[sources]
+HyperSignal = {path = ".."}

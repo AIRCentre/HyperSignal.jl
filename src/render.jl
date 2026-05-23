@@ -3,23 +3,68 @@
 # Element/Frag recursively, and emits a JS string for DSAction values that
 # end up as attribute values via `on(...)`.
 
-const _ESCAPE_MAP = Dict{Char, String}(
-    '&' => "&amp;",
-    '<' => "&lt;",
-    '>' => "&gt;",
-    '"' => "&quot;",
-    '\'' => "&#39;",
-)
-
-function escape_html(io::IO, c::Char)
-    repl = get(_ESCAPE_MAP, c, nothing)
-    isnothing(repl) ? print(io, c) : print(io, repl)
+# Hot path. Branching on the five HTML metacharacters is meaningfully
+# faster than a `Dict` lookup per character — and for plain `String`
+# input we walk codeunits, write runs of safe bytes with a single
+# `unsafe_write`, and only fall into the escape branches at the rare
+# metacharacters. Continuation bytes of multi-byte UTF-8 are >=0x80 and
+# skip the branches entirely.
+@inline function escape_html(io::IO, c::Char)
+    if c === '&'
+        print(io, "&amp;")
+    elseif c === '<'
+        print(io, "&lt;")
+    elseif c === '>'
+        print(io, "&gt;")
+    elseif c === '"'
+        print(io, "&quot;")
+    elseif c === '\''
+        print(io, "&#39;")
+    else
+        print(io, c)
+    end
     nothing
 end
 
 function escape_html(io::IO, s::AbstractString)
-    for c in s
-        escape_html(io, c)
+    if s isa String
+        _escape_html_string(io, s)
+    else
+        for c in s
+            escape_html(io, c)
+        end
+    end
+    nothing
+end
+
+function _escape_html_string(io::IO, s::String)
+    data = codeunits(s)
+    n = length(data)
+    i = 1
+    run_start = 1
+    @inbounds while i <= n
+        b = data[i]
+        if b == 0x26 || b == 0x3c || b == 0x3e || b == 0x22 || b == 0x27
+            i > run_start && unsafe_write(io, pointer(data, run_start), i - run_start)
+            if b == 0x26
+                print(io, "&amp;")
+            elseif b == 0x3c
+                print(io, "&lt;")
+            elseif b == 0x3e
+                print(io, "&gt;")
+            elseif b == 0x22
+                print(io, "&quot;")
+            else
+                print(io, "&#39;")
+            end
+            i += 1
+            run_start = i
+        else
+            i += 1
+        end
+    end
+    @inbounds if run_start <= n
+        unsafe_write(io, pointer(data, run_start), n - run_start + 1)
     end
     nothing
 end
@@ -91,6 +136,26 @@ end
 
 render(io::IO, f::Frag) = (for c in f.children; render(io, c); end; nothing)
 render(io::IO, r::Raw) = (print(io, r.html); nothing)
+
+# Notebook / REPL display hooks. Pluto, IJulia, and VS Code's plot pane
+# all pick up `text/html`, so this is the single line that turns an
+# Element value into an interactive preview without the caller writing
+# `render(...)` in every cell.
+Base.show(io::IO, ::MIME"text/html", e::Element) = render(io, e)
+Base.show(io::IO, ::MIME"text/html", f::Frag)    = render(io, f)
+Base.show(io::IO, ::MIME"text/html", r::Raw)     = render(io, r)
+
+# Plain-text REPL display: render the HTML but tag it as such so a user
+# typing `div("hi")` at the prompt sees the markup instead of the struct
+# dump. Element trees are data, but the markup is what people read.
+function Base.show(io::IO, ::MIME"text/plain", e::Element)
+    print(io, "HyperSignal.Element: ")
+    render(io, e)
+end
+function Base.show(io::IO, ::MIME"text/plain", f::Frag)
+    print(io, "HyperSignal.Frag: ")
+    render(io, f)
+end
 render(io::IO, s::AbstractString) = escape_html(io, s)
 render(io::IO, c::Char) = escape_html(io, c)
 render(io::IO, n::Number) = print(io, n)

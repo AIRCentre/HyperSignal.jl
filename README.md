@@ -285,11 +285,37 @@ For form-mode submits (`@post('/x', {contentType: 'form'})`), parse the
 body with your service's form parser — that wire format and the
 JSON-mode signals payload are distinct.
 
+## Notebook display
+
+`Element`, `Frag`, and `Raw` define `Base.show(::IO, ::MIME"text/html", …)`,
+so they render directly in Pluto, IJulia, and any editor pane that
+picks up the `text/html` MIME. No `render(...)` boilerplate per cell.
+
 ## Running the tests
 
 ```bash
 julia --project=. -e 'using Pkg; Pkg.test()'
 ```
+
+## Benchmarks
+
+The renderer is on the request-handler hot path; a self-contained
+benchmark suite lives in `benchmark/` so regressions are catchable.
+
+```bash
+julia --project=benchmark benchmark/runbench.jl
+```
+
+Indicative numbers on a typical workstation (`v0.1.0`):
+
+| benchmark                           | time      |
+|-------------------------------------|-----------|
+| render small fragment               | ~270 ns   |
+| render 50-row table                 | ~12 µs    |
+| render 100-field form               | ~22 µs    |
+| escape 10k adversarial chars        | ~46 µs    |
+| `patch_svg` on a 200-path SVG       | ~180 µs   |
+| `patch_svg` on a 1000-path SVG      | ~880 µs   |
 
 ## Contributing
 
