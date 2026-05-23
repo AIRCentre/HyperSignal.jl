@@ -120,13 +120,12 @@ Render a `<label><input type="radio" name=… value=… [checked]> text</label>`
 hand-built input-and-label boilerplate per choice.
 
 # Examples
-```julia
-fieldset(
-    legend("Confidence"),
-    radio_field("confidence", "all", "0.0 – 1.0"; checked=true),
-    radio_field("confidence", "medium", "0.3 – 0.7"),
-    radio_field("confidence", "hard", "0.4 – 0.6"),
-)
+```jldoctest
+julia> render(radio_field("size", "S", "Small"))
+"<label><input type=\\"radio\\" name=\\"size\\" value=\\"S\\"> Small</label>"
+
+julia> render(radio_field("size", "L", "Large"; checked=true))
+"<label><input type=\\"radio\\" name=\\"size\\" value=\\"L\\" checked> Large</label>"
 ```
 """
 radio_field(name::AbstractString, value::AbstractString, text::AbstractString;
@@ -142,12 +141,15 @@ The default `value="on"` matches the form-encoded shape `parse_form_body`
 backend explicitly wants a different value.
 
 # Examples
-```julia
-fieldset(
-    legend("Notify me about"),
-    checkbox_field("notify_email", "Email"; checked=true),
-    checkbox_field("notify_sms", "SMS"),
-)
+```jldoctest
+julia> render(checkbox_field("notify_email", "Email"))
+"<label><input type=\\"checkbox\\" name=\\"notify_email\\" value=\\"on\\"> Email</label>"
+
+julia> render(checkbox_field("agree", "I agree"; checked=true))
+"<label><input type=\\"checkbox\\" name=\\"agree\\" value=\\"on\\" checked> I agree</label>"
+
+julia> render(checkbox_field("opt", "Opt-in"; value="yes"))
+"<label><input type=\\"checkbox\\" name=\\"opt\\" value=\\"yes\\"> Opt-in</label>"
 ```
 """
 checkbox_field(name::AbstractString, text::AbstractString;

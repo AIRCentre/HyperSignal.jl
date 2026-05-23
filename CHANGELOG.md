@@ -195,6 +195,10 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   header, body rendering, custom-headers passthrough, and the
   `datastar-selector` header on `fragment_response` — five
   invariants any consumer relies on, now checked on every doc build.
+- `radio_field` and `checkbox_field` docstring examples converted
+  to `jldoctest`. Pins the exact `<label><input …> text</label>`
+  shape, including the leading space before the visible text and
+  the bare `checked` attribute on truthy values.
 - `examples/Manifest.toml` added to `.gitignore` so a contributor
   running `julia --project=examples examples/counter_app.jl` doesn't
   end up staging the generated manifest.
