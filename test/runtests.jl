@@ -716,6 +716,32 @@ using HyperSignal: div, select, summary
         @test !occursin("<?xml", out)
     end
 
+    @testset "attribute names that would break the HTML parser raise ArgumentError" begin
+        # Why: every legal Datastar attr name fits in [A-Za-z0-9:_.-]+,
+        # which is well inside HTML5's attribute-name grammar. But the
+        # Symbol-keyed Pair API lets a caller pass *any* Symbol, so a
+        # hostile event name from user input could otherwise inject
+        # markup. Reject the parser-breaking chars loudly.
+        for bad in [
+            "x onerror=alert(1)",   # space → injection vector
+            "x>injected",           # > closes the tag
+            "x=\"y\"",              # = + quote
+            "x'y",                  # single quote
+            "x\"y",                 # double quote
+            "x\ty",                 # tab
+            "x\ny",                 # newline
+            "x/y",                  # slash (HTML5 forbids in attr name)
+            "x\0y",                 # NUL
+        ]
+            @test_throws ArgumentError render(div(Symbol(bad) => "v"))
+        end
+        # Legal Datastar-style names still pass through fine.
+        for ok in ["data-on:click__prevent", "data-on-interval__duration.5000ms",
+                   "aria-label", "xlink:href"]
+            @test occursin(ok, render(span(Symbol(ok) => "v")))
+        end
+    end
+
     @testset "package sanity: no method ambiguities or unbound-arg generics" begin
         # Why: ambiguities are easy to introduce silently when adding
         # methods like Base.show on a struct that overlaps with an

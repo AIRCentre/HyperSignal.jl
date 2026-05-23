@@ -214,6 +214,41 @@ end
 # the bytes in `Any[b for b in v]` to opt back in.
 render(io::IO, v::AbstractVector{UInt8}) = (write(io, v); nothing)
 
+# HTML5's attribute-name grammar is permissive but bans the chars that
+# would break the parser: whitespace (incl. tab/LF/FF/CR/space), '"',
+# '\'', '<', '>', '/', '=', '\0'. We reject the parser-breaking subset
+# loudly — escaping wouldn't help (the spec doesn't define entity
+# decoding inside attribute names) and silent acceptance would mean a
+# hostile Symbol key like `Symbol("x onerror=...")` introduces a real
+# attribute. The lib's own Datastar helpers stay well within the
+# allowed set (`data-on:click__prevent` etc.) so this only fires on
+# adversarial input.
+#
+# Cache validated symbols: HTML attribute names form a small, bounded
+# vocabulary, and Symbols are interned, so identity-keyed Set lookup
+# is constant-time and skips the codeunit walk after the first check.
+# A race on Set push only duplicates work — harmless beyond a brief
+# extra walk — so we don't lock.
+const _VALID_ATTR_NAMES = Set{Symbol}()
+
+@inline function _check_attr_name(k::Symbol)
+    k in _VALID_ATTR_NAMES && return nothing
+    _check_attr_name_uncached(k)
+    push!(_VALID_ATTR_NAMES, k)
+    nothing
+end
+
+@noinline function _check_attr_name_uncached(k::Symbol)
+    @inbounds for b in codeunits(String(k))
+        if b == 0x20 || b == 0x09 || b == 0x0a || b == 0x0c || b == 0x0d ||
+           b == 0x22 || b == 0x27 || b == 0x3e || b == 0x3c ||
+           b == 0x2f || b == 0x3d || b == 0x00
+            throw(ArgumentError("HyperSignal: attribute name $(repr(String(k))) contains a character that would break HTML attribute parsing"))
+        end
+    end
+    nothing
+end
+
 # Attribute writer. Boolean true → bare attr. false / nothing / missing
 # → omit (symmetric with HyperSignal.render's nothing/missing handling
 # for children, so `value = optional_string()` can return `missing`
@@ -223,6 +258,7 @@ function _render_attr(io::IO, k::Symbol, v)
     v === false && return nothing
     v === nothing && return nothing
     v === missing && return nothing
+    _check_attr_name(k)
     print(io, " ", k)
     v === true && return nothing
     print(io, "=\"")

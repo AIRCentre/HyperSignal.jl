@@ -107,6 +107,14 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   ~130µs (-27%), and on a 1000-path SVG from ~880µs to ~630µs (-28%).
   Same output; pinned by the existing tests including the prefix
   backslash / dollar reliability cases.
+
+### Security
+- Reject attribute-name `Symbol`s that contain parser-breaking
+  characters (whitespace, `<`, `>`, `"`, `'`, `/`, `=`, NUL). Without
+  this, a hostile `Symbol` key from user input (rare but possible via
+  the Pair-attrs path) could introduce a real attribute mid-tag.
+  The check is cached per Symbol so the amortized cost is zero on
+  the bounded attribute-name vocabulary the lib actually uses.
 - `docs/src/api.md` now includes the module-level docstring under
   "Module overview", removing the Documenter "1 docstring not
   included in the manual" warning.
