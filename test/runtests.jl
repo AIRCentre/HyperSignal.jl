@@ -716,6 +716,21 @@ using HyperSignal: div, select, summary
         @test !occursin("<?xml", out)
     end
 
+    @testset "String-keyed Pair args are accepted as attributes (auto-symbolize)" begin
+        # Why: `div("id" => "foo", "x")` was a footgun — String keys
+        # silently fell into the children path and MethodError'd at
+        # render. String-keyed Pairs are unambiguous as attributes
+        # (nobody passes a Pair as text content) and reading
+        # `"data-foo" => v` beats `Symbol("data-foo") => v`.
+        @test render(div("id" => "card", "x")) == "<div id=\"card\">x</div>"
+        @test render(span("data-x" => "v")) == "<span data-x=\"v\"></span>"
+        # The attribute-name validation still fires.
+        @test_throws ArgumentError render(div("x onerror=1" => "v"))
+        # Symbol-keyed Pairs keep working alongside String-keyed.
+        @test render(div(:id => "card", "data-x" => "v", "x")) ==
+              "<div id=\"card\" data-x=\"v\">x</div>"
+    end
+
     @testset "cls rejects non-collection scalars cleanly (no stack overflow)" begin
         # Why: `_push_cls!` previously had an Any fallback that iterated
         # its arg. Number is a 1-iterable in Julia (yields itself), so

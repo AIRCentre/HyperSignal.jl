@@ -146,6 +146,12 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `prevent=false` opt-out, and the `__window` modifier. Pins the
   attribute-name format so a regression in the modifier-stack
   ordering breaks the doc build immediately.
+- String-keyed `Pair` positional args are now accepted as attributes
+  alongside Symbol-keyed ones, so `div("data-foo" => "v")` works
+  symmetric with `div(Symbol("data-foo") => "v")`. Previously the
+  String-keyed form silently became a child and MethodError'd at
+  render time. The render-time attribute-name validation still
+  fires, so this is a syntactic relaxation only.
 - `docs/src/api.md` now includes the module-level docstring under
   "Module overview", removing the Documenter "1 docstring not
   included in the manual" warning.

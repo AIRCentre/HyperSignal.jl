@@ -127,6 +127,13 @@ function _make_element(tag::Symbol, args::Tuple, kwargs)
             # attribute names that aren't valid Julia kwarg identifiers
             # (e.g. `:for => "x"`, `Symbol("aria-label") => "..."`).
             push!(attrs, a.first => a.second)
+        elseif a isa Pair && a.first isa AbstractString
+            # String-keyed Pairs are the ergonomic shortcut for the
+            # same thing: `"data-foo" => "v"` reads better than
+            # `Symbol("data-foo") => "v"`. The render-time attribute
+            # name validation still fires, so the relaxation is purely
+            # syntactic.
+            push!(attrs, Symbol(a.first) => a.second)
         elseif a isa Vector{UInt8}
             # Keep byte buffers as a single child — render handles them
             # as a verbatim write. Without this branch a buffer would
