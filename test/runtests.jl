@@ -1213,4 +1213,63 @@ using HyperSignal: div, select, summary
             @test startswith(m.captures[1], "a_") || startswith(m.captures[1], "b_")
         end
     end
+
+    include("escape_conformance.jl")
+
+    @testset "no type piracy or @generated+hasmethod under src/ and ext/" begin
+        # Why: Hyperscript broke on Julia 1.6 from `Vector{Node}`
+        # piracy (#24); HypertextLiteral broke on 1.10 from
+        # `@generated` + `hasmethod` (#28, #33). Both bans are
+        # documented in CONVENTIONS.md → "Out of scope". This test
+        # is the load-bearing enforcement.
+        roots = [joinpath(pkgdir(HyperSignal), "src"),
+                 joinpath(pkgdir(HyperSignal), "ext")]
+        offenders_generated = String[]
+        offenders_piracy = String[]
+        # Owned types — Base.show etc. on these is fine.
+        owned = Set(["Element", "Frag", "Raw", "Attribute", "DSAction"])
+
+        for root in roots
+            isdir(root) || continue
+            for (dir, _, files) in walkdir(root)
+                for f in files
+                    endswith(f, ".jl") || continue
+                    path = joinpath(dir, f)
+                    for (lineno, line) in enumerate(eachline(path))
+                        # Strip line comments before scanning so the
+                        # CONVENTIONS reference in elements.jl doesn't
+                        # self-flag.
+                        code = first(split(line, '#'; limit=2))
+                        if occursin(r"\b(@generated|hasmethod)\b", code)
+                            push!(offenders_generated, "$path:$lineno: $line")
+                        end
+                        # A `Base.<name>(...)` definition is pirate
+                        # unless at least one of its argument types
+                        # *terminates* in an owned name. Match every
+                        # `::T` annotation on the line and require T
+                        # to be exactly one of the owned names — a
+                        # substring match would whitelist
+                        # `Base.push!(::Vector{Element}, ...)` because
+                        # `::Element` is a substring of
+                        # `::Vector{Element}`.
+                        if occursin(r"\bBase\.[A-Za-z_][A-Za-z0-9_!]*\s*\(", code)
+                            ann_types = [String(m.captures[1])
+                                         for m in eachmatch(
+                                             r"::\s*([A-Za-z_][A-Za-z0-9_]*)\b",
+                                             code)]
+                            if !any(t -> t in owned, ann_types)
+                                push!(offenders_piracy, "$path:$lineno: $line")
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        @test isempty(offenders_generated)
+        @test isempty(offenders_piracy)
+        # Surface the offenders if the test fails, so CI output is
+        # actionable.
+        isempty(offenders_generated) || (@info "@generated/hasmethod offenders" offenders_generated)
+        isempty(offenders_piracy) || (@info "type-piracy offenders" offenders_piracy)
+    end
 end

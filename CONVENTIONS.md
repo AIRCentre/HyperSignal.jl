@@ -49,3 +49,18 @@ Library-specific rules for HyperSignal.jl.
   the component is too big — split it.
 - No client-side state machine. State lives on the server; the page is
   a projection.
+- **No type piracy.** A method on a `Base` (or third-party) type that
+  HyperSignal does not own is forbidden. Owned types: `Element`,
+  `Frag`, `Raw`, `Attribute`, `DSAction`. `Base.show` methods on these
+  are fine; `Base.<anything>(::Vector{...})` or similar is not.
+  Reason: Hyperscript broke on Julia 1.6 because of `Vector{Node}`
+  piracy ([JuliaWeb/Hyperscript.jl#24](https://github.com/JuliaWeb/Hyperscript.jl/issues/24));
+  the lesson is to keep dispatch boundaries inside our own type wall.
+- **No `@generated` + `hasmethod`.** Both are individually risky, and
+  the combination is what broke HypertextLiteral across Julia
+  version bumps ([JuliaPluto/HypertextLiteral.jl#28](https://github.com/JuliaPluto/HypertextLiteral.jl/issues/28),
+  [#33](https://github.com/JuliaPluto/HypertextLiteral.jl/issues/33)).
+  Prefer plain methods with concrete signatures.
+
+Both bans are enforced by a test in `test/runtests.jl` that greps
+`src/` and `ext/`; any new occurrence fails CI.
