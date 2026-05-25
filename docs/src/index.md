@@ -5,6 +5,7 @@ CairoMakie figures into your pages.
 
 ```julia
 using HyperSignal
+using HyperSignal.Helpers: radio_field
 HyperSignal.@using_tags
 
 page = Frag(DOCTYPE,

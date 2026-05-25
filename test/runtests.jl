@@ -4,6 +4,11 @@ using Test, HTTP, HyperSignal
 # `@using_tags` is the one-liner; here we do it manually so the macro itself
 # can be tested in isolation below.
 using HyperSignal: div, select, summary
+# App-grade helpers moved to HyperSignal.Helpers (issue #1). No
+# top-level shim, so the bare names are not in scope here.
+using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
+                            form_legend, form_section, help_tooltip,
+                            preset_button, signal_dialog
 
 @testset "HyperSignal" begin
     @testset "auto-escapes text content so user input can never break out" begin
@@ -1211,6 +1216,20 @@ using HyperSignal: div, select, summary
         # in the output must carry either the a_ or b_ prefix.
         for m in eachmatch(r"id=\"([^\"]+)\"", out)
             @test startswith(m.captures[1], "a_") || startswith(m.captures[1], "b_")
+        end
+    end
+
+    @testset "app-grade helpers are NOT exported at the top level" begin
+        # Why: the helpers moved to HyperSignal.Helpers (issue #1) and
+        # the deprecation shim was dropped before any external user
+        # could pin against it (issue #8). A future PR that adds a
+        # top-level shim or re-exports these would silently undo the
+        # move; this test fails loud instead.
+        for name in (:radio_field, :checkbox_field, :text_field,
+                     :help_tooltip, :form_legend, :form_section,
+                     :preset_button, :signal_dialog)
+            @test !isdefined(HyperSignal, name)
+            @test isdefined(HyperSignal.Helpers, name)
         end
     end
 
