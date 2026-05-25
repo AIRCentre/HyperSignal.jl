@@ -7,6 +7,12 @@ the order they get crossed.
 
 ## Element text content
 
+!!! warning "Raw is the ONLY documented escape-hatch"
+    Use it for SVG icons, audited HTML generators, and the output of
+    [`patch_svg`](@ref) / [`inline_svg`](@ref). **Never wrap user
+    input.** There is no `SafeHTML`, no `unsafe=true` kwarg, no
+    sanitizer — one hatch, one trust boundary.
+
 ```julia
 div("user said: $(user_input)")
 ```
@@ -14,9 +20,8 @@ div("user said: $(user_input)")
 The string interpolates a `String` (or `SubString`) into the element's
 children. At [`render`](@ref) time, `escape_html` walks the bytes and
 replaces `<`, `>`, `&`, `"`, `'` with HTML entities. **Auto-escape is
-on by default for every child of every Element.** There is no way to
-disable it short of explicitly wrapping in [`Raw`](@ref) — which is the
-one and only way to opt out.
+on by default for every child of every Element.** The only way to opt
+out is to explicitly wrap the value in [`Raw`](@ref).
 
 ## Attribute values
 

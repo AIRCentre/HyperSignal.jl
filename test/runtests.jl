@@ -107,6 +107,27 @@ using HyperSignal: div, select, summary
         @test occursin("data-indicator>", out) || occursin("data-indicator ", out)
     end
 
+    @testset "MIME round-trip: text/html, text/plain, and html_response agree byte-for-byte" begin
+        # Why: prior-art (Hyperscript#22, HypertextLiteral#10/#11) shows MIME
+        # drift across sinks is a real failure mode. One fixture through three
+        # paths is cheap insurance.
+        fixture = div(class="card", h2("Hi"), p("a < b"))
+
+        html_buf = IOBuffer()
+        show(html_buf, MIME"text/html"(), fixture)
+        html_out = String(take!(html_buf))
+
+        plain_buf = IOBuffer()
+        show(plain_buf, MIME"text/plain"(), fixture)
+        plain_out = String(take!(plain_buf))
+
+        body = String(html_response(fixture).body)
+
+        @test html_out == "<div class=\"card\"><h2>Hi</h2><p>a &lt; b</p></div>"
+        @test body == html_out
+        @test plain_out == "HyperSignal.Element: " * html_out
+    end
+
     @testset "fragment_response sets the datastar-selector header" begin
         resp = fragment_response(div("ok"), "#card")
         sel = nothing
