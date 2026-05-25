@@ -19,13 +19,62 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   MIME show round-trip parity.
 - `precompile()` block in the module top so the first `render(...)` in
   a user's session doesn't pay JIT cost for the common shapes.
+- `jldoctest` in `Element`'s docstring pinning the boolean-attribute
+  policy (`true` → bare, `false`/`nothing`/`missing` → omitted, other →
+  quoted+escaped) so a regression fails doc-build.
+- Adversarial `jldoctest` on `Raw`'s docstring (`<img src=x
+  onerror=alert(1)>`) proving the lib does NOT re-escape `Raw` —
+  any "auto-escape Raw" regression fails CI.
+- `docs/src/performance.md`: regeneratable benchmark page with
+  workload definitions, indicative numbers from v0.1.0, and the
+  `julia --project=benchmark benchmark/runbench.jl` regen command.
+  Linked in `docs/make.jl` between Security and API reference.
+- Pluto demo notebook `docs/src/notebooks/datastar_form.jl`: builds
+  a Datastar form, shows what `fragment_response` would emit, and
+  demonstrates auto-escape — runnable in Pluto, linked from
+  `docs/src/index.md`. Doubles as the fixture for the
+  `.github/workflows/pluto-smoke.yml` workflow, which headlessly
+  evaluates the notebook via `Pluto.SessionActions.open`, locates
+  the `div(class="card", "hello")` cell (by exact code-string match,
+  not substring), and asserts the `text/html` MIME body. Catches
+  regressions in `Base.show(::IO, ::MIME"text/html", ::Element)`
+  before Pluto users see them. Eval script lives at
+  `.github/scripts/pluto_smoke.jl`.
+- Type-piracy + `@generated`/`hasmethod` audit pinned as a test in
+  `runtests.jl`. Greps `src/` and `ext/`; any future occurrence
+  fails CI. Owned types (`Element`, `Frag`, `Raw`, `Attribute`,
+  `DSAction`) whitelist the `Base.show` methods we legitimately
+  define. Both bans also documented under `CONVENTIONS.md` → "Out
+  of scope" with the prior-art references that motivated them
+  (Hyperscript#24, HypertextLiteral#28/#33).
+- `test/escape_conformance.jl`: adversarial HTML5 escape suite
+  covering the five metacharacters in both text and attribute
+  positions, NUL in attribute name (rejected) / value / text (passed
+  through), CR/LF in attributes, mixed UTF-8 + metacharacters, and a
+  10 KiB safe-run-with-embedded-escapes stress. Every case
+  cross-checks against `EzXML.parsehtml` so the assertions match
+  what a real HTML5 parser sees, not a regex. EzXML is `[extras]`-
+  only — not a runtime dep.
 
 ### Changed
+- **Breaking:** app-grade helpers moved to a new `HyperSignal.Helpers`
+  submodule — `radio_field`, `checkbox_field`, `text_field`,
+  `help_tooltip`, `form_legend`, `form_section`, `preset_button`,
+  `signal_dialog`. `cls` and `redirect_to` stay at the top level
+  (primitives, not app idioms). Update sites with
+  `using HyperSignal.Helpers: …`. No deprecation shim — the package
+  is pre-1.0 with no registered users, so an outright move was
+  cheaper than a deprecation cycle. Rationale: keep the v1.0 surface
+  small; prior-art lesson — Hyperscript / HypertextLiteral calcified
+  app idioms into their public surface and could not evolve.
 - `escape_html` walks codeunits and emits runs of safe bytes via a
   single `unsafe_write`, only branching at the five HTML
   metacharacters. ~30–50% faster on realistic markup.
 - `BenchmarkTools` is no longer a runtime dep — moved to the
   `benchmark/` subproject.
+- Security docs: `Raw`-is-the-only-escape-hatch callout promoted to
+  the top of *Element text content* so the contract is the first
+  thing a reader sees.
 
 ### Fixed
 - `patch_svg(...; id_prefix=p)` with a backslash in `p` would corrupt
