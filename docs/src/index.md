@@ -43,6 +43,11 @@ user input.
 
 - [CairoMakie inlining](cairomakie.md) — drop figures into pages.
 - [API reference](api.md) — every exported name, with examples.
+- [`datastar_form.jl`](https://github.com/AIRCentre/HyperSignal.jl/blob/main/docs/src/notebooks/datastar_form.jl)
+  — a runnable Pluto notebook covering a Datastar form, what
+  `fragment_response` emits, and auto-escape. Doubles as the
+  fixture for the [`pluto-smoke`](https://github.com/AIRCentre/HyperSignal.jl/blob/main/.github/workflows/pluto-smoke.yml)
+  CI workflow.
 - The [GitHub repo](https://github.com/AIRCentre/HyperSignal.jl)
   for issues, PRs, and the changelog.
 
