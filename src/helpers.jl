@@ -99,6 +99,26 @@ function redirect_to(location::AbstractString; cookies::AbstractVector=String[])
     HTTP.Response(303, headers)
 end
 
+# --- HyperSignal.Helpers ---------------------------------------------
+#
+# App-grade building blocks. These compose the primitives above into
+# the form/dialog idioms a typical HyperSignal+Datastar service reaches
+# for. They live in a submodule so the top-level v1.0 surface stays
+# minimal — see issue #1 and the `## Unreleased` CHANGELOG entry. No
+# top-level shim: the package is pre-1.0 with no external users, so
+# an outright move was cheaper than a deprecation cycle.
+
+module Helpers
+
+using ..HyperSignal: Element, Frag, Raw, Attribute,
+                      div, span, small, label, input, legend, button,
+                      dialog,
+                      on, ds_signals, ds_show, ds_effect
+
+export radio_field, checkbox_field, text_field,
+       help_tooltip, form_legend, form_section,
+       preset_button, signal_dialog
+
 # Shared body for radio_field / checkbox_field. The wrapping `<label>`
 # convention (label around input, with a leading space before the visible
 # text) is the same for both controls; only the input `type` and the
@@ -449,3 +469,5 @@ function signal_dialog(open_expr::AbstractString, body...;
     isempty(class) || push!(attrs, :class => String(class))
     dialog(attrs..., body...)
 end
+
+end # module Helpers

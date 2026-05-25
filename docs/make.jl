@@ -2,6 +2,10 @@ using Documenter, HyperSignal
 using Documenter: Remotes
 
 DocMeta.setdocmeta!(HyperSignal, :DocTestSetup, :(using HyperSignal); recursive=true)
+# Helpers submodule doctests want unqualified names (`radio_field(...)`),
+# so layer a Helpers-specific setup on top of the recursive one.
+DocMeta.setdocmeta!(HyperSignal.Helpers, :DocTestSetup,
+                    :(using HyperSignal; using HyperSignal.Helpers))
 
 makedocs(
     sitename = "HyperSignal.jl",
@@ -17,6 +21,7 @@ makedocs(
         "Home"          => "index.md",
         "CairoMakie"    => "cairomakie.md",
         "Security"      => "security.md",
+        "Performance"   => "performance.md",
         "API reference" => "api.md",
     ],
     checkdocs = :exports,

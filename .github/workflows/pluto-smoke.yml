@@ -1,0 +1,38 @@
+name: Pluto smoke
+
+# Headlessly evaluate examples/pluto_demo.jl and assert the MIME-rendered
+# HTML for the `div(class="card", "hello")` cell contains the expected
+# fragment. Catches regressions in Base.show(::IO, ::MIME"text/html", ::Element)
+# before Pluto users do.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'docs/src/notebooks/datastar_form.jl'
+      - '.github/scripts/pluto_smoke.jl'
+      - '.github/workflows/pluto-smoke.yml'
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'docs/src/notebooks/datastar_form.jl'
+      - '.github/scripts/pluto_smoke.jl'
+      - '.github/workflows/pluto-smoke.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v2
+      - name: Render pluto_demo.jl and assert smoke fragment
+        run: julia --project=. .github/scripts/pluto_smoke.jl

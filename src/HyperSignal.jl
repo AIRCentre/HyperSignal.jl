@@ -102,9 +102,12 @@ export ds_ref, ds_attr, ds_class, ds_effect, ds_init
 export on, on_click, on_submit, on_change_debounced, on_interval
 export parse_signals
 
-# Component helpers
-export cls, radio_field, checkbox_field, text_field, redirect_to
-export help_tooltip, form_legend, form_section, preset_button, signal_dialog
+# Component helpers (top-level)
+export cls, redirect_to
+
+# App-grade helpers live in HyperSignal.Helpers. No top-level shim:
+# the package is pre-1.0 with no external users, so an outright move
+# is cheaper than maintaining a deprecation cycle.
 
 # Rendering + responses
 export render
