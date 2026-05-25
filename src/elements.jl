@@ -16,9 +16,16 @@ const SPINNER = Raw("<svg viewBox=\"0 0 24 24\">…</svg>")
 div(class="loading", SPINNER, " Working…")  # SVG kept verbatim, " Working…" escaped
 ```
 
+# Adversarial round-trip
+
+`Raw` performs zero rewriting — what you put in is what the renderer
+writes out. A regression that re-escapes `Raw` (or worse, sanitizes
+it) would break SVG icons and audited generators and fail this
+doctest. **Never wrap user input.**
+
 ```jldoctest
-julia> render(div(Raw("<img src=x onerror=alert(1)>")))
-"<div><img src=x onerror=alert(1)></div>"
+julia> render(p(Raw("<img src=x onerror=alert(1)>")))
+"<p><img src=x onerror=alert(1)></p>"
 ```
 """
 struct Raw
@@ -108,6 +115,32 @@ you're building a custom element with a non-static tag name.
 # Direct construction — for a component with a tag chosen at runtime:
 heading(level::Int, text) = Element(Symbol("h", level), Pair{Symbol,Any}[], Any[text])
 heading(2, "Hello")                                          # ≡ h2("Hello")
+```
+
+# Boolean-attribute policy
+
+`true` renders the attribute as bare; `false`, `nothing`, and `missing`
+omit it entirely; any other value renders as a quoted, escaped string.
+Prior art (JuliaWeb/Hyperscript.jl#20) shows this corner is easy to get
+wrong — the doctest below pins it.
+
+```jldoctest
+julia> HyperSignal.@using_tags
+
+julia> render(input(type="checkbox", checked=true))
+"<input type=\"checkbox\" checked>"
+
+julia> render(input(type="checkbox", checked=false))
+"<input type=\"checkbox\">"
+
+julia> render(input(type="checkbox", checked=nothing))
+"<input type=\"checkbox\">"
+
+julia> render(input(type="checkbox", checked=missing))
+"<input type=\"checkbox\">"
+
+julia> render(input(type="checkbox", checked="some-string"))
+"<input type=\"checkbox\" checked=\"some-string\">"
 ```
 """
 struct Element

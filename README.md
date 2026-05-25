@@ -10,6 +10,7 @@ top-to-bottom and stay out of the way.
 
 ```julia
 using HyperSignal
+using HyperSignal.Helpers: radio_field      # app-grade helpers live here
 HyperSignal.@using_tags                       # brings div, select, summary
 
 page = Frag(DOCTYPE,
@@ -192,7 +193,14 @@ Full write-up: [Security page of the docs site][docs-security].
 
 ## Component helpers
 
+App-grade form/dialog helpers live in `HyperSignal.Helpers`. `cls` and
+`redirect_to` stay at the top level (they're primitives, not app
+idioms).
+
 ```julia
+using HyperSignal.Helpers: radio_field, checkbox_field, form_section,
+                            form_legend, preset_button
+
 # Conditional classes — replaces `class="card $(active ? "active" : "")"`.
 button("Save", class=cls("btn", "primary", "active" => is_active))
 

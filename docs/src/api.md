@@ -74,16 +74,26 @@ parse_signals
 
 ## Component helpers
 
+Top-level — primitives that don't pull in an app idiom:
+
 ```@docs
 cls
-radio_field
-checkbox_field
-text_field
-form_legend
-form_section
-help_tooltip
-preset_button
-signal_dialog
+```
+
+### HyperSignal.Helpers
+
+App-grade building blocks. Pull them in with `using HyperSignal.Helpers:
+…` — there is no top-level export and no deprecation shim.
+
+```@docs
+HyperSignal.Helpers.radio_field
+HyperSignal.Helpers.checkbox_field
+HyperSignal.Helpers.text_field
+HyperSignal.Helpers.form_legend
+HyperSignal.Helpers.form_section
+HyperSignal.Helpers.help_tooltip
+HyperSignal.Helpers.preset_button
+HyperSignal.Helpers.signal_dialog
 ```
 
 ## CairoMakie SVG inlining

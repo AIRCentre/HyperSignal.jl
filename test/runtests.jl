@@ -4,6 +4,11 @@ using Test, HTTP, HyperSignal
 # `@using_tags` is the one-liner; here we do it manually so the macro itself
 # can be tested in isolation below.
 using HyperSignal: div, select, summary
+# App-grade helpers moved to HyperSignal.Helpers (issue #1). No
+# top-level shim, so the bare names are not in scope here.
+using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
+                            form_legend, form_section, help_tooltip,
+                            preset_button, signal_dialog
 
 @testset "HyperSignal" begin
     @testset "auto-escapes text content so user input can never break out" begin
@@ -105,6 +110,27 @@ using HyperSignal: div, select, summary
     @testset "ds_indicator() drops in as a positional Attribute on the element" begin
         out = render(button("Loading", ds_indicator()))
         @test occursin("data-indicator>", out) || occursin("data-indicator ", out)
+    end
+
+    @testset "MIME round-trip: text/html, text/plain, and html_response agree byte-for-byte" begin
+        # Why: prior-art (Hyperscript#22, HypertextLiteral#10/#11) shows MIME
+        # drift across sinks is a real failure mode. One fixture through three
+        # paths is cheap insurance.
+        fixture = div(class="card", h2("Hi"), p("a < b"))
+
+        html_buf = IOBuffer()
+        show(html_buf, MIME"text/html"(), fixture)
+        html_out = String(take!(html_buf))
+
+        plain_buf = IOBuffer()
+        show(plain_buf, MIME"text/plain"(), fixture)
+        plain_out = String(take!(plain_buf))
+
+        body = String(html_response(fixture).body)
+
+        @test html_out == "<div class=\"card\"><h2>Hi</h2><p>a &lt; b</p></div>"
+        @test body == html_out
+        @test plain_out == "HyperSignal.Element: " * html_out
     end
 
     @testset "fragment_response sets the datastar-selector header" begin
@@ -1191,5 +1217,78 @@ using HyperSignal: div, select, summary
         for m in eachmatch(r"id=\"([^\"]+)\"", out)
             @test startswith(m.captures[1], "a_") || startswith(m.captures[1], "b_")
         end
+    end
+
+    @testset "app-grade helpers are NOT exported at the top level" begin
+        # Why: the helpers moved to HyperSignal.Helpers (issue #1) and
+        # the deprecation shim was dropped before any external user
+        # could pin against it (issue #8). A future PR that adds a
+        # top-level shim or re-exports these would silently undo the
+        # move; this test fails loud instead.
+        for name in (:radio_field, :checkbox_field, :text_field,
+                     :help_tooltip, :form_legend, :form_section,
+                     :preset_button, :signal_dialog)
+            @test !isdefined(HyperSignal, name)
+            @test isdefined(HyperSignal.Helpers, name)
+        end
+    end
+
+    include("escape_conformance.jl")
+
+    @testset "no type piracy or @generated+hasmethod under src/ and ext/" begin
+        # Why: Hyperscript broke on Julia 1.6 from `Vector{Node}`
+        # piracy (#24); HypertextLiteral broke on 1.10 from
+        # `@generated` + `hasmethod` (#28, #33). Both bans are
+        # documented in CONVENTIONS.md → "Out of scope". This test
+        # is the load-bearing enforcement.
+        roots = [joinpath(pkgdir(HyperSignal), "src"),
+                 joinpath(pkgdir(HyperSignal), "ext")]
+        offenders_generated = String[]
+        offenders_piracy = String[]
+        # Owned types — Base.show etc. on these is fine.
+        owned = Set(["Element", "Frag", "Raw", "Attribute", "DSAction"])
+
+        for root in roots
+            isdir(root) || continue
+            for (dir, _, files) in walkdir(root)
+                for f in files
+                    endswith(f, ".jl") || continue
+                    path = joinpath(dir, f)
+                    for (lineno, line) in enumerate(eachline(path))
+                        # Strip line comments before scanning so the
+                        # CONVENTIONS reference in elements.jl doesn't
+                        # self-flag.
+                        code = first(split(line, '#'; limit=2))
+                        if occursin(r"\b(@generated|hasmethod)\b", code)
+                            push!(offenders_generated, "$path:$lineno: $line")
+                        end
+                        # A `Base.<name>(...)` definition is pirate
+                        # unless at least one of its argument types
+                        # *terminates* in an owned name. Match every
+                        # `::T` annotation on the line and require T
+                        # to be exactly one of the owned names — a
+                        # substring match would whitelist
+                        # `Base.push!(::Vector{Element}, ...)` because
+                        # `::Element` is a substring of
+                        # `::Vector{Element}`.
+                        if occursin(r"\bBase\.[A-Za-z_][A-Za-z0-9_!]*\s*\(", code)
+                            ann_types = [String(m.captures[1])
+                                         for m in eachmatch(
+                                             r"::\s*([A-Za-z_][A-Za-z0-9_]*)\b",
+                                             code)]
+                            if !any(t -> t in owned, ann_types)
+                                push!(offenders_piracy, "$path:$lineno: $line")
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        @test isempty(offenders_generated)
+        @test isempty(offenders_piracy)
+        # Surface the offenders if the test fails, so CI output is
+        # actionable.
+        isempty(offenders_generated) || (@info "@generated/hasmethod offenders" offenders_generated)
+        isempty(offenders_piracy) || (@info "type-piracy offenders" offenders_piracy)
     end
 end
