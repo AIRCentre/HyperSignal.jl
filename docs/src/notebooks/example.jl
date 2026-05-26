@@ -183,18 +183,6 @@ attribute name the renderer emits is what you'd otherwise type by hand
 in the HTML.
 """
 
-# ╔═╡ 00000001-0000-0000-0000-000000000070
-md"""
-## Appendix — CI smoke target
-
-The cell below is asserted on by `.github/workflows/pluto-smoke.yml`.
-A regression in `Base.show(::IO, ::MIME"text/html", ::Element)` flips
-it red before users see broken pages.
-"""
-
-# ╔═╡ 00000001-0000-0000-0000-000000000071
-div(class="card", "hello")
-
 # ╔═╡ 00000001-0000-0000-0000-000000000044
 function make_map(lat_min, lat_max, lon_min, lon_max)
     snap = SST.sst[:, :, end]                                # (lon, lat) latest month
@@ -330,8 +318,6 @@ Frag(
 # ╠═00000001-0000-0000-0000-000000000061
 # ╠═00000001-0000-0000-0000-000000000062
 # ╠═00000001-0000-0000-0000-000000000063
-# ╟─00000001-0000-0000-0000-000000000070
-# ╠═00000001-0000-0000-0000-000000000071
 # ╠═00000001-0000-0000-0000-000000000009
 # ╠═00000001-0000-0000-0000-000000000044
 # ╠═00000001-0000-0000-0000-000000000045
