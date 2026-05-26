@@ -43,11 +43,14 @@ user input.
 
 - [CairoMakie inlining](cairomakie.md) — drop figures into pages.
 - [API reference](api.md) — every exported name, with examples.
-- [`datastar_form.jl`](https://github.com/AIRCentre/HyperSignal.jl/blob/main/docs/src/notebooks/datastar_form.jl)
-  — a runnable Pluto notebook covering a Datastar form, what
-  `fragment_response` emits, and auto-escape. Doubles as the
-  fixture for the [`pluto-smoke`](https://github.com/AIRCentre/HyperSignal.jl/blob/main/.github/workflows/pluto-smoke.yml)
-  CI workflow.
+- [`example.jl`](https://github.com/AIRCentre/HyperSignal.jl/blob/main/docs/src/notebooks/example.jl)
+  — a runnable Pluto notebook: NOAA ERSSTv5 North Atlantic SST loaded
+  from a vendored netCDF, five Datastar-bound sliders, and a local Julia
+  HTTP route that slices, smooths, and re-renders the figures with
+  CairoMakie on every drag.
+  [`smoke.jl`](https://github.com/AIRCentre/HyperSignal.jl/blob/main/docs/src/notebooks/smoke.jl)
+  is the thin fixture the [`pluto-smoke`](https://github.com/AIRCentre/HyperSignal.jl/blob/main/.github/workflows/pluto-smoke.yml)
+  CI workflow asserts on.
 - The [GitHub repo](https://github.com/AIRCentre/HyperSignal.jl)
   for issues, PRs, and the changelog.
 
