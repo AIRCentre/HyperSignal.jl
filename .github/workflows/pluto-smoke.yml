@@ -14,11 +14,6 @@ on:
       - '.github/scripts/pluto_smoke.jl'
       - '.github/workflows/pluto-smoke.yml'
   pull_request:
-    paths:
-      - 'src/**'
-      - 'docs/src/notebooks/datastar_form.jl'
-      - '.github/scripts/pluto_smoke.jl'
-      - '.github/workflows/pluto-smoke.yml'
   workflow_dispatch:
 
 concurrency:
