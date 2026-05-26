@@ -33,32 +33,46 @@ function html_response(body; status::Int=200, headers=Pair{String,String}[])
 end
 
 """
-    fragment_response(body, selector::AbstractString; status=200, headers=[]) -> HTTP.Response
+    fragment_response(body; selector=nothing, status=200, headers=[]) -> HTTP.Response
+    fragment_response(body, selector; status=200, headers=[]) -> HTTP.Response
 
-Like [`html_response`](@ref) but also pins the Datastar morph target via
-the `datastar-selector` response header. Use this for any handler that
-swaps a fragment of an existing page (the common case for Datastar
-@get/@post actions).
+Like [`html_response`](@ref), with optional Datastar morph-target pinning.
+
+Datastar v1.0 morphs the response into whichever element matches the
+outermost id in the payload, so a fragment built as `div(id="count", …)`
+swaps into `#count` without any header. Pass `selector` only when you
+need to override that default (target a different element, swap a
+fragment whose root has no id, etc.) — then the lib emits the
+`datastar-selector` response header.
 
 # Examples
 ```jldoctest
-julia> r = fragment_response(p("ok"), "#count");
+julia> r = fragment_response(div(id="count", "1"));
 
-julia> r.status, Dict(r.headers)["datastar-selector"]
+julia> r.status, haskey(Dict(r.headers), "datastar-selector")
+(200, false)
+
+julia> r2 = fragment_response(p("ok"), "#count");
+
+julia> r2.status, Dict(r2.headers)["datastar-selector"]
 (200, "#count")
 
-julia> String(r.body)
+julia> String(r2.body)
 "<p>ok</p>"
 ```
 """
-function fragment_response(body, selector::AbstractString;
+function fragment_response(body; selector::Union{Nothing, AbstractString}=nothing,
                            status::Int=200, headers=Pair{String,String}[])
     # Delegate to html_response so the Content-Type lives in one place;
-    # only the datastar-selector header is fragment-specific.
-    html_response(body; status,
-                  headers=["datastar-selector" => String(selector),
-                           headers...])
+    # the datastar-selector header is appended only when the caller
+    # explicitly overrides Datastar's default id-based target.
+    extra = selector === nothing ? headers :
+            ["datastar-selector" => String(selector), headers...]
+    html_response(body; status, headers=extra)
 end
+
+fragment_response(body, selector::AbstractString; kwargs...) =
+    fragment_response(body; selector, kwargs...)
 
 """
     redirect_via_fragment(selector, location; cookies=String[], wrapper_tag=:div) -> HTTP.Response
