@@ -5,6 +5,17 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+## 0.2.0 — 2026-05-26
+
+### Removed
+- **Breaking:** `div`, `select`, `summary`, `mark`, `time` are no longer
+  in HyperSignal's `export` list. `using HyperSignal` no longer brings
+  them into scope. Pull them in with `HyperSignal.@using_tags` (the
+  documented idiom) or `using HyperSignal: div, …` explicitly. Rationale:
+  these names shadow Base / Makie; a plain `using HyperSignal` was
+  already ambiguous, so making the user opt in via `@using_tags` removes
+  the foot-gun.
+
 ### Added
 - `Base.show(::IO, ::MIME"text/html", ::Element|::Frag|::Raw)` so trees
   render directly in Pluto / IJulia / VS Code without per-cell
@@ -29,16 +40,21 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   workload definitions, indicative numbers from v0.1.0, and the
   `julia --project=benchmark benchmark/runbench.jl` regen command.
   Linked in `docs/make.jl` between Security and API reference.
-- Pluto demo notebook `docs/src/notebooks/example.jl`: builds
-  a Datastar form, shows what `fragment_response` would emit, and
-  demonstrates auto-escape — runnable in Pluto, linked from
-  `docs/src/index.md`. Doubles as the fixture for the
-  `.github/workflows/pluto-smoke.yml` workflow, which headlessly
-  evaluates the notebook via `Pluto.SessionActions.open`, locates
-  the `div(class="card", "hello")` cell (by exact code-string match,
-  not substring), and asserts the `text/html` MIME body. Catches
-  regressions in `Base.show(::IO, ::MIME"text/html", ::Element)`
-  before Pluto users see them. Eval script lives at
+- Pluto demo notebook `docs/src/notebooks/example.jl`: end-to-end
+  SST/CairoMakie/Datastar demo. Vendored NOAA ERSSTv5 North Atlantic
+  netCDF + vendored Datastar runtime under
+  `docs/src/notebooks/assets/`. Five Datastar-bound sliders drive a
+  local Julia HTTP route that area-weights `cos(lat)`, smooths, and
+  re-renders a timeseries + heatmap server-side via CairoMakie's
+  `inline_svg` (with `id_prefix` to disambiguate the two SVGs). A
+  `fragment_response("#figs")` morphs both figures atomically. Map
+  shows the selected box outlined plus an Azores marker.
+- Thin CI smoke fixture `docs/src/notebooks/smoke.jl`: just Pkg setup,
+  `@using_tags`, and `div(class="card", "hello")`. The
+  `pluto-smoke` workflow now evaluates this notebook (instead of the
+  full demo) and asserts the `text/html` MIME body, so CI catches
+  regressions in `Base.show(::IO, ::MIME"text/html", ::Element)` in
+  seconds rather than minutes. Eval script at
   `.github/scripts/pluto_smoke.jl`.
 - Type-piracy + `@generated`/`hasmethod` audit pinned as a test in
   `runtests.jl`. Greps `src/` and `ext/`; any future occurrence
