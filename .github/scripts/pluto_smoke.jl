@@ -15,7 +15,7 @@ Pkg.add(name="Pluto"; io=devnull)
 using Pluto
 
 notebook_path = abspath(joinpath(@__DIR__, "..", "..",
-                                  "docs", "src", "notebooks", "datastar_form.jl"))
+                                  "docs", "src", "notebooks", "example.jl"))
 
 session = Pluto.ServerSession()
 session.options.evaluation.workspace_use_distributed = false

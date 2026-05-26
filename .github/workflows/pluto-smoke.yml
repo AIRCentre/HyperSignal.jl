@@ -10,7 +10,7 @@ on:
     branches: [main]
     paths:
       - 'src/**'
-      - 'docs/src/notebooks/datastar_form.jl'
+      - 'docs/src/notebooks/example.jl'
       - '.github/scripts/pluto_smoke.jl'
       - '.github/workflows/pluto-smoke.yml'
   pull_request:

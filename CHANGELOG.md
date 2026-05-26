@@ -29,7 +29,7 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   workload definitions, indicative numbers from v0.1.0, and the
   `julia --project=benchmark benchmark/runbench.jl` regen command.
   Linked in `docs/make.jl` between Security and API reference.
-- Pluto demo notebook `docs/src/notebooks/datastar_form.jl`: builds
+- Pluto demo notebook `docs/src/notebooks/example.jl`: builds
   a Datastar form, shows what `fragment_response` would emit, and
   demonstrates auto-escape — runnable in Pluto, linked from
   `docs/src/index.md`. Doubles as the fixture for the
