@@ -96,6 +96,7 @@ export progress, details, dialog, meter, output, data
 export audio, video, picture, source, track, iframe, embed, object, param, area
 
 # Datastar
+export DATASTAR_SUPPORTED_VERSION
 export DSAction, ds_get, ds_post, ds_put, ds_delete
 export ds_indicator, ds_ignore_morph, ds_bind, ds_signal, ds_signals, ds_show, ds_text
 export ds_ref, ds_attr, ds_class, ds_effect, ds_init

@@ -43,6 +43,12 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test out == "<ul><li>one</li><li>two</li><li>three</li></ul>"
     end
 
+    @testset "DATASTAR_SUPPORTED_VERSION pins the targeted Datastar release" begin
+        # Why: bumps should land as one visible diff; this test fails on
+        # an unintentional change to the supported protocol/client version.
+        @test DATASTAR_SUPPORTED_VERSION == v"1.0.1"
+    end
+
     @testset "ds_post emits the Datastar form-encoded action expression" begin
         a = ds_post("/api/x"; form=true)
         @test HyperSignal.action_js(a) == "@post('/api/x', {contentType: 'form'})"
