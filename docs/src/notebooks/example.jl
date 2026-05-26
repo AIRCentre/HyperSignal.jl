@@ -51,7 +51,7 @@ plotting — every pixel comes from a `fragment_response` on the server.
 
 # ╔═╡ 00000001-0000-0000-0000-000000000004
 # Bring HyperSignal's tag constructors that shadow Base / Makie into scope.
-import HyperSignal: div, select, summary, on
+import HyperSignal: div, on
 
 # ╔═╡ 00000001-0000-0000-0000-000000000020
 md"""
@@ -244,24 +244,36 @@ begin
     if @isdefined(SERVER) && SERVER isa HTTP.Server
         try close(SERVER) catch end
     end
-    const PORT   = rand(10_000:60_000)
-    const SERVER = HTTP.serve!(build_router(), "127.0.0.1", PORT)
+    # Pin the port across reactive re-runs so the BASE_URL — and the
+    # `<script src=…/datastar.js>` tag below — keep a stable identity.
+    # Otherwise every cell re-run would inject a *new* Datastar module
+    # (different URL = different module), duplicating event listeners.
+    PORT   = @isdefined(PORT) ? PORT : rand(10_000:60_000)
+    SERVER = HTTP.serve!(build_router(), "127.0.0.1", PORT)
     "listening on http://127.0.0.1:$(PORT)"
 end
 
 # ╔═╡ 00000001-0000-0000-0000-000000000061
-const BASE_URL = "http://127.0.0.1:$(PORT)"
+BASE_URL = "http://127.0.0.1:$(PORT)"
 
 # ╔═╡ 00000001-0000-0000-0000-000000000062
-slider(name, lo, hi, step, init, suffix="") =
+function slider(name, lo, hi, step, init, suffix="";
+                min_expr=nothing, max_expr=nothing)
+    attrs = Any[
+        :type => "range",
+        :min  => string(lo), :max => string(hi),
+        :step => string(step), :value => string(init),
+        ds_bind(name),
+        on(:input, ds_post("$(BASE_URL)/plot"); debounce=300),
+        :style => "width:100%",
+    ]
+    isnothing(min_expr) || push!(attrs, ds_attr("min", min_expr))
+    isnothing(max_expr) || push!(attrs, ds_attr("max", max_expr))
     label(span(name), " ",
         span(ds_text("\$$name.toFixed(1) + '$(suffix)'");
              style="font-variant-numeric: tabular-nums"),
-        input(type="range", min=string(lo), max=string(hi),
-              step=string(step), value=string(init),
-              ds_bind(name),
-              on(:input, ds_post("$(BASE_URL)/plot"); debounce=300);
-              style="width:100%"))
+        input(attrs...))
+end
 
 # ╔═╡ 00000001-0000-0000-0000-000000000063
 Frag(
@@ -282,11 +294,11 @@ Frag(
                     lon_min=-50.0, lon_max=0.0,
                     smooth=12.0)),
         h3("North Atlantic SST — drag a slider"),
-        slider("lat_min", 30, 58, 2, 30, "°N"),
-        slider("lat_max", 32, 60, 2, 60, "°N"),
-        slider("lon_min", -50, -4, 2, -50, "°E"),
-        slider("lon_max", -48, 0, 2, 0,   "°E"),
-        slider("smooth",   1, 36, 1, 12,  " mo"),
+        slider("lat_min", 30, 58, 2, 30, "°N"; max_expr=raw"$lat_max - 2"),
+        slider("lat_max", 32, 60, 2, 60, "°N"; min_expr=raw"$lat_min + 2"),
+        slider("lon_min", -50, -4, 2, -50, "°E"; max_expr=raw"$lon_max - 2"),
+        slider("lon_max", -48,  0, 2,   0, "°E"; min_expr=raw"$lon_min + 2"),
+        slider("smooth",   1, 36, 1, 12, " mo"),
         plot_fragment(30.0, 60.0, -50.0, 0.0, 12),
     ),
 )
