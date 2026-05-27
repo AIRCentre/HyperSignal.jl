@@ -54,3 +54,21 @@ occursin("hello", body) ||
 println("pluto smoke ok: MIME=$mime, body=$(repr(body))")
 
 Pluto.SessionActions.shutdown(session, notebook)
+
+# Also evaluate the datastar_responses notebook end-to-end. We don't
+# pin a specific cell here — the assertion is that every cell runs
+# without erroring, which catches API breakage in sse_response /
+# patch_elements / patch_signals (issue #19).
+responses_path = abspath(joinpath(@__DIR__, "..", "..",
+                                   "docs", "src", "notebooks",
+                                   "datastar_responses.jl"))
+responses_nb = Pluto.SessionActions.open(session, responses_path; run_async=false)
+errored = filter(c -> c.errored, responses_nb.cells)
+if !isempty(errored)
+    for c in errored
+        println(stderr, "errored cell ($(c.cell_id)): $(c.output.body)")
+    end
+    error("$(length(errored)) cell(s) errored in $responses_path")
+end
+println("pluto smoke ok: datastar_responses.jl ran clean")
+Pluto.SessionActions.shutdown(session, responses_nb)
