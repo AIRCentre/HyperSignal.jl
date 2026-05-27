@@ -9,4 +9,5 @@
 *.jl.mem
 .vscode/
 .idea/
+.claude/
 .DS_Store
