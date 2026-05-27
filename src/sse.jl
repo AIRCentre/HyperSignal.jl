@@ -118,6 +118,10 @@ event encodes the event and flushes it as its own chunk so the client
 sees progress in real time. Register the returned handler with
 `HTTP.serve(handler, host, port; stream=true)`.
 
+`writer` is **not** concurrency-safe — concurrent calls from multiple
+tasks will interleave chunks. Serialize calls (or guard `writer` with
+a `ReentrantLock`) if `f` fans out work.
+
 # Example
 ```julia
 HTTP.serve(sse_stream() do writer
@@ -142,9 +146,7 @@ function sse_stream(f; status::Int=200, headers=Pair{String,String}[])
         end
         HTTP.startwrite(stream)
         writer = function (ev)
-            io = IOBuffer()
-            _encode_event(io, ev)
-            write(stream, take!(io))
+            _encode_event(stream, ev)
             flush(stream)
         end
         try
