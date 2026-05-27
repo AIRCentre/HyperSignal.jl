@@ -22,13 +22,38 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
-  smoke:
+  changes:
     runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
     steps:
       - uses: actions/checkout@v4
-      - uses: julia-actions/setup-julia@v2
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            relevant:
+              - 'src/**'
+              - 'docs/src/notebooks/smoke.jl'
+              - 'docs/src/notebooks/datastar_responses.jl'
+              - '.github/scripts/pluto_smoke.jl'
+              - '.github/workflows/pluto-smoke.yml'
+              - 'Project.toml'
+
+  smoke:
+    needs: changes
+    runs-on: ubuntu-latest
+    steps:
+      - if: needs.changes.outputs.relevant != 'true'
+        run: echo "No source/notebook changes; skipping smoke."
+      - if: needs.changes.outputs.relevant == 'true'
+        uses: actions/checkout@v4
+      - if: needs.changes.outputs.relevant == 'true'
+        uses: julia-actions/setup-julia@v2
         with:
           version: '1'
-      - uses: julia-actions/cache@v2
-      - name: Render smoke.jl and assert smoke fragment
+      - if: needs.changes.outputs.relevant == 'true'
+        uses: julia-actions/cache@v2
+      - if: needs.changes.outputs.relevant == 'true'
+        name: Render smoke.jl and assert smoke fragment
         run: julia --project=. .github/scripts/pluto_smoke.jl
