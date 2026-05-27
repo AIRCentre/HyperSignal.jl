@@ -153,3 +153,41 @@ The `elements` HTML is escape-walked by `render` like any other
 HyperSignal body. The `selector` is written verbatim into the SSE
 line — sanitize before passing if it can contain user input. See
 [Security › SSE responses](security.md#sse-responses).
+
+## `sse_stream` — streaming SSE (long-running tasks)
+
+`sse_response` buffers every event into a single `Response`, so the
+client sees nothing until the handler returns. For a progress bar, a
+multi-stage job, or any server-pushed UI that must trickle, use
+`sse_stream` instead. It returns an HTTP.jl stream handler that
+opens a chunked `text/event-stream` response and flushes each event
+the moment your code emits it.
+
+```julia
+using HTTP, HyperSignal
+HyperSignal.@using_tags  # for div
+
+HTTP.serve(
+    sse_stream() do writer
+        for i in 1:5
+            writer(patch_elements(
+                div(id="progress", "step \$i of 5");
+                selector="#progress", mode=:inner,
+            ))
+            sleep(0.5)
+        end
+        writer(patch_signals((; done=true)))
+    end,
+    "127.0.0.1", 8080; stream=true,
+)
+```
+
+The handler must be registered with `HTTP.serve(...; stream=true)` —
+that is the HTTP.jl mode that exposes the per-connection
+`HTTP.Stream` `sse_stream` writes into. The same response headers as
+`sse_response` are set automatically (`Content-Type`,
+`Cache-Control`, `Connection`); `status` and `headers` kwargs work
+the same way. Each `writer(event)` call encodes the event with the
+shared SSE encoder and pushes one chunk; events already flushed
+remain visible to the client even if your task throws partway
+through.

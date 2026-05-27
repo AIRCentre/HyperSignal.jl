@@ -107,3 +107,57 @@ function sse_response(events; status::Int=200, headers=Pair{String,String}[])
     append!(h, headers)
     HTTP.Response(status, h, take!(io))
 end
+
+"""
+    sse_stream(f; status=200, headers=[]) -> stream handler
+
+Build an HTTP.jl stream handler that streams Datastar SSE events over a
+chunked `text/event-stream` response. `f` receives a `writer` callable:
+each call with a [`patch_elements`](@ref) / [`patch_signals`](@ref)
+event encodes the event and flushes it as its own chunk so the client
+sees progress in real time. Register the returned handler with
+`HTTP.serve(handler, host, port; stream=true)`.
+
+`writer` is **not** concurrency-safe — concurrent calls from multiple
+tasks will interleave chunks. Serialize calls (or guard `writer` with
+a `ReentrantLock`) if `f` fans out work.
+
+# Example
+```julia
+HTTP.serve(sse_stream() do writer
+    for i in 1:5
+        writer(patch_elements(div(id="progress", "step \$i"); selector="#progress", mode=:inner))
+        sleep(0.5)
+    end
+end, "127.0.0.1", 8080; stream=true)
+```
+"""
+function sse_stream(f; status::Int=200, headers=Pair{String,String}[])
+    base_headers = Pair{String,String}[
+        "Content-Type" => "text/event-stream; charset=utf-8",
+        "Cache-Control" => "no-cache",
+        "Connection" => "keep-alive",
+    ]
+    append!(base_headers, headers)
+    function handler(stream::HTTP.Stream)
+        HTTP.setstatus(stream, status)
+        for (k, v) in base_headers
+            HTTP.setheader(stream, k => v)
+        end
+        HTTP.startwrite(stream)
+        writer = function (ev)
+            _encode_event(stream, ev)
+            flush(stream)
+        end
+        try
+            f(writer)
+        catch
+            # End the chunked response cleanly so the client sees EOF and
+            # keeps the bytes already flushed, rather than tearing the
+            # connection down mid-chunk (which raises HTTP.RequestError).
+            try; HTTP.closewrite(stream); catch; end
+            rethrow()
+        end
+    end
+    return handler
+end
