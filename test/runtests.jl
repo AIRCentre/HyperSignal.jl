@@ -1,4 +1,4 @@
-using Test, HTTP, HyperSignal
+using Test, HTTP, JSON, HyperSignal
 # Tags whose names overlap with Base (Base.div, Base.map, etc.) need an
 # explicit override at the use site — `using` skips them by design.
 # `@using_tags` is the one-liner; here we do it manually so the macro itself
@@ -177,6 +177,60 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         # Why: a trailing '\' in the URL would escape the closing JS quote.
         resp = redirect_via_fragment("#x", "/a\\b")
         @test occursin("window.location='/a\\\\b'", String(resp.body))
+    end
+
+    @testset "signals_response emits JSON body with the right Content-Type" begin
+        resp = signals_response((; count=3, label="hi"))
+        h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+        @test resp.status == 200
+        @test h["Content-Type"] == "application/json; charset=utf-8"
+        @test !haskey(h, "datastar-only-if-missing")
+        # JSON.json on a NamedTuple yields a JSON object; assert by parse.
+        parsed = JSON.parse(String(resp.body))
+        @test parsed == Dict("count" => 3, "label" => "hi")
+    end
+
+    @testset "signals_response only_if_missing=true adds the header" begin
+        resp = signals_response(Dict("x" => 1); only_if_missing=true)
+        h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+        @test h["datastar-only-if-missing"] == "true"
+    end
+
+    @testset "signals_response passes through status + extra headers" begin
+        resp = signals_response(Dict("x" => 1); status=202, headers=["X-Tag" => "v1"])
+        h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+        @test resp.status == 202
+        @test h["X-Tag"] == "v1"
+        @test h["Content-Type"] == "application/json; charset=utf-8"
+    end
+
+    @testset "script_response writes the JS verbatim with text/javascript" begin
+        js = "console.log('hi')"
+        resp = script_response(js)
+        h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+        @test resp.status == 200
+        @test h["Content-Type"] == "text/javascript; charset=utf-8"
+        @test String(resp.body) == js
+        @test !haskey(h, "datastar-script-attributes")
+    end
+
+    @testset "script_response with a string script_attributes sets the header verbatim" begin
+        resp = script_response("doStuff()"; script_attributes="type=\"module\"")
+        h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+        @test h["datastar-script-attributes"] == "type=\"module\""
+    end
+
+    @testset "script_response JSON-encodes a NamedTuple of script_attributes" begin
+        resp = script_response("x"; script_attributes=(; type="module", defer=true))
+        h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+        parsed = JSON.parse(h["datastar-script-attributes"])
+        @test parsed == Dict("type" => "module", "defer" => true)
+    end
+
+    @testset "script_response JSON-encodes a Dict of script_attributes" begin
+        resp = script_response("x"; script_attributes=Dict("type" => "module"))
+        h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+        @test JSON.parse(h["datastar-script-attributes"]) == Dict("type" => "module")
     end
 
     @testset "the count_estimate_fragment migration produces equivalent HTML" begin

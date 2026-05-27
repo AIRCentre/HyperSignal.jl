@@ -30,6 +30,8 @@ render
 ```@docs
 html_response
 fragment_response
+signals_response
+script_response
 redirect_via_fragment
 redirect_to
 ```

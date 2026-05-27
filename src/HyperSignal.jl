@@ -113,6 +113,7 @@ export cls, redirect_to
 # Rendering + responses
 export render
 export fragment_response, html_response, redirect_via_fragment
+export signals_response, script_response
 
 # SVG inlining (CairoMakie etc.)
 export patch_svg, inline_svg

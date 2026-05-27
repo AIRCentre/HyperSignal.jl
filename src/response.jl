@@ -96,6 +96,70 @@ function redirect_via_fragment(selector::AbstractString, location::AbstractStrin
     fragment_response(el, selector; headers=headers)
 end
 
+"""
+    signals_response(signals; only_if_missing=false, status=200, headers=[]) -> HTTP.Response
+
+Send a Datastar JSON-signals patch. Body is `JSON.json(signals)` — pass
+anything `JSON.jl` knows how to encode (NamedTuple, Dict, struct).
+`only_if_missing=true` adds the `datastar-only-if-missing: true` header,
+which tells the client to skip the merge for any signal already on the
+page.
+
+# Examples
+```jldoctest
+julia> r = signals_response((; count=3));
+
+julia> r.status, Dict(r.headers)["Content-Type"]
+(200, "application/json; charset=utf-8")
+
+julia> String(r.body)
+"{\\"count\\":3}"
+```
+"""
+function signals_response(signals; only_if_missing::Bool=false,
+                          status::Int=200, headers=Pair{String,String}[])
+    h = Pair{String,String}["Content-Type" => "application/json; charset=utf-8"]
+    only_if_missing && push!(h, "datastar-only-if-missing" => "true")
+    append!(h, headers)
+    HTTP.Response(status, h, JSON.json(signals))
+end
+
+"""
+    script_response(js::AbstractString; script_attributes=nothing,
+                    status=200, headers=[]) -> HTTP.Response
+
+Send a Datastar `text/javascript` response — the client appends a
+`<script>` tag with `js` as its body and runs it. The body is written
+verbatim; the caller owns the escape. **Never** interpolate unsanitized
+user input.
+
+`script_attributes` becomes the `datastar-script-attributes` header: an
+`AbstractString` passes through; anything else is JSON-encoded with
+`JSON.json`.
+
+# Examples
+```jldoctest
+julia> r = script_response("alert('hi')");
+
+julia> r.status, Dict(r.headers)["Content-Type"]
+(200, "text/javascript; charset=utf-8")
+
+julia> String(r.body)
+"alert('hi')"
+```
+"""
+function script_response(js::AbstractString; script_attributes=nothing,
+                         status::Int=200, headers=Pair{String,String}[])
+    h = Pair{String,String}["Content-Type" => "text/javascript; charset=utf-8"]
+    if script_attributes !== nothing
+        attr = script_attributes isa AbstractString ?
+               String(script_attributes) : JSON.json(script_attributes)
+        push!(h, "datastar-script-attributes" => attr)
+    end
+    append!(h, headers)
+    HTTP.Response(status, h, String(js))
+end
+
 _strip_hash(s::AbstractString) = chopprefix(s, "#")
 # Escape: backslashes (so the JS string parser doesn't eat the next char), single
 # quotes (the JS string delimiter), and "</" (the HTML parser will close the
