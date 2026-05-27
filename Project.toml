@@ -8,12 +8,15 @@ HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"
 JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 
 [weakdeps]
+GeoInterface = "cf35fbd7-0cd7-5166-be24-54bfbe79505f"
 Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
 
 [extensions]
 HyperSignalMakieExt = "Makie"
+HyperSignalMapLibreExt = "GeoInterface"
 
 [compat]
+GeoInterface = "1"
 HTTP = "1"
 JSON = "0.21, 1"
 Makie = "0.20, 0.21, 0.22, 0.23, 0.24"
@@ -22,8 +25,9 @@ julia = "1.10"
 [extras]
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 EzXML = "8f5d6c58-4d21-5cfd-889c-e3ad7ee6a615"
+GeoInterface = "cf35fbd7-0cd7-5166-be24-54bfbe79505f"
 Sockets = "6462fe0b-24de-5631-8697-dd941f90decc"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Test", "CairoMakie", "EzXML", "Sockets"]
+test = ["Test", "CairoMakie", "EzXML", "GeoInterface", "Sockets"]
