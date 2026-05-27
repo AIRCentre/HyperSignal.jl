@@ -105,6 +105,23 @@ verbatim into the attribute value; the HTML-attribute escape still
 fires (so `"` becomes `&quot;`), but the JS-string quoting inside is
 your job.
 
+## `script_response` — verbatim JS
+
+```julia
+script_response("doStuff($(user_input))")    # DANGER
+```
+
+[`script_response`](@ref) writes its `js` argument byte-for-byte into
+the response body — the Datastar client appends it to a `<script>` tag
+and runs it. Same trust model as [`Raw`](@ref): the caller owns the
+escape. Never interpolate unsanitized input. If you need a value
+inside the script body, JSON-encode it (`JSON.json(value)`) and rely on
+the fact that JSON's quoting is a valid JS literal.
+
+The `script_attributes` keyword goes into the
+`datastar-script-attributes` header verbatim when passed as a string,
+or JSON-encoded otherwise — sanitize before passing.
+
 ## Reporting a security issue
 
 Don't open a public issue. Email <joao.goncalves@aircentre.org>.

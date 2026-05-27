@@ -20,6 +20,7 @@ makedocs(
     pages = [
         "Home"          => "index.md",
         "CairoMakie"    => "cairomakie.md",
+        "Datastar"      => "datastar.md",
         "Security"      => "security.md",
         "Performance"   => "performance.md",
         "API reference" => "api.md",
