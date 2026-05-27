@@ -15,6 +15,13 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   mode value and a `view_transition` example. (#17)
 
 ### Added
+- `sse_response(events; status, headers)` plus the two event
+  constructors `patch_elements(body; selector, mode, view_transition)`
+  and `patch_signals(signals; only_if_missing)` — the buffered
+  `text/event-stream` shape that lets a handler emit an HTML patch and
+  a signal patch in one response. Lives in new `src/sse.jl`; covered
+  in `docs/src/datastar.md` and `docs/src/security.md`. Streaming
+  (long-lived connections) is out of scope. (#19)
 - `signals_response(signals; only_if_missing, status, headers)` and
   `script_response(js; script_attributes, status, headers)` — the two
   non-streaming Datastar v1.0.1 response shapes (JSON signals patch,

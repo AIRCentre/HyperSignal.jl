@@ -76,6 +76,7 @@ include("elements.jl")
 include("datastar.jl")
 include("render.jl")
 include("response.jl")
+include("sse.jl")
 include("helpers.jl")
 include("svg.jl")
 
@@ -114,6 +115,7 @@ export cls, redirect_to
 export render
 export fragment_response, html_response, redirect_via_fragment
 export signals_response, script_response
+export sse_response, patch_elements, patch_signals
 
 # SVG inlining (CairoMakie etc.)
 export patch_svg, inline_svg

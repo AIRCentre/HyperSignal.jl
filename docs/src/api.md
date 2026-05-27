@@ -32,6 +32,9 @@ html_response
 fragment_response
 signals_response
 script_response
+sse_response
+patch_elements
+patch_signals
 redirect_via_fragment
 redirect_to
 ```

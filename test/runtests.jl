@@ -285,6 +285,117 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test JSON.parse(h["datastar-script-attributes"]) == Dict("type" => "module")
     end
 
+    @testset "sse_response emits text/event-stream with SSE headers" begin
+        resp = sse_response([patch_elements(div("ok"))])
+        h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+        @test resp.status == 200
+        @test h["Content-Type"] == "text/event-stream; charset=utf-8"
+        @test h["Cache-Control"] == "no-cache"
+        @test h["Connection"] == "keep-alive"
+    end
+
+    @testset "patch_elements with defaults emits only the elements data line" begin
+        body = String(sse_response([patch_elements(div("ok"))]).body)
+        @test body == "event: datastar-patch-elements\ndata: elements <div>ok</div>\n\n"
+    end
+
+    @testset "patch_elements with selector, mode, view_transition emits all data lines" begin
+        ev = patch_elements(div("ok"); selector="#card", mode=:inner, view_transition=true)
+        body = String(sse_response([ev]).body)
+        @test body == string(
+            "event: datastar-patch-elements\n",
+            "data: selector #card\n",
+            "data: mode inner\n",
+            "data: useViewTransition true\n",
+            "data: elements <div>ok</div>\n",
+            "\n",
+        )
+    end
+
+    @testset "patch_elements splits multi-line HTML into separate data lines" begin
+        ev = patch_elements(Raw("<div>\n  <p>x</p>\n</div>"))
+        body = String(sse_response([ev]).body)
+        @test body == string(
+            "event: datastar-patch-elements\n",
+            "data: elements <div>\n",
+            "data: elements   <p>x</p>\n",
+            "data: elements </div>\n",
+            "\n",
+        )
+    end
+
+    @testset "patch_elements rejects unknown mode symbols loud" begin
+        @test_throws ArgumentError patch_elements(div("x"); mode=:bogus)
+    end
+
+    @testset "sse_response rejects a selector containing a newline" begin
+        # Why: a literal newline in selector would terminate the SSE line
+        # early and silently corrupt the rest of the event.
+        @test_throws ArgumentError sse_response([patch_elements(div("x");
+                                                                selector="#a\n#b")])
+    end
+
+    @testset "patch_elements drops a single trailing newline from rendered HTML" begin
+        # Why: render() output that ends in '\n' would otherwise emit a
+        # stray empty `data: elements ` line, which an SSE client
+        # reassembles as a phantom trailing newline in the payload.
+        body = String(sse_response([patch_elements(Raw("<div>x</div>\n"))]).body)
+        @test body == "event: datastar-patch-elements\ndata: elements <div>x</div>\n\n"
+    end
+
+    @testset "patch_signals encodes signals JSON in a single data line" begin
+        body = String(sse_response([patch_signals((; count=3))]).body)
+        @test body == "event: datastar-patch-signals\ndata: signals {\"count\":3}\n\n"
+    end
+
+    @testset "patch_signals only_if_missing=true adds the onlyIfMissing data line" begin
+        body = String(sse_response([patch_signals(Dict("x" => 1); only_if_missing=true)]).body)
+        @test body == string(
+            "event: datastar-patch-signals\n",
+            "data: onlyIfMissing true\n",
+            "data: signals {\"x\":1}\n",
+            "\n",
+        )
+    end
+
+    @testset "sse_response concatenates multiple events separated by blank lines" begin
+        body = String(sse_response([
+            patch_elements(div("ok"); selector="#card"),
+            patch_signals((; count=3)),
+        ]).body)
+        @test body == string(
+            "event: datastar-patch-elements\n",
+            "data: selector #card\n",
+            "data: elements <div>ok</div>\n",
+            "\n",
+            "event: datastar-patch-signals\n",
+            "data: signals {\"count\":3}\n",
+            "\n",
+        )
+    end
+
+    @testset "sse_response passes through status and extra headers" begin
+        resp = sse_response([patch_elements(div("ok"))]; status=202,
+                            headers=["X-Tag" => "v1"])
+        h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+        @test resp.status == 202
+        @test h["X-Tag"] == "v1"
+        @test h["Content-Type"] == "text/event-stream; charset=utf-8"
+    end
+
+    @testset "a single sse event round-trips through a naive SSE parser" begin
+        # Why: catch terminator/encoding regressions by parsing what we emit
+        # the same way a client would (split on blank line, split data lines).
+        ev = patch_elements(div("ok"); selector="#card", mode=:inner)
+        body = String(sse_response([ev]).body)
+        chunks = split(body, "\n\n"; keepempty=false)
+        @test length(chunks) == 1
+        lines = split(chunks[1], "\n")
+        @test lines[1] == "event: datastar-patch-elements"
+        data_lines = [chopprefix(l, "data: ") for l in lines if startswith(l, "data: ")]
+        @test data_lines == ["selector #card", "mode inner", "elements <div>ok</div>"]
+    end
+
     @testset "the count_estimate_fragment migration produces equivalent HTML" begin
         # Why: this is the smallest real fragment in validation_studio
         # (services/validation_studio/src/session_form.jl:105). The HyperSignal

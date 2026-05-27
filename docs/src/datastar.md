@@ -109,3 +109,47 @@ anything else is JSON-encoded.
 script_response("doStuff()"; script_attributes=(; type="module", defer=true))
 # datastar-script-attributes: {"type":"module","defer":true}
 ```
+
+## `sse_response` — buffered SSE (multi-event)
+
+When one HTTP response needs to ship more than one Datastar event —
+typically an HTML patch *and* a signal patch in the same round trip —
+emit a `text/event-stream` body via `sse_response`. This helper is
+**buffered**: it builds the whole body in memory and sends it as one
+response. Long-lived streaming (progress bars, server push) is a
+separate concern handled by a different helper.
+
+```julia
+sse_response([
+    patch_elements(div(id="card", "Saved"); selector="#card", mode=:inner),
+    patch_signals((; saved_at=time())),
+])
+```
+
+### Event constructors
+
+`patch_elements(body; selector=nothing, mode=nothing, view_transition=false)`
+builds a `datastar-patch-elements` event. `body` is rendered the same
+way as for [`html_response`](@ref); multi-line HTML is split into one
+`data: elements …` line per source line. `mode` accepts the same
+fragment-swap symbols as [`fragment_response`](@ref) — unknown
+symbols throw `ArgumentError`.
+
+`patch_signals(signals; only_if_missing=false)` builds a
+`datastar-patch-signals` event. `signals` is JSON-encoded with
+`JSON.json`. `only_if_missing=true` mirrors the
+`datastar-only-if-missing` header of [`signals_response`](@ref) but
+expressed as the SSE `onlyIfMissing` data line.
+
+### Response headers
+
+`sse_response` sets `Content-Type: text/event-stream; charset=utf-8`,
+`Cache-Control: no-cache`, and `Connection: keep-alive`. Extra
+headers passed via `headers=…` are appended.
+
+### Security note
+
+The `elements` HTML is escape-walked by `render` like any other
+HyperSignal body. The `selector` is written verbatim into the SSE
+line — sanitize before passing if it can contain user input. See
+[Security › SSE responses](security.md#sse-responses).
