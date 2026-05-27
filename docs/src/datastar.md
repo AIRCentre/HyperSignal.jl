@@ -1,0 +1,155 @@
+# Datastar response shapes
+
+HyperSignal targets the
+[Datastar](https://data-star.dev) protocol pinned by
+[`DATASTAR_SUPPORTED_VERSION`](@ref) (`v"1.0.1"`). The client reads one
+of four response `Content-Type`s coming back from a handler:
+
+| Content-Type | HyperSignal helper | Purpose |
+| --- | --- | --- |
+| `text/html; charset=utf-8` | [`html_response`](@ref) / [`fragment_response`](@ref) | Full page or morph-target HTML |
+| `application/json; charset=utf-8` | [`signals_response`](@ref) | Patch JSON signals |
+| `text/javascript; charset=utf-8` | [`script_response`](@ref) | Append a `<script>` tag and run it |
+| `text/event-stream` | _(future — see open issues)_ | Buffered or streaming SSE |
+
+This page documents the non-streaming HTML / JSON / JS shapes. SSE
+lands in a follow-up.
+
+## `fragment_response` — HTML morph
+
+```julia
+fragment_response(body; selector=nothing, mode=nothing,
+                  view_transition=false, status=200, headers=[])
+```
+
+Sends `text/html` with the Datastar fragment-control headers. Use it
+for any handler that swaps a fragment of an existing page (the common
+case for `@get`/`@post` actions). The positional
+`fragment_response(body, "#sel")` form is preserved.
+
+### `mode` — swap mode
+
+`mode` maps to the `datastar-mode` response header. `nothing` (the
+default) omits the header so the Datastar client falls back to its
+own default, `outer`. Unknown symbols throw `ArgumentError`.
+
+| `mode`     | Effect on the morph target |
+| ---------- | -------------------------- |
+| `:outer`   | Replace the target element (including itself) — Datastar default |
+| `:inner`   | Replace the target's children, keep the element |
+| `:replace` | Replace the target with the response, no morph diff |
+| `:prepend` | Insert the response as the target's first children |
+| `:append`  | Insert the response as the target's last children |
+| `:before`  | Insert the response immediately before the target |
+| `:after`   | Insert the response immediately after the target |
+| `:remove`  | Remove the target; the response body is ignored client-side |
+
+```julia
+# Replace just the children of #count without re-rendering the wrapper.
+fragment_response(span("3"); selector="#count", mode=:inner)
+```
+
+### `view_transition` — animate the swap
+
+```julia
+fragment_response(card_html; selector="#card", mode=:outer,
+                  view_transition=true)
+```
+
+`view_transition=true` adds `datastar-use-view-transition: true`, so
+the Datastar client wraps the DOM change in a
+[View Transition](https://developer.mozilla.org/en-US/docs/Web/API/View_Transitions_API).
+Default is `false` (header omitted).
+
+## `signals_response`
+
+```julia
+signals_response((; count=3, label="hi"))
+```
+
+Encodes the argument with `JSON.json` and returns an `HTTP.Response`
+with `Content-Type: application/json; charset=utf-8`. Pass anything
+`JSON.jl` knows how to encode (NamedTuple, Dict, struct).
+
+Set `only_if_missing=true` to attach the
+`datastar-only-if-missing: true` header — the Datastar client will
+skip the merge for any signal that already exists on the page (useful
+when a handler is hydrating defaults).
+
+```julia
+# Hydrate defaults the first time the page asks; do nothing on reload.
+signals_response((; filter="all", page=1); only_if_missing=true)
+```
+
+## `script_response`
+
+```julia
+script_response("alert('hi')")
+```
+
+Returns `Content-Type: text/javascript; charset=utf-8` with the
+argument as the body, byte-for-byte. The Datastar client appends a
+`<script>` tag containing the body and runs it.
+
+The body is **not** escaped — the caller owns the trust boundary. See
+[Security › `script_response` — verbatim JS](security.md#script_response-verbatim-js).
+For values, prefer `JSON.json(x)` over hand-quoting:
+
+```julia
+using JSON
+script_response("window.dispatchEvent(new CustomEvent('row-saved', {detail: $(JSON.json(row))}))")
+```
+
+The `script_attributes` keyword controls the
+`datastar-script-attributes` header, which the Datastar client copies
+onto the inserted `<script>` tag. A `String` passes through verbatim;
+anything else is JSON-encoded.
+
+```julia
+script_response("doStuff()"; script_attributes=(; type="module", defer=true))
+# datastar-script-attributes: {"type":"module","defer":true}
+```
+
+## `sse_response` — buffered SSE (multi-event)
+
+When one HTTP response needs to ship more than one Datastar event —
+typically an HTML patch *and* a signal patch in the same round trip —
+emit a `text/event-stream` body via `sse_response`. This helper is
+**buffered**: it builds the whole body in memory and sends it as one
+response. Long-lived streaming (progress bars, server push) is a
+separate concern handled by a different helper.
+
+```julia
+sse_response([
+    patch_elements(div(id="card", "Saved"); selector="#card", mode=:inner),
+    patch_signals((; saved_at=time())),
+])
+```
+
+### Event constructors
+
+`patch_elements(body; selector=nothing, mode=nothing, view_transition=false)`
+builds a `datastar-patch-elements` event. `body` is rendered the same
+way as for [`html_response`](@ref); multi-line HTML is split into one
+`data: elements …` line per source line. `mode` accepts the same
+fragment-swap symbols as [`fragment_response`](@ref) — unknown
+symbols throw `ArgumentError`.
+
+`patch_signals(signals; only_if_missing=false)` builds a
+`datastar-patch-signals` event. `signals` is JSON-encoded with
+`JSON.json`. `only_if_missing=true` mirrors the
+`datastar-only-if-missing` header of [`signals_response`](@ref) but
+expressed as the SSE `onlyIfMissing` data line.
+
+### Response headers
+
+`sse_response` sets `Content-Type: text/event-stream; charset=utf-8`,
+`Cache-Control: no-cache`, and `Connection: keep-alive`. Extra
+headers passed via `headers=…` are appended.
+
+### Security note
+
+The `elements` HTML is escape-walked by `render` like any other
+HyperSignal body. The `selector` is written verbatim into the SSE
+line — sanitize before passing if it can contain user input. See
+[Security › SSE responses](security.md#sse-responses).

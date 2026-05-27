@@ -105,6 +105,41 @@ verbatim into the attribute value; the HTML-attribute escape still
 fires (so `"` becomes `&quot;`), but the JS-string quoting inside is
 your job.
 
+## `script_response` — verbatim JS
+
+```julia
+script_response("doStuff($(user_input))")    # DANGER
+```
+
+[`script_response`](@ref) writes its `js` argument byte-for-byte into
+the response body — the Datastar client appends it to a `<script>` tag
+and runs it. Same trust model as [`Raw`](@ref): the caller owns the
+escape. Never interpolate unsanitized input. If you need a value
+inside the script body, JSON-encode it (`JSON.json(value)`) and rely on
+the fact that JSON's quoting is a valid JS literal.
+
+The `script_attributes` keyword goes into the
+`datastar-script-attributes` header verbatim when passed as a string,
+or JSON-encoded otherwise — sanitize before passing.
+
+## SSE responses
+
+[`sse_response`](@ref) and its event constructors
+([`patch_elements`](@ref), [`patch_signals`](@ref)) follow the same
+trust model as the other helpers, with two boundaries worth naming:
+
+- `elements` HTML is rendered through [`render`](@ref), so text and
+  attribute values are escape-walked — same guarantees as
+  [`html_response`](@ref).
+- `selector` and `script_attributes` are written into the wire format
+  verbatim. Sanitize before passing if they can carry user input. A
+  `selector` containing a literal newline would split the SSE line and
+  corrupt the rest of the event; `sse_response` rejects this with an
+  `ArgumentError` rather than emitting malformed output.
+
+`patch_signals` JSON-encodes its argument; `JSON.json` escapes
+embedded newlines, so signals are safe to round-trip.
+
 ## Reporting a security issue
 
 Don't open a public issue. Email <joao.goncalves@aircentre.org>.

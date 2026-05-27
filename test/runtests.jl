@@ -1,4 +1,4 @@
-using Test, HTTP, HyperSignal
+using Test, HTTP, JSON, HyperSignal
 # Tags whose names overlap with Base (Base.div, Base.map, etc.) need an
 # explicit override at the use site — `using` skips them by design.
 # `@using_tags` is the one-liner; here we do it manually so the macro itself
@@ -41,6 +41,12 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         items = [li("one"), li("two"), li("three")]
         out = render(ul(items))
         @test out == "<ul><li>one</li><li>two</li><li>three</li></ul>"
+    end
+
+    @testset "DATASTAR_SUPPORTED_VERSION pins the targeted Datastar release" begin
+        # Why: bumps should land as one visible diff; this test fails on
+        # an unintentional change to the supported protocol/client version.
+        @test DATASTAR_SUPPORTED_VERSION == v"1.0.1"
     end
 
     @testset "ds_post emits the Datastar form-encoded action expression" begin
@@ -143,6 +149,58 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test String(resp.body) == "<div>ok</div>"
     end
 
+    @testset "fragment_response kwarg form works without a selector" begin
+        # Why: the new API exposes mode/view_transition; a caller that wants
+        # `mode=:inner` but no selector should be able to skip it entirely.
+        resp = fragment_response(div("ok"))
+        h = Dict(lowercase(String(k)) => String(v) for (k, v) in resp.headers)
+        @test !haskey(h, "datastar-selector")
+        @test String(resp.body) == "<div>ok</div>"
+    end
+
+    @testset "fragment_response mode kwarg sets datastar-mode header" begin
+        for m in (:outer, :inner, :replace, :prepend, :append, :before, :after, :remove)
+            resp = fragment_response(div("x"); mode=m)
+            h = Dict(lowercase(String(k)) => String(v) for (k, v) in resp.headers)
+            @test h["datastar-mode"] == String(m)
+        end
+    end
+
+    @testset "fragment_response mode=nothing omits the datastar-mode header" begin
+        # Why: the Datastar default is `outer`; emitting nothing avoids a
+        # redundant header on the wire.
+        resp = fragment_response(div("x"))
+        h = Dict(lowercase(String(k)) => String(v) for (k, v) in resp.headers)
+        @test !haskey(h, "datastar-mode")
+    end
+
+    @testset "fragment_response rejects unknown mode symbols loud" begin
+        # Why: a typo like `:innner` would silently send a header the
+        # Datastar client ignores. Fail at call time, not at the browser.
+        @test_throws ArgumentError fragment_response(div("x"); mode=:bogus)
+    end
+
+    @testset "fragment_response view_transition=true sets the header" begin
+        resp = fragment_response(div("x"); view_transition=true)
+        h = Dict(lowercase(String(k)) => String(v) for (k, v) in resp.headers)
+        @test h["datastar-use-view-transition"] == "true"
+    end
+
+    @testset "fragment_response view_transition default omits the header" begin
+        resp = fragment_response(div("x"))
+        h = Dict(lowercase(String(k)) => String(v) for (k, v) in resp.headers)
+        @test !haskey(h, "datastar-use-view-transition")
+    end
+
+    @testset "fragment_response combines selector + mode + view_transition" begin
+        resp = fragment_response(div("x"); selector="#card", mode=:inner,
+                                  view_transition=true)
+        h = Dict(lowercase(String(k)) => String(v) for (k, v) in resp.headers)
+        @test h["datastar-selector"] == "#card"
+        @test h["datastar-mode"] == "inner"
+        @test h["datastar-use-view-transition"] == "true"
+    end
+
     @testset "redirect_via_fragment wraps a window.location script in the morph target" begin
         resp = redirect_via_fragment("#login-form", "/dashboard")
         body = String(resp.body)
@@ -171,6 +229,171 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         # Why: a trailing '\' in the URL would escape the closing JS quote.
         resp = redirect_via_fragment("#x", "/a\\b")
         @test occursin("window.location='/a\\\\b'", String(resp.body))
+    end
+
+    @testset "signals_response emits JSON body with the right Content-Type" begin
+        resp = signals_response((; count=3, label="hi"))
+        h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+        @test resp.status == 200
+        @test h["Content-Type"] == "application/json; charset=utf-8"
+        @test !haskey(h, "datastar-only-if-missing")
+        # JSON.json on a NamedTuple yields a JSON object; assert by parse.
+        parsed = JSON.parse(String(resp.body))
+        @test parsed == Dict("count" => 3, "label" => "hi")
+    end
+
+    @testset "signals_response only_if_missing=true adds the header" begin
+        resp = signals_response(Dict("x" => 1); only_if_missing=true)
+        h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+        @test h["datastar-only-if-missing"] == "true"
+    end
+
+    @testset "signals_response passes through status + extra headers" begin
+        resp = signals_response(Dict("x" => 1); status=202, headers=["X-Tag" => "v1"])
+        h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+        @test resp.status == 202
+        @test h["X-Tag"] == "v1"
+        @test h["Content-Type"] == "application/json; charset=utf-8"
+    end
+
+    @testset "script_response writes the JS verbatim with text/javascript" begin
+        js = "console.log('hi')"
+        resp = script_response(js)
+        h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+        @test resp.status == 200
+        @test h["Content-Type"] == "text/javascript; charset=utf-8"
+        @test String(resp.body) == js
+        @test !haskey(h, "datastar-script-attributes")
+    end
+
+    @testset "script_response with a string script_attributes sets the header verbatim" begin
+        resp = script_response("doStuff()"; script_attributes="type=\"module\"")
+        h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+        @test h["datastar-script-attributes"] == "type=\"module\""
+    end
+
+    @testset "script_response JSON-encodes a NamedTuple of script_attributes" begin
+        resp = script_response("x"; script_attributes=(; type="module", defer=true))
+        h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+        parsed = JSON.parse(h["datastar-script-attributes"])
+        @test parsed == Dict("type" => "module", "defer" => true)
+    end
+
+    @testset "script_response JSON-encodes a Dict of script_attributes" begin
+        resp = script_response("x"; script_attributes=Dict("type" => "module"))
+        h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+        @test JSON.parse(h["datastar-script-attributes"]) == Dict("type" => "module")
+    end
+
+    @testset "sse_response emits text/event-stream with SSE headers" begin
+        resp = sse_response([patch_elements(div("ok"))])
+        h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+        @test resp.status == 200
+        @test h["Content-Type"] == "text/event-stream; charset=utf-8"
+        @test h["Cache-Control"] == "no-cache"
+        @test h["Connection"] == "keep-alive"
+    end
+
+    @testset "patch_elements with defaults emits only the elements data line" begin
+        body = String(sse_response([patch_elements(div("ok"))]).body)
+        @test body == "event: datastar-patch-elements\ndata: elements <div>ok</div>\n\n"
+    end
+
+    @testset "patch_elements with selector, mode, view_transition emits all data lines" begin
+        ev = patch_elements(div("ok"); selector="#card", mode=:inner, view_transition=true)
+        body = String(sse_response([ev]).body)
+        @test body == string(
+            "event: datastar-patch-elements\n",
+            "data: selector #card\n",
+            "data: mode inner\n",
+            "data: useViewTransition true\n",
+            "data: elements <div>ok</div>\n",
+            "\n",
+        )
+    end
+
+    @testset "patch_elements splits multi-line HTML into separate data lines" begin
+        ev = patch_elements(Raw("<div>\n  <p>x</p>\n</div>"))
+        body = String(sse_response([ev]).body)
+        @test body == string(
+            "event: datastar-patch-elements\n",
+            "data: elements <div>\n",
+            "data: elements   <p>x</p>\n",
+            "data: elements </div>\n",
+            "\n",
+        )
+    end
+
+    @testset "patch_elements rejects unknown mode symbols loud" begin
+        @test_throws ArgumentError patch_elements(div("x"); mode=:bogus)
+    end
+
+    @testset "sse_response rejects a selector containing a newline" begin
+        # Why: a literal newline in selector would terminate the SSE line
+        # early and silently corrupt the rest of the event.
+        @test_throws ArgumentError sse_response([patch_elements(div("x");
+                                                                selector="#a\n#b")])
+    end
+
+    @testset "patch_elements drops a single trailing newline from rendered HTML" begin
+        # Why: render() output that ends in '\n' would otherwise emit a
+        # stray empty `data: elements ` line, which an SSE client
+        # reassembles as a phantom trailing newline in the payload.
+        body = String(sse_response([patch_elements(Raw("<div>x</div>\n"))]).body)
+        @test body == "event: datastar-patch-elements\ndata: elements <div>x</div>\n\n"
+    end
+
+    @testset "patch_signals encodes signals JSON in a single data line" begin
+        body = String(sse_response([patch_signals((; count=3))]).body)
+        @test body == "event: datastar-patch-signals\ndata: signals {\"count\":3}\n\n"
+    end
+
+    @testset "patch_signals only_if_missing=true adds the onlyIfMissing data line" begin
+        body = String(sse_response([patch_signals(Dict("x" => 1); only_if_missing=true)]).body)
+        @test body == string(
+            "event: datastar-patch-signals\n",
+            "data: onlyIfMissing true\n",
+            "data: signals {\"x\":1}\n",
+            "\n",
+        )
+    end
+
+    @testset "sse_response concatenates multiple events separated by blank lines" begin
+        body = String(sse_response([
+            patch_elements(div("ok"); selector="#card"),
+            patch_signals((; count=3)),
+        ]).body)
+        @test body == string(
+            "event: datastar-patch-elements\n",
+            "data: selector #card\n",
+            "data: elements <div>ok</div>\n",
+            "\n",
+            "event: datastar-patch-signals\n",
+            "data: signals {\"count\":3}\n",
+            "\n",
+        )
+    end
+
+    @testset "sse_response passes through status and extra headers" begin
+        resp = sse_response([patch_elements(div("ok"))]; status=202,
+                            headers=["X-Tag" => "v1"])
+        h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+        @test resp.status == 202
+        @test h["X-Tag"] == "v1"
+        @test h["Content-Type"] == "text/event-stream; charset=utf-8"
+    end
+
+    @testset "a single sse event round-trips through a naive SSE parser" begin
+        # Why: catch terminator/encoding regressions by parsing what we emit
+        # the same way a client would (split on blank line, split data lines).
+        ev = patch_elements(div("ok"); selector="#card", mode=:inner)
+        body = String(sse_response([ev]).body)
+        chunks = split(body, "\n\n"; keepempty=false)
+        @test length(chunks) == 1
+        lines = split(chunks[1], "\n")
+        @test lines[1] == "event: datastar-patch-elements"
+        data_lines = [chopprefix(l, "data: ") for l in lines if startswith(l, "data: ")]
+        @test data_lines == ["selector #card", "mode inner", "elements <div>ok</div>"]
     end
 
     @testset "the count_estimate_fragment migration produces equivalent HTML" begin

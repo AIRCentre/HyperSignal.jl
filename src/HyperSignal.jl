@@ -76,6 +76,7 @@ include("elements.jl")
 include("datastar.jl")
 include("render.jl")
 include("response.jl")
+include("sse.jl")
 include("helpers.jl")
 include("svg.jl")
 
@@ -96,6 +97,7 @@ export progress, details, dialog, meter, output, data
 export audio, video, picture, source, track, iframe, embed, object, param, area
 
 # Datastar
+export DATASTAR_SUPPORTED_VERSION
 export DSAction, ds_get, ds_post, ds_put, ds_delete
 export ds_indicator, ds_ignore_morph, ds_bind, ds_signal, ds_signals, ds_show, ds_text
 export ds_ref, ds_attr, ds_class, ds_effect, ds_init
@@ -112,6 +114,8 @@ export cls, redirect_to
 # Rendering + responses
 export render
 export fragment_response, html_response, redirect_via_fragment
+export signals_response, script_response
+export sse_response, patch_elements, patch_signals
 
 # SVG inlining (CairoMakie etc.)
 export patch_svg, inline_svg

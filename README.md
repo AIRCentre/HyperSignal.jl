@@ -8,6 +8,8 @@ Datastar-flavored HTML for Julia, with front-row support for inlining
 CairoMakie figures into your pages. Build hypermedia UIs that read
 top-to-bottom and stay out of the way.
 
+Compatible with Datastar v1.0.1.
+
 ```julia
 using HyperSignal
 using HyperSignal.Helpers: radio_field      # app-grade helpers live here

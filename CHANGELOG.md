@@ -5,6 +5,33 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Changed
+- `fragment_response` now accepts `mode` and `view_transition` kwargs,
+  surfacing the Datastar v1.0.1 `datastar-mode` and
+  `datastar-use-view-transition` response headers. `selector` is now a
+  keyword too; the positional `fragment_response(body, selector)` form
+  is preserved. Unknown `mode` symbols throw `ArgumentError`. The
+  `docs/src/datastar.md` page gains an HTML section covering every
+  mode value and a `view_transition` example. (#17)
+
+### Added
+- `sse_response(events; status, headers)` plus the two event
+  constructors `patch_elements(body; selector, mode, view_transition)`
+  and `patch_signals(signals; only_if_missing)` — the buffered
+  `text/event-stream` shape that lets a handler emit an HTML patch and
+  a signal patch in one response. Lives in new `src/sse.jl`; covered
+  in `docs/src/datastar.md` and `docs/src/security.md`. Streaming
+  (long-lived connections) is out of scope. (#19)
+- `signals_response(signals; only_if_missing, status, headers)` and
+  `script_response(js; script_attributes, status, headers)` — the two
+  non-streaming Datastar v1.0.1 response shapes (JSON signals patch,
+  `text/javascript` script). New `docs/src/datastar.md` page covers
+  both. (#18)
+- `DATASTAR_SUPPORTED_VERSION = v"1.0.1"` constant (exported) pinning
+  the Datastar protocol/client version HyperSignal targets. Examples
+  reference the constant instead of hard-coding the literal so future
+  bumps land as a single visible diff.
+
 ## 0.2.0 — 2026-05-26
 
 ### Removed

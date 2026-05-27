@@ -11,6 +11,7 @@ on:
     paths:
       - 'src/**'
       - 'docs/src/notebooks/smoke.jl'
+      - 'docs/src/notebooks/datastar_responses.jl'
       - '.github/scripts/pluto_smoke.jl'
       - '.github/workflows/pluto-smoke.yml'
   pull_request:
