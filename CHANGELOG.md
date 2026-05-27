@@ -5,6 +5,12 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Added
+- `DATASTAR_SUPPORTED_VERSION = v"1.0.1"` constant (exported) pinning
+  the Datastar protocol/client version HyperSignal targets. Examples
+  reference the constant instead of hard-coding the literal so future
+  bumps land as a single visible diff.
+
 ## 0.2.0 — 2026-05-26
 
 ### Removed
