@@ -5,6 +5,15 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Changed
+- `fragment_response` now accepts `mode` and `view_transition` kwargs,
+  surfacing the Datastar v1.0.1 `datastar-mode` and
+  `datastar-use-view-transition` response headers. `selector` is now a
+  keyword too; the positional `fragment_response(body, selector)` form
+  is preserved. Unknown `mode` symbols throw `ArgumentError`. The
+  `docs/src/datastar.md` page gains an HTML section covering every
+  mode value and a `view_transition` example. (#17)
+
 ### Added
 - `signals_response(signals; only_if_missing, status, headers)` and
   `script_response(js; script_attributes, status, headers)` — the two

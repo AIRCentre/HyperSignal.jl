@@ -12,8 +12,54 @@ of four response `Content-Type`s coming back from a handler:
 | `text/javascript; charset=utf-8` | [`script_response`](@ref) | Append a `<script>` tag and run it |
 | `text/event-stream` | _(future — see open issues)_ | Buffered or streaming SSE |
 
-This page documents the two non-streaming JSON / JS shapes. SSE lands
-in a follow-up.
+This page documents the non-streaming HTML / JSON / JS shapes. SSE
+lands in a follow-up.
+
+## `fragment_response` — HTML morph
+
+```julia
+fragment_response(body; selector=nothing, mode=nothing,
+                  view_transition=false, status=200, headers=[])
+```
+
+Sends `text/html` with the Datastar fragment-control headers. Use it
+for any handler that swaps a fragment of an existing page (the common
+case for `@get`/`@post` actions). The positional
+`fragment_response(body, "#sel")` form is preserved.
+
+### `mode` — swap mode
+
+`mode` maps to the `datastar-mode` response header. `nothing` (the
+default) omits the header so the Datastar client falls back to its
+own default, `outer`. Unknown symbols throw `ArgumentError`.
+
+| `mode`     | Effect on the morph target |
+| ---------- | -------------------------- |
+| `:outer`   | Replace the target element (including itself) — Datastar default |
+| `:inner`   | Replace the target's children, keep the element |
+| `:replace` | Replace the target with the response, no morph diff |
+| `:prepend` | Insert the response as the target's first children |
+| `:append`  | Insert the response as the target's last children |
+| `:before`  | Insert the response immediately before the target |
+| `:after`   | Insert the response immediately after the target |
+| `:remove`  | Remove the target; the response body is ignored client-side |
+
+```julia
+# Replace just the children of #count without re-rendering the wrapper.
+fragment_response(span("3"); selector="#count", mode=:inner)
+```
+
+### `view_transition` — animate the swap
+
+```julia
+fragment_response(card_html; selector="#card", mode=:outer,
+                  view_transition=true)
+```
+
+`view_transition=true` adds `datastar-use-view-transition: true`, so
+the Datastar client wraps the DOM change in a
+[View Transition](https://developer.mozilla.org/en-US/docs/Web/API/View_Transitions_API).
+Default is `false` (header omitted).
 
 ## `signals_response`
 

@@ -149,6 +149,58 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test String(resp.body) == "<div>ok</div>"
     end
 
+    @testset "fragment_response kwarg form works without a selector" begin
+        # Why: the new API exposes mode/view_transition; a caller that wants
+        # `mode=:inner` but no selector should be able to skip it entirely.
+        resp = fragment_response(div("ok"))
+        h = Dict(lowercase(String(k)) => String(v) for (k, v) in resp.headers)
+        @test !haskey(h, "datastar-selector")
+        @test String(resp.body) == "<div>ok</div>"
+    end
+
+    @testset "fragment_response mode kwarg sets datastar-mode header" begin
+        for m in (:outer, :inner, :replace, :prepend, :append, :before, :after, :remove)
+            resp = fragment_response(div("x"); mode=m)
+            h = Dict(lowercase(String(k)) => String(v) for (k, v) in resp.headers)
+            @test h["datastar-mode"] == String(m)
+        end
+    end
+
+    @testset "fragment_response mode=nothing omits the datastar-mode header" begin
+        # Why: the Datastar default is `outer`; emitting nothing avoids a
+        # redundant header on the wire.
+        resp = fragment_response(div("x"))
+        h = Dict(lowercase(String(k)) => String(v) for (k, v) in resp.headers)
+        @test !haskey(h, "datastar-mode")
+    end
+
+    @testset "fragment_response rejects unknown mode symbols loud" begin
+        # Why: a typo like `:innner` would silently send a header the
+        # Datastar client ignores. Fail at call time, not at the browser.
+        @test_throws ArgumentError fragment_response(div("x"); mode=:bogus)
+    end
+
+    @testset "fragment_response view_transition=true sets the header" begin
+        resp = fragment_response(div("x"); view_transition=true)
+        h = Dict(lowercase(String(k)) => String(v) for (k, v) in resp.headers)
+        @test h["datastar-use-view-transition"] == "true"
+    end
+
+    @testset "fragment_response view_transition default omits the header" begin
+        resp = fragment_response(div("x"))
+        h = Dict(lowercase(String(k)) => String(v) for (k, v) in resp.headers)
+        @test !haskey(h, "datastar-use-view-transition")
+    end
+
+    @testset "fragment_response combines selector + mode + view_transition" begin
+        resp = fragment_response(div("x"); selector="#card", mode=:inner,
+                                  view_transition=true)
+        h = Dict(lowercase(String(k)) => String(v) for (k, v) in resp.headers)
+        @test h["datastar-selector"] == "#card"
+        @test h["datastar-mode"] == "inner"
+        @test h["datastar-use-view-transition"] == "true"
+    end
+
     @testset "redirect_via_fragment wraps a window.location script in the morph target" begin
         resp = redirect_via_fragment("#login-form", "/dashboard")
         body = String(resp.body)
