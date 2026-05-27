@@ -115,7 +115,7 @@ export cls, redirect_to
 export render
 export fragment_response, html_response, redirect_via_fragment
 export signals_response, script_response
-export sse_response, patch_elements, patch_signals
+export sse_response, sse_stream, patch_elements, patch_signals
 
 # SVG inlining (CairoMakie etc.)
 export patch_svg, inline_svg

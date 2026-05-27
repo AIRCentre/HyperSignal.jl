@@ -1,4 +1,4 @@
-using Test, HTTP, JSON, HyperSignal
+using Test, HTTP, JSON, Sockets, HyperSignal
 # Tags whose names overlap with Base (Base.div, Base.map, etc.) need an
 # explicit override at the use site — `using` skips them by design.
 # `@using_tags` is the one-liner; here we do it manually so the macro itself
@@ -394,6 +394,100 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test lines[1] == "event: datastar-patch-elements"
         data_lines = [chopprefix(l, "data: ") for l in lines if startswith(l, "data: ")]
         @test data_lines == ["selector #card", "mode inner", "elements <div>ok</div>"]
+    end
+
+    @testset "sse_stream" begin
+        # Helper: spin up a server with the given sse_stream handler, GET /,
+        # return (status, headers Dict, body String).
+        function _hit_stream(handler)
+            srv = HTTP.serve!(handler, Sockets.localhost, 0; stream=true)
+            try
+                port = Sockets.getsockname(srv.listener.server)[2]
+                resp = HTTP.get("http://127.0.0.1:$port/"; retry=false,
+                                decompress=false, status_exception=false)
+                h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+                return resp.status, h, String(resp.body)
+            finally
+                close(srv)
+            end
+        end
+
+        @testset "streams chunked text/event-stream with SSE headers" begin
+            handler = sse_stream() do writer
+                writer(patch_elements(div("ok"); selector="#card"))
+            end
+            status, h, _ = _hit_stream(handler)
+            @test status == 200
+            @test h["Content-Type"] == "text/event-stream; charset=utf-8"
+            @test h["Cache-Control"] == "no-cache"
+            @test get(h, "Transfer-Encoding", "") == "chunked"
+        end
+
+        @testset "emits each writer call as a separate SSE event in order" begin
+            handler = sse_stream() do writer
+                writer(patch_elements(div("step 1"); selector="#p", mode=:inner))
+                writer(patch_elements(div("step 2"); selector="#p", mode=:inner))
+                writer(patch_signals((; done=true)))
+            end
+            _, _, body = _hit_stream(handler)
+            events = split(body, "\n\n"; keepempty=false)
+            @test length(events) == 3
+            @test occursin("event: datastar-patch-elements", events[1])
+            @test occursin("data: elements <div>step 1</div>", events[1])
+            @test occursin("data: elements <div>step 2</div>", events[2])
+            @test occursin("event: datastar-patch-signals", events[3])
+            @test occursin("data: signals {\"done\":true}", events[3])
+        end
+
+        @testset "per-event body bytes match the buffered encoder" begin
+            # Why: streaming must encode each event identically to sse_response
+            # so a client cannot tell them apart by output bytes.
+            ev1 = patch_elements(div("ok"); selector="#card", mode=:inner)
+            ev2 = patch_signals((; n=3))
+            handler = sse_stream() do writer
+                writer(ev1); writer(ev2)
+            end
+            _, _, body = _hit_stream(handler)
+            expected = String(sse_response([ev1, ev2]).body)
+            @test body == expected
+        end
+
+        @testset "passes through status and extra headers" begin
+            handler = sse_stream(; status=202, headers=["X-Tag" => "v1"]) do writer
+                writer(patch_elements(div("ok")))
+            end
+            status, h, _ = _hit_stream(handler)
+            @test status == 202
+            @test h["X-Tag"] == "v1"
+            @test h["Content-Type"] == "text/event-stream; charset=utf-8"
+        end
+
+        @testset "handler with zero writes still completes with SSE headers" begin
+            handler = sse_stream() do writer
+                # no-op
+            end
+            status, h, body = _hit_stream(handler)
+            @test status == 200
+            @test h["Content-Type"] == "text/event-stream; charset=utf-8"
+            # Why: chunked transfer must be in effect even for a zero-write
+            # handler, so a trivial Response stub would not satisfy this.
+            @test get(h, "Transfer-Encoding", "") == "chunked"
+            @test body == ""
+        end
+
+        @testset "events written before f throws still reach the client" begin
+            # Why: streaming handlers may fail mid-task; the partial output
+            # already flushed must remain visible so a client sees progress
+            # up to the failure point rather than nothing at all.
+            handler = sse_stream() do writer
+                writer(patch_elements(div("progress 1"); selector="#p", mode=:inner))
+                writer(patch_elements(div("progress 2"); selector="#p", mode=:inner))
+                error("boom")
+            end
+            _, _, body = _hit_stream(handler)
+            @test occursin("data: elements <div>progress 1</div>", body)
+            @test occursin("data: elements <div>progress 2</div>", body)
+        end
     end
 
     @testset "the count_estimate_fragment migration produces equivalent HTML" begin

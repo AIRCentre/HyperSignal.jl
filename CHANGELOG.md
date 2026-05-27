@@ -15,6 +15,13 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   mode value and a `view_transition` example. (#17)
 
 ### Added
+- `sse_stream(f; status, headers)` — streaming SSE handler for
+  long-running tasks. Returns an HTTP.jl stream handler (use with
+  `HTTP.serve(...; stream=true)`); `f` receives a `writer` that
+  encodes a `patch_elements` / `patch_signals` event and flushes it
+  as one chunk so progress reaches the client in real time. Shares
+  the SSE encoder and headers with `sse_response`. Recipe in
+  `docs/src/datastar.md`. (#20)
 - `sse_response(events; status, headers)` plus the two event
   constructors `patch_elements(body; selector, mode, view_transition)`
   and `patch_signals(signals; only_if_missing)` — the buffered
