@@ -11,3 +11,4 @@
 .idea/
 .claude/
 .DS_Store
+/test/Manifest.toml
