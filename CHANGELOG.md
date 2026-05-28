@@ -15,6 +15,24 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   mode value and a `view_transition` example. (#17)
 
 ### Added
+- `HyperSignalMapLibreExt` — a reactive MapLibre map surface, gated on
+  the `GeoInterface` weakdep (top-level `HyperSignal` exports nothing
+  new; reach the API via `Base.get_extension`). Ships `map_view` and
+  `marker`; `geojson_source` / `raster_xyz_source`; `fill_layer` /
+  `line_layer` / `circle_layer` / `raster_layer`; the paint-expression
+  DSL (`prop_get`, `interpolate`/`linear`, `expr_step`, `expr_match`,
+  `literal`); a GeoInterface bridge (`geojson`, `feature_collection`);
+  and server-returned-JS helpers (`fly_to`, `add_source`,
+  `remove_source`, `set_source_data`, `add_layer`, `remove_layer`,
+  `set_paint_property`, `map_call`). Viewport/cursor channels bridge to
+  Datastar via `CustomEvent` + `data-on:*__window` attributes;
+  shift-drag posts a bbox, clicks post `queryRenderedFeatures`. Pinned
+  `maplibre-gl@5.24.0` (JS/CSS/LICENSE) is vendored under
+  `docs/src/notebooks/assets/maplibre/`; the basemap streams live from
+  `demotiles.maplibre.org`. `docs/src/notebooks/example.jl` is rewritten
+  as the SST map-as-input demo (fill polygons recolored via
+  `set_source_data`, drag-rect timeseries, camera nav via `fly_to`) and
+  `map_smoke.jl` is the CI smoke fixture. (#29)
 - `sse_stream(f; status, headers)` — streaming SSE handler for
   long-running tasks. Returns an HTTP.jl stream handler (use with
   `HTTP.serve(...; stream=true)`); `f` receives a `writer` that

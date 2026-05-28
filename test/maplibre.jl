@@ -22,7 +22,7 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
             # Why: every paint expression bottoms out in a property
             # lookup; getting the wire shape right is load-bearing for
             # every interpolate / step / match downstream.
-            ex = MapLibre.get(:mean_sst)
+            ex = MapLibre.prop_get(:mean_sst)
             @test JSON.json(ex) == "[\"get\",\"mean_sst\"]"
         end
 
@@ -48,7 +48,7 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
             # stop-input/stop-output as flat positional args after the
             # input expression.
             ex = MapLibre.interpolate(MapLibre.linear(),
-                                      MapLibre.get(:mean_sst),
+                                      MapLibre.prop_get(:mean_sst),
                                       15 => "#00f", 25 => "#f00")
             @test JSON.json(ex) == string(
                 "[\"interpolate\",[\"linear\"],[\"get\",\"mean_sst\"],",
@@ -60,7 +60,7 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
             # Why: step expressions take a leading default before the
             # threshold pairs — the order is fixed by MapLibre and easy
             # to invert; pin it.
-            ex = MapLibre.step(MapLibre.get(:value), "default",
+            ex = MapLibre.expr_step(MapLibre.prop_get(:value), "default",
                                10 => "low", 50 => "high")
             @test JSON.json(ex) == string(
                 "[\"step\",[\"get\",\"value\"],\"default\",",
@@ -71,7 +71,7 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
         @testset "match flattens label=>value pairs with a trailing default" begin
             # Why: match takes the default as the LAST positional arg in
             # MapLibre's wire form, not as a keyword — easy to get wrong.
-            ex = MapLibre.match(MapLibre.get(:kind),
+            ex = MapLibre.expr_match(MapLibre.prop_get(:kind),
                                 "vessel" => "#222", "buoy" => "#08f";
                                 default="#888")
             @test JSON.json(ex) == string(
@@ -84,7 +84,7 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
             # Why: GeoJSON properties with dots or unicode names can't be
             # spelled as Symbols at the call site — strings are the
             # fallback. The wire form is identical.
-            @test JSON.json(MapLibre.get("nested.path")) ==
+            @test JSON.json(MapLibre.prop_get("nested.path")) ==
                   "[\"get\",\"nested.path\"]"
         end
 
@@ -93,7 +93,7 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
             # before real data arrives; reject only the empty case (next
             # test). One pair must round-trip cleanly.
             ex = MapLibre.interpolate(MapLibre.linear(),
-                                      MapLibre.get(:x), 0 => "#fff")
+                                      MapLibre.prop_get(:x), 0 => "#fff")
             @test JSON.json(ex) ==
                   "[\"interpolate\",[\"linear\"],[\"get\",\"x\"],0,\"#fff\"]"
         end
@@ -102,14 +102,14 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
             # Why: an empty ramp is meaningless in MapLibre and renders
             # nothing — fail at build time, not silently at draw time.
             @test_throws ArgumentError MapLibre.interpolate(
-                MapLibre.linear(), MapLibre.get(:x))
+                MapLibre.linear(), MapLibre.prop_get(:x))
         end
 
         @testset "match requires a default — silent fallthroughs are a footgun" begin
             # Why: a match without a default silently returns null in
             # MapLibre, which paints the feature transparent — fail at
             # build time so the missing case is visible in the diff.
-            @test_throws ArgumentError MapLibre.match(MapLibre.get(:k),
+            @test_throws ArgumentError MapLibre.expr_match(MapLibre.prop_get(:k),
                                                       "a" => "#111")
         end
 
@@ -117,10 +117,10 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
             # Why: real expressions nest — `interpolate(…, get(:x), …, match(get(:k), …))`
             # is one composed paint value. Re-encoding must not flatten
             # the inner expression.
-            inner = MapLibre.match(MapLibre.get(:kind),
+            inner = MapLibre.expr_match(MapLibre.prop_get(:kind),
                                    "a" => "#111"; default="#222")
             outer = MapLibre.interpolate(MapLibre.linear(),
-                                         MapLibre.get(:x),
+                                         MapLibre.prop_get(:x),
                                          0 => inner, 1 => "#fff")
             parsed = JSON.parse(JSON.json(outer))
             @test parsed[1] == "interpolate"
@@ -200,7 +200,7 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
             # Why: the polygon ramp in the SST demo bottoms out in this
             # exact wire shape — `paint` carries the MapLibre array
             # expression we built up in the paint DSL cycle.
-            paint = Dict("fill-color" => MapLibre.get(:mean_sst),
+            paint = Dict("fill-color" => MapLibre.prop_get(:mean_sst),
                          "fill-opacity" => 0.7)
             lyr = MapLibre.fill_layer("cells"; source="grid", paint=paint)
             decoded = JSON.parse(JSON.json(lyr))
@@ -362,15 +362,20 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
                 HyperSignal.render(MapLibre.remove_layer(; id_prefix="m_", id="y")))
         end
 
-        @testset "set_source_data emits getSource(id).setData(data)" begin
+        @testset "set_source_data emits guarded getSource(id).setData(data)" begin
             # Why: this is the runtime data-swap path — must NOT replace
             # the source (which would lose any layers wired to it), only
             # update its data payload.
             data = Dict("type" => "FeatureCollection", "features" => [])
             js = HyperSignal.render(MapLibre.set_source_data(;
                 id_prefix="m_", source="grid", data=data))
-            @test occursin("getSource(\"grid\").setData({", js)
+            @test occursin("getSource(\"grid\").setData(d)", js)
             @test occursin("\"type\":\"FeatureCollection\"", js)
+            # Guard: applies now if the source exists, else defers to the
+            # one-shot `load` so a pre-load swap doesn't throw on undefined.
+            @test occursin("m.getSource(\"grid\")?", js)
+            @test occursin("m.once('load',f)", js)
+            @test !occursin("removeSource", js)
         end
 
         @testset "add_layer emits addLayer(spec) with the wire JSON" begin
@@ -387,7 +392,7 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
             # JSON encoding must flow through (not stringify).
             js = HyperSignal.render(MapLibre.set_paint_property(;
                 id_prefix="m_", layer="cells", prop="fill-color",
-                value=MapLibre.get(:mean_sst)))
+                value=MapLibre.prop_get(:mean_sst)))
             @test occursin(".setPaintProperty(\"cells\",\"fill-color\",", js)
             @test occursin("[\"get\",\"mean_sst\"]", js)
         end
@@ -529,6 +534,302 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
             @test occursin("data-lon=\"20.0\"", out)
             # auto-escaped, per HyperSignal safety model
             @test occursin("Hi &lt;b&gt;there&lt;/b&gt;", out)
+        end
+
+        @testset "init JS scans for [data-hs-marker] divs and creates real Markers" begin
+            # Why: before this cycle, marker() was dead scaffolding — it
+            # emitted data-attribute divs that no JS ever consumed.
+            # Shipping API surface that silently does nothing is worse
+            # than not shipping it. The init JS must now query the DOM
+            # for the prefix-matching markers, parse lat/lon, and hand
+            # them to `new maplibregl.Marker({element})`. Doing this
+            # inside `_m.on('load')` guarantees the canvas is mounted
+            # before MapLibre tries to attach the marker element.
+            body = match(r"<script[^>]*>(.*?)</script>"s,
+                         HyperSignal.render(MapLibre.map_view(;
+                             id_prefix="m_", center=(0.0, 0.0),
+                             zoom=2, style="/s.json"))).captures[1]
+            # Selector wraps `[data-hs-marker="m_"]`; JSON-encoding emits
+            # it as a double-quoted JS string with backslash-escaped
+            # inner quotes, which is what `JSON.json` produces.
+            @test occursin("document.querySelectorAll(\"[data-hs-marker=\\\"m_\\\"]\")",
+                           body)
+            @test occursin("new maplibregl.Marker", body)
+            @test occursin("setLngLat", body)
+            # parseFloat the data attributes; lat/lon as strings would
+            # break MapLibre's LngLat constructor silently.
+            @test occursin("parseFloat", body)
+            # Marker uses the element itself so HyperSignal-rendered
+            # children (auto-escaped) become the marker visual.
+            @test occursin(r"\{element\s*:", body)
+            # Loop over the NodeList — otherwise only the first marker
+            # would attach (and a hardcoded-string impl would still pass
+            # the syntactic checks above).
+            @test occursin(r"forEach|for\s*\(", body)
+
+            # Same shape, different id_prefix → the selector must
+            # carry the new prefix (proves the prefix isn't hardcoded).
+            body2 = match(r"<script[^>]*>(.*?)</script>"s,
+                          HyperSignal.render(MapLibre.map_view(;
+                              id_prefix="alt_", center=(0.0, 0.0),
+                              zoom=2, style="/s.json"))).captures[1]
+            @test occursin("[data-hs-marker=\\\"alt_\\\"]", body2)
+            @test !occursin("[data-hs-marker=\\\"m_\\\"]", body2)
+        end
+
+        @testset "marker scan is deferred until _m.on('load')" begin
+            # Why: an inline <script> runs synchronously while the
+            # parser is mid-document — any <div data-hs-marker>
+            # sibling appearing AFTER the script in source order is
+            # not yet in the DOM. The idiomatic call site is
+            # `div(map_view(...), marker(...), marker(...))`, so a
+            # non-deferred querySelectorAll would silently match zero
+            # markers in the common case. Wrap the scan in
+            # `_m.on('load')` (which fires asynchronously after the
+            # style fetch) so the parser has finished the document
+            # body by the time we query. Regex pins the scan call
+            # site to live inside a `_m.on('load',function(){...})`
+            # block — a top-level scan would not match.
+            body = match(r"<script[^>]*>(.*?)</script>"s,
+                         HyperSignal.render(MapLibre.map_view(;
+                             id_prefix="m_", center=(0.0, 0.0),
+                             zoom=2, style="/s.json"))).captures[1]
+            # Find the position of the marker selector and the
+            # nearest preceding `_m.on('load',` opener — the latter
+            # must come before the former with no intervening
+            # closing of the on('load') callback.
+            sel_idx = first(findfirst("document.querySelectorAll(\"[data-hs-marker=",
+                                      body))
+            prefix = body[1:sel_idx]
+            # The most recent `_m.on('load',function(){` before the
+            # selector must still be open (its matching `});` must
+            # appear AFTER the selector, not in the prefix).
+            on_load_count = length(collect(eachmatch(r"_m\.on\('load',function\(\)\{", prefix)))
+            @test on_load_count >= 1
+        end
+
+        @testset "marker popup HTML is the rendered Element tree, auto-escaped" begin
+            # Why: a popup is HTML — but the public arg may be a plain
+            # string (user input, must be escaped) or a HyperSignal
+            # Element (already escaped during render). Routing both
+            # through HyperSignal.render preserves the safety model:
+            # `<script>` in a string becomes `&lt;script&gt;`; a tag
+            # built via the DSL stays a real tag.
+            out = HyperSignal.render(MapLibre.marker("pin";
+                lat=0.0, lon=0.0, id_prefix="m_",
+                popup="<script>alert(1)</script>"))
+            # The popup HTML lands in data-popup; HyperSignal renders
+            # the string with escaping, then HTML-attribute-escapes the
+            # whole thing — so the literal `<` never reaches the DOM.
+            @test !occursin("<script>alert(1)</script>", out)
+            @test occursin("data-popup", out)
+            # Positively assert the escape happened (Yellow critique:
+            # the negative assertion alone could pass if popup were
+            # silently dropped). The double-escape is HTML-attribute
+            # escaping over HyperSignal's content escaping — the
+            # browser un-escapes once to read dataset.popup, then
+            # setHTML treats the result as HTML, which is the safe
+            # escaped form `&lt;script&gt;…&lt;/script&gt;`.
+            @test occursin("&amp;lt;script&amp;gt;", out)
+
+            # And the init JS must wire setPopup with setHTML using the
+            # marker's data-popup payload — otherwise the attribute is
+            # decorative noise.
+            body = match(r"<script[^>]*>(.*?)</script>"s,
+                         HyperSignal.render(MapLibre.map_view(;
+                             id_prefix="m_", center=(0.0, 0.0),
+                             zoom=2, style="/s.json"))).captures[1]
+            @test occursin("setPopup", body)
+            @test occursin("maplibregl.Popup", body)
+            @test occursin("setHTML", body)
+        end
+    end
+
+    # ----------------------------------------------------------------
+    # Runtime-JS regression — the emitted <script> body must be plain
+    # JavaScript. Datastar's `@post(...)` and `ctx.$signal` tokens are
+    # only legal inside Datastar attribute-expression context; leaking
+    # them into a <script> body produced a SyntaxError on `@` and a
+    # ReferenceError on `ctx`. We assert by string inspection (no
+    # external `node` dep) — sufficient to catch this regression class.
+    # ----------------------------------------------------------------
+
+    _script_body(out) = match(r"<script[^>]*>(.*?)</script>"s, out).captures[1]
+
+    @testset "Datastar bridge (props down, events up)" begin
+        out = HyperSignal.render(MapLibre.map_view(;
+            id_prefix="m_",
+            center=(0.0, 0.0), zoom=2,
+            style="/s.json",
+            center_signal="map_center",
+            zoom_signal="map_zoom",
+            bounds_signal="map_bounds",
+            cursor_signal="map_cursor",
+            click_post="/api/click",
+            click_layers=["cells"],
+            bbox_post="/api/bbox"))
+        js = _script_body(out)
+
+        @testset "no leaked Datastar attribute-expression tokens in the script body" begin
+            # Why: `@post(...)` and `ctx.\$signal` are Datastar's
+            # attribute-expression sugar; inside a <script> body they
+            # raise SyntaxError / ReferenceError. The script must stay
+            # plain JS and bridge to Datastar via CustomEvents.
+            @test !occursin("@post(", js)
+            @test !occursin("@get(", js)
+            @test !occursin("ctx.\$", js)
+        end
+
+        @testset "script dispatches one CustomEvent per channel on document" begin
+            # Why: per the canonical Datastar pattern ("props down,
+            # events up"), external scripts dispatch CustomEvents that
+            # data-on:* attribute expressions catch and translate into
+            # signal writes / @post calls. Event names are namespaced
+            # by id_prefix so multiple maps on a page don't collide.
+            @test occursin("CustomEvent(\"hs-m_center\"", js)
+            @test occursin("CustomEvent(\"hs-m_zoom\"", js)
+            @test occursin("CustomEvent(\"hs-m_bounds\"", js)
+            @test occursin("CustomEvent(\"hs-m_cursor\"", js)
+            @test occursin("CustomEvent(\"hs-m_click\"", js)
+            @test occursin("CustomEvent(\"hs-m_bbox\"", js)
+            @test occursin("document.dispatchEvent", js)
+        end
+
+        @testset "dispatched CustomEvents bubble to the window listener" begin
+            # Why: the data-on:*__window listeners Datastar installs live
+            # on `window`. An event dispatched on `document` only reaches
+            # `window` by bubbling, so every channel needs bubbles:true —
+            # without it the cursor/viewport/click/bbox bridge silently
+            # no-ops. (Caught by an in-browser run; regression-guarded here.)
+            @test occursin("bubbles:true", js)
+            @test !occursin("CustomEvent(\"hs-m_cursor\",{detail:[e.lngLat.lng,e.lngLat.lat]})", js)
+        end
+
+        @testset "container div carries matching data-on:*__window listeners" begin
+            # Why: each script-side CustomEvent must have a Datastar
+            # expression listening for it. moveend/mousemove channels
+            # assign to \$signal; click/bbox set \$_payload and @post.
+            @test occursin("data-on:hs-m_center__window=\"\$map_center = evt.detail\"", out)
+            @test occursin("data-on:hs-m_zoom__window=\"\$map_zoom = evt.detail\"", out)
+            @test occursin("data-on:hs-m_bounds__window=\"\$map_bounds = evt.detail\"", out)
+            @test occursin("data-on:hs-m_cursor__window=\"\$map_cursor = evt.detail\"", out)
+            @test occursin("data-on:hs-m_click__window=", out)
+            @test occursin("@post(&#39;/api/click&#39;)", out)
+            @test occursin("data-on:hs-m_bbox__window=", out)
+            @test occursin("@post(&#39;/api/bbox&#39;)", out)
+        end
+
+        @testset "window.__hs_maps is lazily initialised before assignment" begin
+            # Why: `window.__hs_maps['m_']=_m` on a fresh page would
+            # throw TypeError if __hs_maps weren't created first.
+            @test occursin("window.__hs_maps=window.__hs_maps||{}", js)
+        end
+
+        @testset "bbox handler disables MapLibre's built-in boxZoom and listens on document" begin
+            # Why: shift-drag also fires MapLibre's default boxZoom; we
+            # need to disable it. Mouseup on `document` (not canvas) so
+            # an off-canvas release still completes the gesture.
+            @test occursin("boxZoom", js)
+            @test occursin(".disable()", js)
+            @test occursin("document.addEventListener('mouseup'", js)
+        end
+
+        @testset "shift-click without drag does not fire bbox" begin
+            # Why: a bare shift-mousedown immediately followed by a
+            # shift-mouseup at the same screen point would otherwise
+            # post a degenerate `w==e && s==n` bbox — almost certainly
+            # an accidental modifier press, never a real user gesture.
+            # We expect the handler to record the mousedown screen
+            # coords and short-circuit on mouseup when the drag distance
+            # is below a small pixel threshold.
+            out = HyperSignal.render(MapLibre.map_view(;
+                id_prefix="m_", center=(0.0, 0.0), zoom=2, style="/s.json",
+                bbox_post="/api/bbox"))
+            body = _script_body(out)
+            # The handler must remember the mousedown screen-space point
+            # so it can measure the drag distance on mouseup.
+            @test occursin(r"_bs_x\s*=\s*e\.(offset|client)X", body)
+            @test occursin(r"_bs_y\s*=\s*e\.(offset|client)Y", body)
+            # The dispatch must be guarded by a per-axis pixel-threshold
+            # comparison against the recorded mousedown coords — a no-op
+            # threshold (e.g. `Math.abs(0) < 3`) would pass a regex but
+            # not protect anything, so the regex pins both abs() args to
+            # actually reference _bs_x / _bs_y.
+            @test occursin(
+                r"Math\.abs\([^)]*-\s*_bs_x[^)]*\)\s*[<>]=?\s*\d", body)
+            @test occursin(
+                r"Math\.abs\([^)]*-\s*_bs_y[^)]*\)\s*[<>]=?\s*\d", body)
+        end
+
+        @testset "opting out of signals/posts emits no listeners" begin
+            # Why: a bare map_view should not leak data-on:* attrs that
+            # would post to undefined URLs or write phantom signals.
+            bare = HyperSignal.render(MapLibre.map_view(;
+                id_prefix="m_", center=(0.0, 0.0), zoom=2, style="/s.json"))
+            @test !occursin("data-on:hs-m_", bare)
+            @test !occursin("CustomEvent(", _script_body(bare))
+        end
+    end
+
+    @testset "click_post/bbox_post URLs survive a single-quote / backslash" begin
+        # Why: the data-on:hs-*click__window attribute embeds the URL
+        # inside a single-quoted JS string (`@post('<url>')`). A naive
+        # interpolation breaks the JS as soon as the URL contains `'`
+        # or `\` — turning a developer typo into a silent runtime
+        # SyntaxError, or, with caller-controlled URLs, code injection.
+        # We assert the JS-level escape happens *before* HTML escaping:
+        # `'` must render as `\&#39;` (backslash + HTML-escaped quote),
+        # so the browser un-escapes the attribute to `\'` — a valid
+        # escaped quote inside the JS string literal.
+        out = HyperSignal.render(MapLibre.map_view(;
+            id_prefix="m_", center=(0.0, 0.0), zoom=2, style="/s.json",
+            click_post="/api/click'oops",
+            bbox_post="/api/bbox\\here"))
+        @test occursin("@post(&#39;/api/click\\&#39;oops&#39;)", out)
+        @test occursin("@post(&#39;/api/bbox\\\\here&#39;)", out)
+
+        # Mixed `\'` requires backslash-first ordering: a naive
+        # quote-then-backslash pass would produce `\\\` + un-escaped `'`.
+        mixed = HyperSignal.render(MapLibre.map_view(;
+            id_prefix="m_", center=(0.0, 0.0), zoom=2, style="/s.json",
+            click_post="/x\\'y"))
+        @test occursin("@post(&#39;/x\\\\\\&#39;y&#39;)", mixed)
+
+        # Raw CR/LF inside a single-quoted JS string literal is a
+        # SyntaxError — must be escaped to `\r`/`\n` before HTML escape.
+        # U+2028/U+2029 escaped defensively for older JS engines.
+        nl = HyperSignal.render(MapLibre.map_view(;
+            id_prefix="m_", center=(0.0, 0.0), zoom=2, style="/s.json",
+            click_post="/a\nb",
+            bbox_post="/c\rd"))
+        @test occursin("@post(&#39;/a\\nb&#39;)", nl)
+        @test occursin("@post(&#39;/c\\rd&#39;)", nl)
+        @test !occursin("/a\nb", nl)  # raw LF must NOT survive into the attr
+        @test !occursin("/c\rd", nl)
+
+        para = HyperSignal.render(MapLibre.map_view(;
+            id_prefix="m_", center=(0.0, 0.0), zoom=2, style="/s.json",
+            click_post="/a b c"))
+        @test occursin("@post(&#39;/a\\u2028b\\u2029c&#39;)", para)
+    end
+
+    @testset "Identifier escaping in JS helpers" begin
+        @testset "add_source JSON-escapes the id slot" begin
+            # Why: id flows into a JS string literal. A naive `\"\$id\"`
+            # interpolation breaks on any id containing `\"` or `\\`,
+            # turning a benign caller mistake into a JS parse error
+            # (or, with attacker-controlled ids, code injection).
+            src = MapLibre.geojson_source(Dict("type"=>"FeatureCollection","features"=>[]))
+            js = HyperSignal.render(MapLibre.add_source(;
+                id_prefix="m_", id="a\"b", spec=src))
+            @test occursin("\"a\\\"b\"", js)
+        end
+
+        @testset "set_paint_property JSON-escapes layer and prop" begin
+            js = HyperSignal.render(MapLibre.set_paint_property(;
+                id_prefix="m_", layer="a\"b", prop="c\\d", value=1))
+            @test occursin("\"a\\\"b\"", js)
+            @test occursin("\"c\\\\d\"", js)
         end
     end
 end
