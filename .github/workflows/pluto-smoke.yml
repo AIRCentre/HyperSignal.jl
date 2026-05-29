@@ -10,8 +10,10 @@ on:
     branches: [main]
     paths:
       - 'src/**'
+      - 'ext/**'
       - 'docs/src/notebooks/smoke.jl'
       - 'docs/src/notebooks/datastar_responses.jl'
+      - 'docs/src/notebooks/map_smoke.jl'
       - '.github/scripts/pluto_smoke.jl'
       - '.github/workflows/pluto-smoke.yml'
   pull_request:
@@ -34,8 +36,10 @@ jobs:
           filters: |
             relevant:
               - 'src/**'
+              - 'ext/**'
               - 'docs/src/notebooks/smoke.jl'
               - 'docs/src/notebooks/datastar_responses.jl'
+              - 'docs/src/notebooks/map_smoke.jl'
               - '.github/scripts/pluto_smoke.jl'
               - '.github/workflows/pluto-smoke.yml'
               - 'Project.toml'

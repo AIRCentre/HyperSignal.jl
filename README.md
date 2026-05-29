@@ -352,8 +352,14 @@ picks up the `text/html` MIME. No `render(...)` boilerplate per cell.
 ## Running the tests
 
 ```bash
-julia --project=. -e 'using Pkg; Pkg.test()'
+julia --project=test test/runtests.jl
 ```
+
+`Pkg.test()` works too, but spawns a subprocess with non-default flags
+(`--check-bounds=yes`, …) that force a separate precompile-cache slot —
+so `Makie`/`CairoMakie` re-precompile (~49s) on every switch between
+`Pkg.test` and a normal REPL. Running `runtests.jl` directly reuses the
+warm cache (~12s end-to-end vs. ~110s). CI keeps using `Pkg.test`.
 
 ## Benchmarks
 

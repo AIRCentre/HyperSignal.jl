@@ -72,3 +72,21 @@ if !isempty(errored)
 end
 println("pluto smoke ok: datastar_responses.jl ran clean")
 Pluto.SessionActions.shutdown(session, responses_nb)
+
+# MapLibre extension smoke: verify that loading GeoInterface activates
+# HyperSignalMapLibreExt and the load-bearing API surfaces (`map_view`,
+# `geojson`) evaluate without erroring. A regression in the extension
+# would flip these cells red.
+map_smoke_path = abspath(joinpath(@__DIR__, "..", "..",
+                                   "docs", "src", "notebooks",
+                                   "map_smoke.jl"))
+map_smoke_nb = Pluto.SessionActions.open(session, map_smoke_path; run_async=false)
+errored = filter(c -> c.errored, map_smoke_nb.cells)
+if !isempty(errored)
+    for c in errored
+        println(stderr, "errored cell ($(c.cell_id)): $(c.output.body)")
+    end
+    error("$(length(errored)) cell(s) errored in $map_smoke_path")
+end
+println("pluto smoke ok: map_smoke.jl ran clean")
+Pluto.SessionActions.shutdown(session, map_smoke_nb)

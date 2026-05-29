@@ -1,4 +1,6 @@
 using Test, HTTP, JSON, Sockets, HyperSignal
+
+include("maplibre.jl")
 # Tags whose names overlap with Base (Base.div, Base.map, etc.) need an
 # explicit override at the use site — `using` skips them by design.
 # `@using_tags` is the one-liner; here we do it manually so the macro itself
