@@ -147,10 +147,35 @@ struct Element
     children::Vector{Any}
 end
 
+# Collapse duplicate attribute names so each name is emitted exactly once,
+# with the LAST value winning. This is load-bearing, not cosmetic: the
+# HTML5 parser keeps the FIRST of duplicate attributes and drops the rest
+# (§13.2.5.33), so emitting `class="a" class="b"` would silently apply
+# "a" — the opposite of the override a caller expects when they pass an
+# attribute twice (e.g. `button(on_click(a), on_click(b))` meaning b). We
+# resolve it at the source instead: keep the first-seen position (stable
+# order) but overwrite with the latest value. O(n) via a name→slot map, so
+# the 2000-attribute element stays cheap.
+function _dedup_attrs(attrs::Vector{Pair{Symbol, Any}})
+    length(attrs) < 2 && return attrs
+    slot = Dict{Symbol, Int}()
+    out = Pair{Symbol, Any}[]
+    for (k, v) in attrs
+        i = get(slot, k, 0)
+        if i == 0
+            push!(out, k => v)
+            slot[k] = lastindex(out)
+        else
+            out[i] = k => v   # later wins: same position, newest value
+        end
+    end
+    length(out) == length(attrs) ? attrs : out
+end
+
 # Internal builder. Positional args are children unless they're Attributes
 # (which become attrs); keyword args are always attrs. Order: kwarg attrs
-# first, then any positional Attributes — later wins on collision (HTML's
-# default behaviour anyway, but we keep the order stable).
+# first, then any positional Attributes. Duplicate names collapse via
+# _dedup_attrs (later wins) so the emitted tag carries each attribute once.
 function _make_element(tag::Symbol, args::Tuple, kwargs)
     children = Any[]
     attrs = Pair{Symbol, Any}[Symbol(k) => v for (k, v) in pairs(kwargs)]
@@ -198,7 +223,7 @@ function _make_element(tag::Symbol, args::Tuple, kwargs)
             push!(children, a)
         end
     end
-    Element(tag, attrs, children)
+    Element(tag, _dedup_attrs(attrs), children)
 end
 
 # Generate a constructor for each common HTML tag.

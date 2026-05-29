@@ -146,11 +146,24 @@ String(take!(io))   # "<h1>Hello, world</h1>"
 """
 function render(io::IO, e::Element)
     _check_tag_name(e.tag)
+    # A void element (br, img, input, …) has no content model: a closing
+    # tag is invalid HTML5, and a browser reparents any "children" as
+    # SIBLING nodes — so `<input>x</input>` round-trips to `<input>` plus a
+    # stray text node, diverging the server HTML from the client DOM and
+    # breaking Datastar's idempotent morph. Children here are always a
+    # caller mistake; fail loud (before writing any bytes) rather than emit
+    # silently-broken markup. (`nothing` args are dropped at construction,
+    # so `br(nothing)` still renders fine.)
+    if is_void(e.tag) && !isempty(e.children)
+        throw(ArgumentError(
+            "HyperSignal: void element <$(e.tag)> cannot have children " *
+            "(got $(length(e.children))); void elements take attributes only"))
+    end
     print(io, "<", e.tag)
     for (k, v) in e.attrs
         _render_attr(io, k, v)
     end
-    if is_void(e.tag) && isempty(e.children)
+    if is_void(e.tag)
         print(io, ">")
         return nothing
     end

@@ -280,6 +280,92 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
             @test decoded["coordinates"][1][end] == [0.0, 0.0]
         end
 
+        MPt = GeoInterface.Wrappers.MultiPoint
+        MLS = GeoInterface.Wrappers.MultiLineString
+        MPoly = GeoInterface.Wrappers.MultiPolygon
+        GC = GeoInterface.Wrappers.GeometryCollection
+
+        @testset "geojson(MultiPoint) emits an array of positions" begin
+            # Why: scattered station/sensor sets arrive as MultiPoint; a
+            # bare MethodError on the internal _geojson used to be the
+            # only outcome.
+            out = MapLibre.geojson(MPt([(0.0, 0.0), (1.0, 1.0)]))
+            @test JSON.parse(JSON.json(out)) ==
+                  Dict("type" => "MultiPoint",
+                       "coordinates" => [[0.0, 0.0], [1.0, 1.0]])
+        end
+
+        @testset "geojson(MultiLineString) nests one level past LineString" begin
+            out = MapLibre.geojson(MLS([[(0.0, 0.0), (1.0, 1.0)],
+                                        [(2.0, 2.0), (3.0, 3.0)]]))
+            @test JSON.parse(JSON.json(out)) ==
+                  Dict("type" => "MultiLineString",
+                       "coordinates" => [[[0.0, 0.0], [1.0, 1.0]],
+                                         [[2.0, 2.0], [3.0, 3.0]]])
+        end
+
+        @testset "geojson(MultiPolygon) wraps each polygon's rings" begin
+            # Why: this is the load-bearing one — coastlines / EEZ
+            # boundaries / marine protected areas are MultiPolygons. The
+            # wire form is array-of-polygons, each array-of-rings, each
+            # array-of-positions: four levels deep, easy to under/over-nest.
+            sq(o) = [[(o + 0.0, 0.0), (o + 1.0, 0.0), (o + 1.0, 1.0),
+                      (o + 0.0, 1.0), (o + 0.0, 0.0)]]
+            out = MapLibre.geojson(MPoly([sq(0.0), sq(2.0)]))
+            decoded = JSON.parse(JSON.json(out))
+            @test decoded["type"] == "MultiPolygon"
+            @test length(decoded["coordinates"]) == 2        # two polygons
+            @test length(decoded["coordinates"][1]) == 1      # one ring each
+            @test length(decoded["coordinates"][1][1]) == 5   # closed ring
+            @test decoded["coordinates"][2][1][1] == [2.0, 0.0]  # 2nd offset
+        end
+
+        @testset "geojson(GeometryCollection) recurses through its members" begin
+            out = MapLibre.geojson(GC([Pt((1.0, 2.0)),
+                                       LS([(0.0, 0.0), (1.0, 1.0)])]))
+            decoded = JSON.parse(JSON.json(out))
+            @test decoded["type"] == "GeometryCollection"
+            @test decoded["geometries"][1] ==
+                  Dict("type" => "Point", "coordinates" => [1.0, 2.0])
+            @test decoded["geometries"][2]["type"] == "LineString"
+        end
+
+        @testset "feature_collection carries a MultiPolygon geometry column" begin
+            # Why: the common real case — a table of regions whose geometry
+            # is a MultiPolygon — must flow through feature_collection, not
+            # just single Points.
+            sq(o) = [[(o + 0.0, 0.0), (o + 1.0, 0.0), (o + 1.0, 1.0),
+                      (o + 0.0, 1.0), (o + 0.0, 0.0)]]
+            rows = [(geom=MPoly([sq(0.0), sq(2.0)]), name="region")]
+            fc = MapLibre.feature_collection(rows; geometry_col=:geom,
+                                             properties_cols=(:name,))
+            decoded = JSON.parse(JSON.json(fc))
+            @test decoded["features"][1]["geometry"]["type"] == "MultiPolygon"
+            @test decoded["features"][1]["properties"]["name"] == "region"
+        end
+
+        @testset "feature_collection emits null geometry for missing/nothing rows" begin
+            # Why: GeoJSON (RFC 7946 §3.2) allows a Feature's geometry to
+            # be null, and real feature tables carry rows that failed
+            # geocoding. One null-geometry row must not crash the whole
+            # collection — it serializes to `"geometry":null` while the
+            # valid rows still convert.
+            rows = [(geom=Pt((1.0, 2.0)), name="a"),
+                    (geom=missing, name="b"),
+                    (geom=nothing, name="c")]
+            fc = MapLibre.feature_collection(rows; geometry_col=:geom,
+                                             properties_cols=(:name,))
+            decoded = JSON.parse(JSON.json(fc))
+            @test decoded["features"][1]["geometry"] ==
+                  Dict("type" => "Point", "coordinates" => [1.0, 2.0])
+            @test decoded["features"][2]["geometry"] === nothing
+            @test decoded["features"][3]["geometry"] === nothing
+            # Properties on a null-geometry feature still survive.
+            @test decoded["features"][2]["properties"]["name"] == "b"
+            # The wire form is literal JSON null, not the string "nothing".
+            @test occursin("\"geometry\":null", JSON.json(fc))
+        end
+
         @testset "feature_collection builds a {type, features} envelope" begin
             # Why: this is the input shape `geojson_source` expects when
             # given a Dict. Every row becomes a Feature with geometry +
