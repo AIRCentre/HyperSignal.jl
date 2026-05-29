@@ -27,8 +27,18 @@ html_response(page)
 
 ## Install
 
-```julia
-] add https://github.com/AIRCentre/HyperSignal.jl
+```@eval
+using Markdown
+# On a tagged-version docs build the registered package is the right
+# install. The `dev` docs track unreleased `main`, which can be ahead of
+# the registry, so they point at the Git URL instead.
+tagged = startswith(get(ENV, "GITHUB_REF", ""), "refs/tags/")
+prose = tagged ?
+    "HyperSignal is registered in Julia's General registry — install it with:" :
+    "These are the development docs for the unreleased `main`. Install the latest commit with:"
+cmd = tagged ? "] add HyperSignal" :
+               "] add https://github.com/AIRCentre/HyperSignal.jl"
+Markdown.MD(Markdown.parse(prose).content..., Markdown.Code("julia", cmd))
 ```
 
 ## Design in one paragraph
