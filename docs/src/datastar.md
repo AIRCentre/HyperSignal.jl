@@ -10,10 +10,10 @@ of four response `Content-Type`s coming back from a handler:
 | `text/html; charset=utf-8` | [`html_response`](@ref) / [`fragment_response`](@ref) | Full page or morph-target HTML |
 | `application/json; charset=utf-8` | [`signals_response`](@ref) | Patch JSON signals |
 | `text/javascript; charset=utf-8` | [`script_response`](@ref) | Append a `<script>` tag and run it |
-| `text/event-stream` | _(future — see open issues)_ | Buffered or streaming SSE |
+| `text/event-stream` | [`sse_response`](@ref) / [`sse_stream`](@ref) | Buffered or streaming SSE |
 
-This page documents the non-streaming HTML / JSON / JS shapes. SSE
-lands in a follow-up.
+This page documents all four shapes: the non-streaming HTML / JSON / JS
+responses first, then the buffered and streaming SSE forms.
 
 ## `fragment_response` — HTML morph
 
