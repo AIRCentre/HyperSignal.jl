@@ -58,6 +58,41 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the Datastar protocol/client version HyperSignal targets. Examples
   reference the constant instead of hard-coding the literal so future
   bumps land as a single visible diff.
+- GeoJSON support for `MultiPoint` / `MultiLineString` / `MultiPolygon` /
+  `GeometryCollection` in the MapLibre `GeoInterface` bridge — previously
+  only Point/Line/Polygon were handled and everything else hit a bare
+  `MethodError` (MultiPolygon is coastline / EEZ-boundary data, core to an
+  ocean org). Unsupported traits now raise a named `ArgumentError`.
+  `feature_collection` emits `"geometry": null` (GeoJSON RFC 7946 §3.2) for
+  rows whose geometry is missing/`nothing` instead of crashing the whole
+  collection. (#39)
+
+### Fixed
+- **Void elements given children now throw** (`br`, `img`, `input`, …)
+  instead of emitting invalid `<br>x</br>`. Browsers reparent such
+  "children" as siblings, diverging the server HTML from the client DOM and
+  breaking Datastar's morph idempotency; the error fires before any bytes are
+  written, matching the existing tag/attr-name validation. (#39)
+- **Duplicate attribute names now collapse last-wins** via `_dedup_attrs`
+  (stable first position, last value). HTML5 §13.2.5.33 keeps the *first*
+  duplicate, so the previous double-emit silently used the earlier value,
+  defeating the library's documented "later wins" intent. (#39)
+- `patch_svg`'s root-tag rewrite resumes past the matched `<svg>` by
+  `ncodeunits` (bytes) rather than `length` (chars); a multi-byte UTF-8
+  character inside the tag had been re-emitting a stray `>`. (#39)
+- The SSE encoder now treats CR and CRLF as line terminators alongside LF
+  (per the EventSource spec) — a lone CR previously truncated a data line
+  silently. (#39)
+
+### Security
+- `patch_svg`'s `add_class` is now attribute-escaped in `_patch_root_svg`.
+  An unescaped `"` closed the `class="…"` attribute and injected attributes
+  onto the root `<svg>` (e.g. `add_class='x" onload="alert(1)'`) — now
+  symmetric with the already-escaped `aria_label`. (#39)
+- `action_js` now JS-string-escapes the URL, not just `extras` values; a raw
+  `'` from an unencoded query param closed the JS string and broke the
+  action. The escape is factored into `_js_str_escape`, reused by `_js_value`
+  and `response.jl`'s `_js_escape` (one source of truth). (#39)
 
 ## 0.2.0 — 2026-05-26
 
