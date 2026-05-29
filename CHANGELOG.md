@@ -5,6 +5,30 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+## 0.3.1 — 2026-05-29
+
+Documentation-only release; no code changes since 0.3.0.
+
+### Docs
+- New **MapLibre** guide (`docs/src/maplibre.md`, added to the nav)
+  covering the 0.3.0 extension end to end: loading the weakdep-gated
+  extension, `map_view` / `marker`, sources, layers, the
+  paint-expression DSL, the GeoInterface bridge, and the
+  server-returned JS helpers. The extension shipped in 0.3.0 with no
+  docs page.
+- `api.md` now indexes `sse_stream` and `DATASTAR_SUPPORTED_VERSION`
+  (both exported in 0.3.0 but previously only `@ref`'d, leaving the
+  cross-references dangling); `security.md` documents that
+  `patch_svg`'s `add_class` / `aria_label` are attribute-escaped onto
+  the root `<svg>`.
+- Fixed stale copy: the home page described CairoMakie-only support and
+  the pre-0.3.0 slider demo; the Datastar page's response table called
+  SSE a "future" shape though `sse_response` / `sse_stream` are already
+  documented there.
+- The Install snippet is now build-context-aware — tagged-version docs
+  show `] add HyperSignal` (registered in General), while the `dev`
+  docs keep the Git-URL install for unreleased `main`.
+
 ## 0.3.0 — 2026-05-29
 
 ### Changed
