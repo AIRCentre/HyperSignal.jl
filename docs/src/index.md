@@ -1,7 +1,8 @@
 # HyperSignal.jl
 
 Datastar-flavored HTML for Julia, with front-row support for inlining
-CairoMakie figures into your pages.
+CairoMakie figures and driving interactive MapLibre maps from your
+pages.
 
 Compatible with Datastar v1.0.1.
 
@@ -44,12 +45,18 @@ user input.
 ## Where next
 
 - [CairoMakie inlining](cairomakie.md) — drop figures into pages.
+- [MapLibre maps](maplibre.md) — render a map and drive it from the
+  server: viewport / cursor / click / drag-box as signals, recolor and
+  fly back with JS snippets.
+- [Datastar response shapes](datastar.md) — the HTML / JSON / JS / SSE
+  responses a handler returns.
 - [API reference](api.md) — every exported name, with examples.
 - [`example.jl`](https://github.com/AIRCentre/HyperSignal.jl/blob/main/docs/src/notebooks/example.jl)
   — a runnable Pluto notebook: NOAA ERSSTv5 North Atlantic SST loaded
-  from a vendored netCDF, five Datastar-bound sliders, and a local Julia
-  HTTP route that slices, smooths, and re-renders the figures with
-  CairoMakie on every drag.
+  from a vendored netCDF, rendered as a MapLibre map of per-cell mean
+  SST. Date sliders `@post` a range and get a `set_source_data` recolor
+  back; a shift-drag box posts `{w, s, e, n}` and gets a CairoMakie
+  timeseries.
   [`smoke.jl`](https://github.com/AIRCentre/HyperSignal.jl/blob/main/docs/src/notebooks/smoke.jl)
   is the thin fixture the [`pluto-smoke`](https://github.com/AIRCentre/HyperSignal.jl/blob/main/.github/workflows/pluto-smoke.yml)
   CI workflow asserts on.
