@@ -33,10 +33,17 @@ fragment_response
 signals_response
 script_response
 sse_response
+sse_stream
 patch_elements
 patch_signals
 redirect_via_fragment
 redirect_to
+```
+
+## Version pinning
+
+```@docs
+DATASTAR_SUPPORTED_VERSION
 ```
 
 ## Datastar actions
