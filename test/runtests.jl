@@ -40,10 +40,23 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test_throws ArgumentError render(hr(span("a")))
         @test_throws ArgumentError render(img(src="x.png", "alt-as-child"))
         @test_throws ArgumentError render(Element(:wbr, Pair{Symbol,Any}[], Any["c"]))
-        # `nothing` args are dropped at construction, so the conditional
-        # idiom `br(cond && x)` collapsing to no child still renders.
+        # A numeric/empty-string child is still content → still rejected.
+        @test_throws ArgumentError render(br(0))
+        @test_throws ArgumentError render(br(""))
+        # No-output children must NOT throw: `nothing` is dropped at
+        # construction, and `Bool`/`missing` render to nothing — so the
+        # conditional idiom `br(cond && extra)` (which collapses to bare
+        # `false`, a Bool, when cond is false) still renders `<br>`.
         @test render(br(nothing)) == "<br>"
         @test render(input(type="text", nothing)) == "<input type=\"text\">"
+        @test render(br(false)) == "<br>"
+        @test render(br(true)) == "<br>"
+        @test render(br(missing)) == "<br>"
+        let show_extra = false
+            @test render(br(show_extra && "x")) == "<br>"   # cond && extra → false
+        end
+        # Mixed skip-only children also pass.
+        @test render(img(src="x.png", nothing, false, missing)) == "<img src=\"x.png\">"
         # No partial bytes are written before the error (check precedes
         # the open-tag write), so a failed render leaves the IO clean.
         io = IOBuffer()

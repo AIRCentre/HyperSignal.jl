@@ -144,20 +144,33 @@ render(io, h1("Hello, world"))
 String(take!(io))   # "<h1>Hello, world</h1>"
 ```
 """
+# A child "produces content" unless it's one of the no-output skip types
+# (`Bool`/`Nothing`/`Missing`) that `render` deliberately emits nothing for
+# — the residue of the `cond && extra` conditional idiom. Used to decide
+# whether a void element was handed real content (a mistake) vs. a harmless
+# skip value.
+_is_content_child(c) = !(c isa Bool || c === nothing || c === missing)
+
 function render(io::IO, e::Element)
     _check_tag_name(e.tag)
     # A void element (br, img, input, …) has no content model: a closing
     # tag is invalid HTML5, and a browser reparents any "children" as
     # SIBLING nodes — so `<input>x</input>` round-trips to `<input>` plus a
     # stray text node, diverging the server HTML from the client DOM and
-    # breaking Datastar's idempotent morph. Children here are always a
-    # caller mistake; fail loud (before writing any bytes) rather than emit
-    # silently-broken markup. (`nothing` args are dropped at construction,
-    # so `br(nothing)` still renders fine.)
-    if is_void(e.tag) && !isempty(e.children)
+    # breaking Datastar's idempotent morph. Real content is always a caller
+    # mistake; fail loud (before writing any bytes) rather than emit
+    # silently-broken markup.
+    #
+    # But no-output children must pass: `Bool`/`nothing`/`missing` all
+    # render to nothing (see the methods below), and the documented
+    # conditional idiom `tag(cond && extra)` collapses to bare `false` (a
+    # Bool, NOT `nothing`) when `cond` is false. So `br(cond && extra)` must
+    # still render `<br>`, not throw — only a child that would emit bytes
+    # counts as content here.
+    if is_void(e.tag) && any(_is_content_child, e.children)
         throw(ArgumentError(
-            "HyperSignal: void element <$(e.tag)> cannot have children " *
-            "(got $(length(e.children))); void elements take attributes only"))
+            "HyperSignal: void element <$(e.tag)> cannot have content children; " *
+            "void elements take attributes only"))
     end
     print(io, "<", e.tag)
     for (k, v) in e.attrs
