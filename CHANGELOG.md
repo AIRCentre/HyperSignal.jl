@@ -5,6 +5,8 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+## 0.3.0 — 2026-05-29
+
 ### Changed
 - `fragment_response` now accepts `mode` and `view_transition` kwargs,
   surfacing the Datastar v1.0.1 `datastar-mode` and

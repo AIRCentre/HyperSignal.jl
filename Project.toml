@@ -1,6 +1,6 @@
 name = "HyperSignal"
 uuid = "0aa5b41a-51a1-41e7-8512-17ccb31a7c30"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["AIR Centre <joao.goncalves@aircentre.org>"]
 
 [deps]
