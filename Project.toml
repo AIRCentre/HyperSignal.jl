@@ -17,7 +17,7 @@ HyperSignalMapLibreExt = "GeoInterface"
 
 [compat]
 GeoInterface = "1"
-HTTP = "1"
+HTTP = "1, 2"
 JSON = "0.21, 1"
 Makie = "0.20, 0.21, 0.22, 0.23, 0.24"
 julia = "1.10"
