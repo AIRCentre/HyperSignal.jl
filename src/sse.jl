@@ -45,16 +45,21 @@ patch_signals(signals; only_if_missing::Bool=false) =
 function _encode_event(io::IO, ev::PatchElementsEvent)
     print(io, "event: datastar-patch-elements\n")
     if ev.selector !== nothing
-        '\n' in ev.selector && throw(ArgumentError("selector must not contain a newline"))
+        # EventSource treats CR, LF, and CRLF all as line terminators, so a
+        # bare '\r' would end the SSE line early just like '\n' — reject both.
+        ('\n' in ev.selector || '\r' in ev.selector) &&
+            throw(ArgumentError("selector must not contain a CR or LF"))
         print(io, "data: selector ", ev.selector, "\n")
     end
     ev.mode === nothing || print(io, "data: mode ", ev.mode, "\n")
     ev.view_transition && print(io, "data: useViewTransition true\n")
-    # Drop a single trailing empty line so render() output that ends in '\n'
-    # doesn't emit a stray `data: elements ` line (which a client would
-    # reassemble as an extra newline in the payload).
-    html = endswith(ev.html, '\n') ? chop(ev.html) : ev.html
-    for line in split(html, '\n')
+    # Split the payload on the full SSE line-terminator set (CR, LF, CRLF):
+    # splitting on '\n' alone would leave a lone '\r' embedded in a data
+    # line, which the client reads as an early line end and silently drops
+    # the remainder. Strip one trailing terminator first so render() output
+    # ending in a newline doesn't emit a stray `data: elements ` line.
+    html = replace(ev.html, r"(?:\r\n|\r|\n)$" => "")
+    for line in split(html, r"\r\n|\r|\n")
         print(io, "data: elements ", line, "\n")
     end
     print(io, "\n")

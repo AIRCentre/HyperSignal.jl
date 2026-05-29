@@ -23,7 +23,10 @@ do both in one call.
 Transforms applied (each independently controlled):
 
 - The XML prolog (`<?xml …?>`) and any `<!DOCTYPE …>` are removed; both
-  are invalid inside HTML and would otherwise trip the parser.
+  are invalid inside HTML and would otherwise trip the parser. HTML
+  comments (`<!-- … -->`) are stripped too — anywhere in the document,
+  not just the prolog — since backends like CairoMakie emit generator
+  notes that add bytes without affecting the rendered figure.
 - When `strip_size=true`, the root `<svg>`'s `width` and `height`
   attributes are removed, leaving only `viewBox` so the figure scales to
   its CSS container. CairoMakie hard-codes px dimensions; strip them
@@ -168,19 +171,34 @@ function _patch_root_svg(s::AbstractString;
         attrs = replace(attrs, r"\s+height=\"[^\"]*\"" => "")
     end
     if add_class !== nothing
+        # Escape the caller's class value before it lands in the quoted
+        # attribute — symmetric with aria_label below. Without this a
+        # stray `"` (or `<`) closes the class attribute and injects new
+        # attributes into the root <svg> (e.g. add_class=`x" onload="…`).
+        safe_class = _attr_escape(add_class)
         cm = match(r"\sclass=\"([^\"]*)\"", attrs)
         if cm === nothing
-            attrs *= " class=\"$(add_class)\""
+            attrs *= " class=\"$(safe_class)\""
         else
-            merged = isempty(cm.captures[1]) ? add_class : "$(cm.captures[1]) $(add_class)"
+            # The existing class came from the source SVG and is already
+            # in the document as-is; only the caller's add_class needs
+            # escaping. (replace() with a plain-String replacement does
+            # not interpret `$`/`\`, so no SubstitutionString surprise.)
+            merged = isempty(cm.captures[1]) ? safe_class :
+                     "$(cm.captures[1]) $(safe_class)"
             attrs = replace(attrs, r"\sclass=\"[^\"]*\"" => " class=\"$(merged)\"")
         end
     end
     if aria_label !== nothing
         attrs *= " role=\"img\" aria-label=\"$(_attr_escape(aria_label))\""
     end
+    # Resume past the matched opening tag by BYTE count: `m.offset` is a
+    # codeunit index and SubString is byte-indexed, so `length` (character
+    # count) would land short of the match end whenever the root tag holds
+    # any multi-byte UTF-8 (e.g. a pre-existing non-ASCII attribute value),
+    # re-emitting the trailing `>`. Mirror _namespace_ids' ncodeunits use.
     string(SubString(s, 1, m.offset - 1), "<svg", attrs, ">",
-           SubString(s, m.offset + length(m.match)))
+           SubString(s, m.offset + ncodeunits(m.match)))
 end
 
 # Minimal attribute-value escape — `aria_label` lands inside a "…" attr.

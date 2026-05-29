@@ -28,6 +28,42 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test render(input(type="text", name="x")) == "<input type=\"text\" name=\"x\">"
     end
 
+    @testset "void element with children fails loud instead of emitting invalid HTML" begin
+        # Why: a void element has no content model. The old fall-through
+        # emitted `<br>x</br>` — invalid HTML5 whose closing tag a browser
+        # discards while reparenting the "children" as SIBLING nodes, so
+        # the server HTML and the client DOM diverge and Datastar's morph
+        # stops being idempotent. Passing children to a void tag is always
+        # a caller mistake; surface it.
+        @test_throws ArgumentError render(br("x"))
+        @test_throws ArgumentError render(input(type="text", "oops"))
+        @test_throws ArgumentError render(hr(span("a")))
+        @test_throws ArgumentError render(img(src="x.png", "alt-as-child"))
+        @test_throws ArgumentError render(Element(:wbr, Pair{Symbol,Any}[], Any["c"]))
+        # A numeric/empty-string child is still content → still rejected.
+        @test_throws ArgumentError render(br(0))
+        @test_throws ArgumentError render(br(""))
+        # No-output children must NOT throw: `nothing` is dropped at
+        # construction, and `Bool`/`missing` render to nothing — so the
+        # conditional idiom `br(cond && extra)` (which collapses to bare
+        # `false`, a Bool, when cond is false) still renders `<br>`.
+        @test render(br(nothing)) == "<br>"
+        @test render(input(type="text", nothing)) == "<input type=\"text\">"
+        @test render(br(false)) == "<br>"
+        @test render(br(true)) == "<br>"
+        @test render(br(missing)) == "<br>"
+        let show_extra = false
+            @test render(br(show_extra && "x")) == "<br>"   # cond && extra → false
+        end
+        # Mixed skip-only children also pass.
+        @test render(img(src="x.png", nothing, false, missing)) == "<img src=\"x.png\">"
+        # No partial bytes are written before the error (check precedes
+        # the open-tag write), so a failed render leaves the IO clean.
+        io = IOBuffer()
+        @test_throws ArgumentError render(io, img(src="x", "alt"))
+        @test String(take!(io)) == ""
+    end
+
     @testset "boolean attribute true → bare; false/nothing → omitted" begin
         @test render(input(type="checkbox", checked=true))  == "<input type=\"checkbox\" checked>"
         @test render(input(type="checkbox", checked=false)) == "<input type=\"checkbox\">"
@@ -335,6 +371,38 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         # early and silently corrupt the rest of the event.
         @test_throws ArgumentError sse_response([patch_elements(div("x");
                                                                 selector="#a\n#b")])
+    end
+
+    @testset "sse_response rejects a selector containing a carriage return" begin
+        # Why: EventSource treats CR (and CRLF) as line terminators just
+        # like LF, so a bare '\r' in the selector would end the SSE line
+        # early and corrupt the rest of the event — same failure mode as
+        # '\n', so it must be rejected the same way.
+        @test_throws ArgumentError sse_response([patch_elements(div("x");
+                                                                selector="#a\r#b")])
+    end
+
+    @testset "patch_elements splits payload on lone CR and CRLF, not just LF" begin
+        # Why: HTML authored on Windows (or an embedded SVG with CRLF
+        # endings) carries '\r'. Splitting on '\n' alone leaves a lone
+        # '\r' inside a `data: elements` line, which the client reads as
+        # an early line terminator and silently drops the remainder.
+        # Each source line must become its own clean data line.
+        crlf = String(sse_response([patch_elements(Raw("<div>\r\n  <p>x</p>\r\n</div>"))]).body)
+        @test crlf == string(
+            "event: datastar-patch-elements\n",
+            "data: elements <div>\n",
+            "data: elements   <p>x</p>\n",
+            "data: elements </div>\n",
+            "\n",
+        )
+        # A lone CR (no following LF) is also a terminator.
+        cr = String(sse_response([patch_elements(Raw("a\rb"))]).body)
+        @test cr == "event: datastar-patch-elements\ndata: elements a\ndata: elements b\n\n"
+        # A trailing CRLF is stripped like a trailing LF — no stray empty
+        # `data: elements ` line.
+        trailing = String(sse_response([patch_elements(Raw("<div>x</div>\r\n"))]).body)
+        @test trailing == "event: datastar-patch-elements\ndata: elements <div>x</div>\n\n"
     end
 
     @testset "patch_elements drops a single trailing newline from rendered HTML" begin
@@ -985,6 +1053,17 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test startswith(out, "<svg")
     end
 
+    @testset "patch_svg strips HTML comments anywhere in the document" begin
+        # Why: CairoMakie (and other backends) emit generator-note comments
+        # that add bytes without affecting the figure. The prolog pass folds
+        # comment removal into the same walk, so comments mid-document — not
+        # just a leading one — are dropped. Pin it so the documented
+        # behavior can't silently regress to prolog-only.
+        out = patch_svg("""<svg viewBox="0 0 1 1"><!-- gen note --><g><!-- inner --><rect/></g></svg>""")
+        @test !occursin("<!--", out)
+        @test occursin("<svg viewBox=\"0 0 1 1\"><g><rect/></g></svg>", out)
+    end
+
     @testset "patch_svg strips width/height by default for responsive embedding" begin
         src = """<svg xmlns="http://www.w3.org/2000/svg" width="400px" height="300px" viewBox="0 0 4 3"><g/></svg>"""
         out = patch_svg(src)
@@ -1053,6 +1132,50 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         src2 = """<svg class="base" viewBox="0 0 1 1"><g/></svg>"""
         out2 = patch_svg(src2; add_class="figure")
         @test occursin("class=\"base figure\"", out2)
+    end
+
+    @testset "patch_svg escapes add_class so it can't inject root-tag attributes" begin
+        # Why: add_class lands inside the quoted class attribute of the
+        # root <svg>. An unescaped `"` would close the attribute and let
+        # a crafted value inject new attributes (e.g. an onload handler)
+        # onto the root element — symmetric with the aria_label escape.
+        out = patch_svg("""<svg viewBox="0 0 1 1"><g/></svg>""";
+                        add_class="x\" onload=\"alert(1)")
+        # The dangerous form (a real quote opening an attribute) is gone;
+        # the value survives as inert escaped text inside the class attr.
+        @test !occursin("onload=\"", out)
+        @test occursin("class=\"x&quot; onload=&quot;alert(1)\"", out)
+        # `<` is neutralised too.
+        @test occursin("class=\"a&lt;b\"",
+                       patch_svg("""<svg viewBox="0 0 1 1"><g/></svg>"""; add_class="a<b"))
+        # The merge-with-existing-class branch escapes the new value too,
+        # leaving the (already-in-document) existing class untouched.
+        @test occursin("class=\"base x&quot;y\"",
+                       patch_svg("""<svg class="base" viewBox="0 0 1 1"><g/></svg>""";
+                                 add_class="x\"y"))
+    end
+
+    @testset "patch_svg resumes correctly past a multi-byte char in the root tag" begin
+        # Why: _patch_root_svg rebuilds the opening <svg …> tag and then
+        # splices the rest of the document back on. The resume offset must
+        # be measured in BYTES (the string is byte-indexed) — using the
+        # character count instead lands short of the tag end whenever the
+        # root tag holds multi-byte UTF-8 (a pre-existing non-ASCII attr),
+        # re-emitting the trailing '>' and corrupting the markup.
+        src = """<svg data-title="Café résumé" viewBox="0 0 1 1"><g/></svg>"""
+        out = patch_svg(src; add_class="figure")
+        @test occursin("class=\"figure\"", out)
+        # Exactly one '>' closes the opening tag — no doubled '>>'.
+        @test occursin("class=\"figure\"><g/>", out)
+        @test !occursin(">>", out)
+        @test occursin("data-title=\"Café résumé\"", out)
+        # And the body after the root tag survives intact under aria_label
+        # (another path through the same rebuild) with a multi-byte tag.
+        out2 = patch_svg("""<svg título="Olá" viewBox="0 0 1 1"><rect/><g/></svg>""";
+                         aria_label="Açaí")
+        @test occursin("role=\"img\"", out2)
+        @test occursin("<rect/><g/></svg>", out2)
+        @test !occursin(">>", out2)
     end
 
     @testset "inline_svg wraps a patched SVG as Raw so it inlines into a tree" begin
@@ -1222,6 +1345,32 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         # Symbol-keyed Pairs keep working alongside String-keyed.
         @test render(div(:id => "card", "data-x" => "v", "x")) ==
               "<div id=\"card\" data-x=\"v\">x</div>"
+    end
+
+    @testset "duplicate attribute names collapse with the last value winning" begin
+        # Why: the HTML5 parser keeps the FIRST of duplicate attributes and
+        # drops the rest (§13.2.5.33), so emitting `class="a" class="b"`
+        # would silently apply "a". A caller who sets an attribute twice
+        # means the later one to override (e.g. a base value then a
+        # computed override), so we collapse at construction — last value
+        # wins, each name emitted exactly once.
+        @test render(div("class" => "later", class="earlier")) ==
+              "<div class=\"later\"></div>"
+        # Two positional Attributes of the same key: the later overrides.
+        @test render(button(on_click("x"), on_click("y"))) ==
+              "<button data-on:click=\"y\"></button>"
+        # Order is stable: the duplicated name keeps its first-seen slot,
+        # only its value updates.
+        @test render(div(:a => "1", :b => "2", :a => "3")) ==
+              "<div a=\"3\" b=\"2\"></div>"
+        # A duplicate submit binding on <form> collapses too — exactly one
+        # data-on:submit* attribute survives, carrying the later value.
+        @test render(form(on_submit("a"), on_submit("b"))) ==
+              "<form data-on:submit__prevent=\"b\"></form>"
+        # Non-duplicate attrs are untouched (and the no-dup fast path keeps
+        # the original vector).
+        @test render(div(class="a", id="b", "data-x" => "y")) ==
+              "<div class=\"a\" id=\"b\" data-x=\"y\"></div>"
     end
 
     @testset "cls rejects non-collection scalars cleanly (no stack overflow)" begin
@@ -1417,6 +1566,29 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test occursin("\\\\path", js)        # backslash doubled
         @test occursin("\\'hi\\'", js)        # quotes escaped
         @test occursin("<\\/script>", js)     # </ broken
+    end
+
+    @testset "action_js: the URL is JS-escaped just like extras values" begin
+        # Why: the URL lands inside the same single-quoted JS string as the
+        # extras. A raw `'` (an unencoded query param like `?q=it's`) would
+        # close the JS string early and break the action — for a long time
+        # only extras were escaped, leaving the URL as an asymmetric footgun.
+        # The escape is transparent to the URL the browser fetches: `\'`
+        # parses back to `'` and `<\/` to `</`.
+        @test HyperSignal.action_js(ds_get("/search?q=it's")) ==
+              "@get('/search?q=it\\'s')"
+        # </script> in the URL is broken the same way extras are, so the
+        # action survives an inline-<script> context (e.g. script_response).
+        @test HyperSignal.action_js(ds_get("/a</script>")) == "@get('/a<\\/script>')"
+        # A backslash in the URL is doubled so it doesn't eat the next char.
+        @test HyperSignal.action_js(ds_post("/a\\b")) == "@post('/a\\\\b')"
+        # The common clean URL is untouched (escaping is a no-op).
+        @test HyperSignal.action_js(ds_get("/api/refresh")) == "@get('/api/refresh')"
+        @test HyperSignal.action_js(ds_post("/session/new"; form=true)) ==
+              "@post('/session/new', {contentType: 'form'})"
+        # End-to-end through an attribute: no bare `'` escapes the binding.
+        out = render(button("Go", on_click(ds_get("/search?q=it's"))))
+        @test occursin("@get(&#39;/search?q=it\\&#39;s&#39;)", out)
     end
 
     @testset "stress: 5000-deep nesting renders without stack overflow" begin

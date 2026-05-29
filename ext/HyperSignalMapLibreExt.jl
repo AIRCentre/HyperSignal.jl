@@ -161,20 +161,55 @@ _coord(geom) = [GI.getcoord(geom, i) for i in 1:GI.ncoord(geom)]
 
 geojson(geom) = _geojson(GI.geomtrait(geom), geom)
 
+# Shared builders so the Multi* forms reuse the exact coordinate-nesting
+# logic of their singular counterparts (a LineString IS one element of a
+# MultiLineString's coordinates; a Polygon's rings ARE one element of a
+# MultiPolygon's coordinates).
+_line(ls)  = [_coord(p) for p in GI.getgeom(ls)]
+_rings(pg) = [_line(ring) for ring in GI.getgeom(pg)]
+
 _geojson(::GI.PointTrait, geom) =
     Dict{String, Any}("type" => "Point", "coordinates" => _coord(geom))
 
 _geojson(::GI.LineStringTrait, geom) =
-    Dict{String, Any}(
-        "type" => "LineString",
-        "coordinates" => [_coord(p) for p in GI.getgeom(geom)],
-    )
+    Dict{String, Any}("type" => "LineString", "coordinates" => _line(geom))
 
-function _geojson(::GI.PolygonTrait, geom)
-    rings = [[_coord(p) for p in GI.getgeom(ring)]
-             for ring in GI.getgeom(geom)]
-    Dict{String, Any}("type" => "Polygon", "coordinates" => rings)
-end
+_geojson(::GI.PolygonTrait, geom) =
+    Dict{String, Any}("type" => "Polygon", "coordinates" => _rings(geom))
+
+# Multi-geometries — ubiquitous in real basemaps (a coastline or EEZ
+# boundary is a MultiPolygon, a scattered station set a MultiPoint). Each
+# is one level of nesting deeper than its singular form.
+_geojson(::GI.MultiPointTrait, geom) =
+    Dict{String, Any}("type" => "MultiPoint",
+                      "coordinates" => [_coord(p) for p in GI.getgeom(geom)])
+
+_geojson(::GI.MultiLineStringTrait, geom) =
+    Dict{String, Any}("type" => "MultiLineString",
+                      "coordinates" => [_line(ls) for ls in GI.getgeom(geom)])
+
+_geojson(::GI.MultiPolygonTrait, geom) =
+    Dict{String, Any}("type" => "MultiPolygon",
+                      "coordinates" => [_rings(pg) for pg in GI.getgeom(geom)])
+
+# A GeometryCollection nests heterogeneous geometries; recurse so each
+# member goes through the same dispatch.
+_geojson(::GI.GeometryCollectionTrait, geom) =
+    Dict{String, Any}("type" => "GeometryCollection",
+                      "geometries" => [geojson(g) for g in GI.getgeom(geom)])
+
+# Anything else: fail with a geometry-named message instead of an opaque
+# MethodError on the internal `_geojson` so the call site sees what's
+# unsupported.
+_geojson(trait, geom) = throw(ArgumentError(
+    "geojson: unsupported geometry trait $(typeof(trait)); supported: Point, " *
+    "LineString, Polygon, MultiPoint, MultiLineString, MultiPolygon, GeometryCollection"))
+
+# Per GeoJSON (RFC 7946 §3.2) a Feature's geometry member MAY be null.
+# Real feature tables routinely carry rows that failed geocoding, so a
+# missing/nothing geometry must emit JSON `null` (encoded from `nothing`)
+# rather than crash the whole collection on the first null row.
+_feature_geometry(g) = (g === nothing || g === missing) ? nothing : geojson(g)
 
 # Feature collection from row-like records. `rows` is anything iterable
 # of NamedTuples (or any object with `getproperty` on the named cols).
@@ -182,7 +217,7 @@ function feature_collection(rows; geometry_col::Symbol,
                             properties_cols)
     features = [Dict{String, Any}(
                     "type" => "Feature",
-                    "geometry" => geojson(getproperty(row, geometry_col)),
+                    "geometry" => _feature_geometry(getproperty(row, geometry_col)),
                     "properties" => Dict{String, Any}(
                         String(c) => getproperty(row, c)
                         for c in properties_cols),
