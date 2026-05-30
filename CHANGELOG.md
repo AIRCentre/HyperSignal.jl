@@ -84,7 +84,12 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `parse_signals` now throws `ArgumentError` (not the bare `ErrorException`
   from `error()`) for a top-level non-object JSON body, matching the
   malformed-JSON path — both bad-request-body cases now raise one
-  consistent type.
+  consistent type. `cls` (bad `Pair` value / unhandled type) and
+  `preset_button` (invalid input name) likewise now throw `ArgumentError`
+  rather than a bare `error()`, so every caller-input mistake in the library
+  raises one consistent exception type. The SSE `selector` CR/LF rejection
+  message is now prefixed (`patch_elements:`) and echoes the offending value,
+  matching the rest of the library's error messages.
 - Internal, no behavior change: the render hot path streams `DSAction`
   attributes straight into the response `IO` (dropping a throwaway
   intermediate `String` that `escape_html` then re-walked); `escape_html`

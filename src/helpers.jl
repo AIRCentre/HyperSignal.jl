@@ -48,7 +48,7 @@ _push_cls!(out, s::AbstractString) = (isempty(s) || push!(out, String(s)); nothi
 _push_cls!(out, p::Pair{<:AbstractString, Bool}) =
     (p.second && push!(out, String(p.first)); nothing)
 _push_cls!(out, p::Pair{<:AbstractString, <:Any}) =
-    error("cls: Pair value must be Bool, got $(typeof(p.second))")
+    throw(ArgumentError("cls: Pair value must be Bool, got $(typeof(p.second))"))
 # Restrict the recursive walk to actual collection types. Without this
 # guard, `cls("a", 1)` matched the generic Any fallback, which iterated
 # the Int (Julia treats Number as a 1-iterable yielding itself) straight
@@ -60,7 +60,7 @@ function _push_cls!(out, xs::Union{AbstractVector, Tuple, NamedTuple, AbstractSe
     end
 end
 _push_cls!(out, x) =
-    error("cls: don't know how to handle $(typeof(x)) ($(repr(x))); pass a String, a Pair{String,Bool}, or a Vector/Tuple of those")
+    throw(ArgumentError("cls: don't know how to handle $(typeof(x)) ($(repr(x))); pass a String, a Pair{String,Bool}, or a Vector/Tuple of those"))
 
 """
     redirect_to(location::AbstractString; cookies=String[]) -> HTTP.Response
@@ -410,8 +410,8 @@ function _validate_preset_name(name::AbstractString)
     # newline then lands raw in the CSS selector (`input[name=foo⏎]`),
     # breaking it silently in the browser. `\z` forbids the trailing newline.
     occursin(r"^-?[A-Za-z_][A-Za-z0-9_-]*\z", name) ||
-        error("preset_button: input name must be an ASCII CSS identifier " *
-              "(letter or underscore start, then [A-Za-z0-9_-]), got $(repr(name))")
+        throw(ArgumentError("preset_button: input name must be an ASCII CSS identifier " *
+              "(letter or underscore start, then [A-Za-z0-9_-]), got $(repr(name))"))
 end
 
 # A preset's `val` is double-escaped at the JS layer: the whole selector is the

@@ -48,7 +48,7 @@ function _encode_event(io::IO, ev::PatchElementsEvent)
         # EventSource treats CR, LF, and CRLF all as line terminators, so a
         # bare '\r' would end the SSE line early just like '\n' — reject both.
         ('\n' in ev.selector || '\r' in ev.selector) &&
-            throw(ArgumentError("selector must not contain a CR or LF"))
+            throw(ArgumentError("patch_elements: selector must not contain a CR or LF, got $(repr(ev.selector))"))
         print(io, "data: selector ", ev.selector, "\n")
     end
     ev.mode === nothing || print(io, "data: mode ", ev.mode, "\n")

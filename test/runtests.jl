@@ -670,7 +670,7 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     @testset "cls rejects Pair values that aren't Bool — fail loud, not silent" begin
         # Why: `"active" => some_string` would silently include the class
         # if we coerced. A loud error catches the typo.
-        @test_throws ErrorException cls("btn", "active" => "yes")
+        @test_throws ArgumentError cls("btn", "active" => "yes")
     end
 
     @testset "redirect_to emits a 303 with the Location header" begin
@@ -774,9 +774,9 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         # Why: name lands in a CSS attribute selector unquoted; a stray
         # character would break the selector or escape the surrounding JS.
         # Fail loud at build time, not silently in the browser.
-        @test_throws ErrorException preset_button("Bad", ["bad name" => "v"])
-        @test_throws ErrorException preset_button("Bad", ["x'y" => "v"])
-        @test_throws ErrorException preset_button("Bad", ["" => "v"])
+        @test_throws ArgumentError preset_button("Bad", ["bad name" => "v"])
+        @test_throws ArgumentError preset_button("Bad", ["x'y" => "v"])
+        @test_throws ArgumentError preset_button("Bad", ["" => "v"])
     end
 
     @testset "preset_button escapes \" and \\ inside value" begin
@@ -800,16 +800,16 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         # Why: the name lands UNQUOTED in `input[name=…]`; a CSS identifier
         # can't start with a digit (nor a hyphen-then-digit), so `name=123`
         # would make querySelector throw at click time. Fail loud at build.
-        @test_throws ErrorException preset_button("X", ["123" => "a"])
-        @test_throws ErrorException preset_button("X", ["-1" => "a"])
+        @test_throws ArgumentError preset_button("X", ["123" => "a"])
+        @test_throws ArgumentError preset_button("X", ["-1" => "a"])
         # A letter/underscore start (optionally one leading hyphen) is fine.
         @test render(preset_button("X", ["-data-x" => "a"])) isa AbstractString
         @test render(preset_button("X", ["_k" => "a"])) isa AbstractString
         # A trailing newline must be rejected: anchored with `\z` not `$`, so
         # PCRE's "`$` matches before a final \n" can't let `"foo\n"` through
         # (it would land raw in the CSS selector, breaking it in the browser).
-        @test_throws ErrorException preset_button("X", ["foo\n" => "v"])
-        @test_throws ErrorException preset_button("X", ["foo\nbar" => "v"])
+        @test_throws ArgumentError preset_button("X", ["foo\n" => "v"])
+        @test_throws ArgumentError preset_button("X", ["foo\nbar" => "v"])
     end
 
     @testset "preset_button generates the click-side JS to set named radios + fire change" begin
@@ -1485,9 +1485,9 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         # `cls("a", 1)` recursed forever and stack-overflowed. Now the
         # iterator path is restricted to actual collection types, and
         # everything else hits a clear error message.
-        @test_throws ErrorException cls("a", 1)
-        @test_throws ErrorException cls("a", 3.14)
-        @test_throws ErrorException cls("a", :symbol_input)
+        @test_throws ArgumentError cls("a", 1)
+        @test_throws ArgumentError cls("a", 3.14)
+        @test_throws ArgumentError cls("a", :symbol_input)
         # Collections still flatten correctly.
         @test cls("a", ["b", "c"]) == "a b c"
         @test cls("a", ("b", "c")) == "a b c"
