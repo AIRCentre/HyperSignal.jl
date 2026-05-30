@@ -71,9 +71,12 @@ ds_signal
 ds_signals
 ds_show
 ds_text
+ds_json_signals
 ds_ref
 ds_attr
 ds_class
+ds_computed
+ds_style
 ds_effect
 ds_init
 ```

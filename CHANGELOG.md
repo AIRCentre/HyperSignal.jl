@@ -5,6 +5,53 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Added
+- `ds_computed(name, expr)` — declare a read-only derived signal
+  (`data-computed:<name>`); `ds_style(prop, expr)` — bind an inline CSS
+  style property reactively (`data-style:<prop>`), the natural partner to
+  `ds_class` / `ds_attr`; and `ds_json_signals()` (+ a filter overload) —
+  the bare `data-json-signals` in-page signal-store debugger. All three are
+  FREE-tier Datastar v1.0 attributes that previously had no first-class
+  helper. (exported)
+
+### Fixed
+- **`ds_signal` now emits the keyed `data-signals:<name>` form** (colon,
+  plural). It previously rendered the singular `data-signal-<name>`, which
+  is not a Datastar v1.0 attribute — Datastar matched no plugin and ignored
+  it, so the signal was **never created** (a silent client-side no-op, the
+  exact failure class this library exists to prevent). Datastar's
+  kebab→camel mapping still applies (`ds_signal("my-signal", …)` → `$mySignal`).
+- **JS line terminators are now escaped in the single-quoted JS string**
+  built by `action_js` (the URL and every string `extras` value) and by
+  `redirect_via_fragment` (which shares `_js_str_escape`). A raw LF, CR,
+  U+2028, or U+2029 — reachable via a reflected query param or a multi-line
+  search box — is an ECMAScript `SyntaxError`, so the whole Datastar action
+  (or inline-`<script>` redirect) silently failed to compile. The escapes
+  round-trip to the same character after JS parsing, so the fetched
+  URL / navigated location is unchanged. Mirrors the SSE path's existing
+  CR/LF defenses.
+- **`DSAction` extras with a structured value** (`headers=Dict(...)`,
+  `filterSignals=(include=...)`, array-valued options) now serialize as a
+  JSON object/array literal — valid JS — instead of Julia's `repr`, which
+  is not (`Dict("a"=>"b")` had rendered as `Dict{String,…}(...)`).
+- **`_js_value` renders non-finite floats as JS globals** `Infinity` /
+  `-Infinity` / `NaN` instead of Julia's `Inf` / `-Inf` (a bare `Inf` is a
+  JS `ReferenceError`). Relevant to numeric action options such as
+  `retryMaxCount=Inf`.
+
+### Changed
+- `parse_signals` now throws `ArgumentError` (not the bare `ErrorException`
+  from `error()`) for a top-level non-object JSON body, matching the
+  malformed-JSON path — both bad-request-body cases now raise one
+  consistent type.
+- Internal, no behavior change: the render hot path streams `DSAction`
+  attributes straight into the response `IO` (dropping a throwaway
+  intermediate `String` that `escape_html` then re-walked); `escape_html`
+  is split into concrete `String` / `SubString{String}` methods so the
+  per-child dispatch lands directly (no runtime `isa` ladder); `is_void` is
+  hoisted to one lookup per element; and the tag/attribute name validators
+  share one `_is_invalid_name_byte` predicate.
+
 ## 0.3.1 — 2026-05-29
 
 Documentation-only release; no code changes since 0.3.0.

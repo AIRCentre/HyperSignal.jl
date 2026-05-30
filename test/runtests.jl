@@ -911,6 +911,31 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         # ...and a raw JS string
         out_expr = render(div(ds_init("\$x = 1")))
         @test occursin("data-init=\"\$x = 1\"", out_expr)
+        # ds_signal seeds a single signal via the KEYED data-signals:<name>
+        # form (colon). Why: Datastar's plugin is `data-signals` (plural);
+        # there is no `data-signal` (singular) attribute, so the old
+        # dash-singular form silently no-op'd — the signal was never created.
+        @test render(div(ds_signal("count", 0))) ==
+            "<div data-signals:count=\"0\"></div>"
+        # ds_computed declares a derived signal (data-computed:<name>).
+        @test render(div(ds_computed("total", "\$price * \$qty"))) ==
+            "<div data-computed:total=\"\$price * \$qty\"></div>"
+        # ds_style binds an inline style property reactively (data-style:<prop>).
+        # The `&&` in the expression HTML-escapes to `&amp;&amp;`.
+        @test render(div(ds_style("display", "\$hiding && 'none'"))) ==
+            "<div data-style:display=\"\$hiding &amp;&amp; &#39;none&#39;\"></div>"
+    end
+
+    @testset "ds_json_signals renders the bare debug attribute (and an optional filter)" begin
+        # Why: data-json-signals sets an element's text to a live JSON dump of
+        # the signal store — the in-page debugger. Bare form takes no value
+        # (renders as a valueless attribute, like ds_indicator()); the filter
+        # overload scopes it to matching signal names.
+        @test render(pre(ds_json_signals())) == "<pre data-json-signals></pre>"
+        a = ds_json_signals()
+        @test (a.key, a.value) == (Symbol("data-json-signals"), true)
+        @test render(pre(ds_json_signals("{include: /user/}"))) ==
+            "<pre data-json-signals=\"{include: /user/}\"></pre>"
     end
 
     @testset "ds_signals JSON-encodes a NamedTuple into data-signals" begin
@@ -963,9 +988,11 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     @testset "parse_signals rejects a top-level non-object payload loud" begin
         # Why: Datastar wraps signals in a JSON object. A bare array or a
         # number would silently become a Vector{Any} or Int — surprising at
-        # the call site. Fail loud and steer toward the right shape.
-        @test_throws ErrorException parse_signals("[1, 2, 3]")
-        @test_throws ErrorException parse_signals("42")
+        # the call site. Fail loud and steer toward the right shape. The error
+        # is an ArgumentError, matching the malformed-JSON path below (both
+        # "bad request body" cases now throw one consistent type).
+        @test_throws ArgumentError parse_signals("[1, 2, 3]")
+        @test_throws ArgumentError parse_signals("42")
     end
 
     @testset "Symbol-keyed Pairs lift into attrs alongside kwargs and Attributes" begin
@@ -1589,6 +1616,58 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         # End-to-end through an attribute: no bare `'` escapes the binding.
         out = render(button("Go", on_click(ds_get("/search?q=it's"))))
         @test occursin("@get(&#39;/search?q=it\\&#39;s&#39;)", out)
+    end
+
+    @testset "action_js: JS line terminators in URL/extras are escaped, not emitted raw" begin
+        # Why: a raw LF/CR (or U+2028/U+2029) inside the single-quoted JS
+        # string is an ECMAScript SyntaxError — the whole Datastar action
+        # silently fails to compile. They reach the URL via reflected query
+        # params / multi-line search boxes. Escape to JS escapes that
+        # round-trip to the same character after parsing, so the fetched URL
+        # is unchanged. Mirrors the SSE path's existing CR/LF defenses.
+        # (\u2028/\u2029 written as escapes here, not invisible literals.)
+        @test HyperSignal.action_js(ds_get("/s?q=a\nb")) == "@get('/s?q=a\\nb')"
+        @test HyperSignal.action_js(ds_get("/s?q=a\rb")) == "@get('/s?q=a\\rb')"
+        @test HyperSignal.action_js(ds_get("/s?q=a\u2028b")) == "@get('/s?q=a\\u2028b')"
+        @test HyperSignal.action_js(ds_get("/s?q=a\u2029b")) == "@get('/s?q=a\\u2029b')"
+        # A literal backslash followed by a real newline must not double-decode:
+        # backslash doubles, then the LF escapes independently.
+        @test HyperSignal.action_js(ds_get("/x\\\ny")) == "@get('/x\\\\\\ny')"
+        # The redirect path shares _js_str_escape (response.jl): a newline in
+        # the location must not land as a raw LF inside the inline <script>.
+        let body = String(redirect_via_fragment("#x", "/a\nb").body)
+            @test occursin("window.location='/a\\nb'", body)
+            @test !occursin("'/a\nb'", body)
+        end
+    end
+
+    @testset "ds_post extras: structured values serialize as JSON object/array literals" begin
+        # Why: options like `headers` / `filterSignals` are objects; Julia's
+        # `repr` of a Dict/NamedTuple is not valid JS (`Dict("a"=>"b")` →
+        # "Dict{...}(...)"). JSON makes them valid JS object literals. JSON's
+        # own double-quotes round-trip through the attribute escape as &quot;.
+        @test HyperSignal.action_js(ds_post("/x"; headers=Dict("X-Csrf" => "abc"))) ==
+              "@post('/x', {headers: {\"X-Csrf\":\"abc\"}})"
+        # NamedTuple preserves field order (deterministic, unlike a multi-key Dict):
+        @test HyperSignal.action_js(ds_post("/x"; filterSignals=(include="^foo",))) ==
+              "@post('/x', {filterSignals: {\"include\":\"^foo\"}})"
+        # Array-valued option:
+        @test HyperSignal.action_js(ds_get("/x"; ids=[1, 2, 3])) == "@get('/x', {ids: [1,2,3]})"
+        # Renders safely through the attribute boundary (JSON quotes → &quot;):
+        out = render(button("Go", on_click(ds_post("/x"; headers=Dict("X-Csrf" => "abc")))))
+        @test occursin("headers: {&quot;X-Csrf&quot;:&quot;abc&quot;}", out)
+    end
+
+    @testset "ds_post extras: non-finite floats render as JS globals, not Julia's Inf" begin
+        # Why: `string(Inf)`/`string(-Inf)` give `Inf`/`-Inf`, which are a JS
+        # ReferenceError; `Infinity`/`-Infinity`/`NaN` are valid JS. Numeric
+        # action options (retryMaxCount, retryMaxWait, …) make Infinity a
+        # natural value (unlimited retries). Finite floats are unchanged.
+        @test HyperSignal.action_js(ds_post("/x"; retryMaxCount=Inf)) ==
+              "@post('/x', {retryMaxCount: Infinity})"
+        @test HyperSignal.action_js(ds_post("/x"; t=-Inf)) == "@post('/x', {t: -Infinity})"
+        @test HyperSignal.action_js(ds_post("/x"; t=NaN)) == "@post('/x', {t: NaN})"
+        @test HyperSignal.action_js(ds_post("/x"; t=1.5)) == "@post('/x', {t: 1.5})"
     end
 
     @testset "stress: 5000-deep nesting renders without stack overflow" begin

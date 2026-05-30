@@ -26,17 +26,19 @@
     nothing
 end
 
+# Split by concrete type so the dynamic dispatch from the Vector{Any}
+# children loop lands directly on the right implementation — no per-child
+# runtime `isa` ladder on the hot path. (precompile hints in HyperSignal.jl
+# already cover String and SubString{String}.)
+escape_html(io::IO, s::String) = _escape_html_string(io, s)
+# SubString of a String can use the same codeunit fast path by walking the
+# parent buffer between the view's bounds.
+escape_html(io::IO, s::SubString{String}) = _escape_html_substring(io, s)
+# Generic fallback for other AbstractString types (a SubString of a
+# non-String, or a custom string type): walk chars one at a time.
 function escape_html(io::IO, s::AbstractString)
-    if s isa String
-        _escape_html_string(io, s)
-    elseif s isa SubString{String}
-        # SubString of a String can use the same codeunit fast path
-        # by walking the parent buffer between the view's bounds.
-        _escape_html_substring(io, s)
-    else
-        for c in s
-            escape_html(io, c)
-        end
+    for c in s
+        escape_html(io, c)
     end
     nothing
 end
@@ -167,7 +169,8 @@ function render(io::IO, e::Element)
     # Bool, NOT `nothing`) when `cond` is false. So `br(cond && extra)` must
     # still render `<br>`, not throw — only a child that would emit bytes
     # counts as content here.
-    if is_void(e.tag) && any(_is_content_child, e.children)
+    void = is_void(e.tag)
+    if void && any(_is_content_child, e.children)
         throw(ArgumentError(
             "HyperSignal: void element <$(e.tag)> cannot have content children; " *
             "void elements take attributes only"))
@@ -176,7 +179,7 @@ function render(io::IO, e::Element)
     for (k, v) in e.attrs
         _render_attr(io, k, v)
     end
-    if is_void(e.tag)
+    if void
         print(io, ">")
         return nothing
     end
@@ -274,6 +277,18 @@ render(io::IO, v::AbstractVector{UInt8}) = (write(io, v); nothing)
 # HTML. Tag-name grammar is stricter than attribute names — only
 # letters, digits, and a few markers — but we only reject the
 # parser-breaking subset for parity and to keep the rule learnable.
+
+# Single source of truth for the parser-breaking byte set shared by both
+# the tag-name and attribute-name validators below: whitespace (space, tab,
+# LF, FF, CR), the two quote chars, '<', '>', '/', '=', and NUL. Tag and
+# attribute grammars differ in what they *allow*, but reject the same
+# parser-breaking subset, so keep that subset in one place to prevent drift.
+# `@inline` keeps the codeunit walk branch-fast at each call site.
+@inline _is_invalid_name_byte(b::UInt8) =
+    b == 0x20 || b == 0x09 || b == 0x0a || b == 0x0c || b == 0x0d ||
+    b == 0x22 || b == 0x27 || b == 0x3e || b == 0x3c ||
+    b == 0x2f || b == 0x3d || b == 0x00
+
 const _VALID_TAG_NAMES = Set{Symbol}()
 
 @inline function _check_tag_name(t::Symbol)
@@ -287,11 +302,8 @@ end
     s = String(t)
     isempty(s) && throw(ArgumentError("HyperSignal: empty tag name"))
     @inbounds for b in codeunits(s)
-        if b == 0x20 || b == 0x09 || b == 0x0a || b == 0x0c || b == 0x0d ||
-           b == 0x22 || b == 0x27 || b == 0x3e || b == 0x3c ||
-           b == 0x2f || b == 0x3d || b == 0x00
+        _is_invalid_name_byte(b) &&
             throw(ArgumentError("HyperSignal: tag name $(repr(s)) contains a character that would break HTML parsing"))
-        end
     end
     nothing
 end
@@ -322,11 +334,8 @@ end
 
 @noinline function _check_attr_name_uncached(k::Symbol)
     @inbounds for b in codeunits(String(k))
-        if b == 0x20 || b == 0x09 || b == 0x0a || b == 0x0c || b == 0x0d ||
-           b == 0x22 || b == 0x27 || b == 0x3e || b == 0x3c ||
-           b == 0x2f || b == 0x3d || b == 0x00
+        _is_invalid_name_byte(b) &&
             throw(ArgumentError("HyperSignal: attribute name $(repr(String(k))) contains a character that would break HTML attribute parsing"))
-        end
     end
     nothing
 end
@@ -345,7 +354,7 @@ function _render_attr(io::IO, k::Symbol, v)
     v === true && return nothing
     print(io, "=\"")
     if v isa DSAction
-        escape_html(io, action_js(v))
+        _action_js(io, v, escape_html)   # HTML-escape each chunk straight into io; no throwaway String
     elseif v isa AbstractString
         escape_html(io, v)
     elseif v isa Number
