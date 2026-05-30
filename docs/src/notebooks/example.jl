@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.20.28
+# v1.0.1
 
 using Markdown
 using InteractiveUtils
@@ -182,16 +182,21 @@ function rolling_mean(x::Vector{Float64}, w::Int)
 end
 
 # ╔═╡ 00000001-0000-0000-0000-000000000045
-function make_timeseries(w, s, e, n, smooth)
+function make_timeseries(w, s, e, n, smooth, y0, y1)
     raw    = area_mean(s, n, w, e)
     smooth = max(1, Int(round(smooth)))
     series = rolling_mean(raw, smooth)
-    fig = Figure(size=(480, 360))
+    # Wide aspect: the chart now sits full-width under the map.
+    fig = Figure(size=(960, 360))
     ax = Axis(fig[1, 1];
-              title  = @sprintf("SST  ·  %.0f°–%.0f°N  %.0f°–%.0f°E  ·  %d-mo mean",
-                                s, n, w, e, smooth),
+              title  = @sprintf("SST  ·  %.0f°–%.0f°N  %.0f°–%.0f°E  ·  %d-mo mean  ·  %d–%d window",
+                                s, n, w, e, smooth, y0, y1),
               xlabel = "year", ylabel = "°C")
     yrs = Dates.year.(SST.time) .+ (Dates.month.(SST.time) .- 1) ./ 12
+    # Shade the year window the date sliders select, so dragging them
+    # visibly updates the chart (drawn first so the series lines sit on top).
+    vspan!(ax, Float64(y0), Float64(y1); color=(:goldenrod, 0.18),
+           label=@sprintf("%d–%d", y0, y1))
     lines!(ax, yrs, raw;    color=(:steelblue, 0.25), linewidth=1,   label="monthly")
     lines!(ax, yrs, series; color=:firebrick,         linewidth=2.5, label="smoothed")
     axislegend(ax; position=:lt, framevisible=false)
@@ -199,9 +204,9 @@ function make_timeseries(w, s, e, n, smooth)
 end
 
 # ╔═╡ 00000001-0000-0000-0000-000000000046
-plot_fragment(w, s, e, n, smooth) =
+plot_fragment(w, s, e, n, smooth, y0, y1) =
     div(id="plot",
-        inline_svg(make_timeseries(w, s, e, n, smooth); id_prefix="ts_"))
+        inline_svg(make_timeseries(w, s, e, n, smooth, y0, y1); id_prefix="ts_"))
 
 # ╔═╡ 00000001-0000-0000-0000-000000000050
 md"""
@@ -265,10 +270,10 @@ _num(v, fallback) = v isa Number ? Float64(v) :
 
 # ╔═╡ 00000001-0000-0000-0000-000000000064
 # Resolve the active bbox from a request: a fresh shift-drag arrives in
-# `_payload`; a smoothing-only re-post carries the persisted `$bbox`.
+# `payload`; a smoothing-only re-post carries the persisted `$bbox`.
 # Falls back to the full region.
 function _bbox(sig)
-    src = get(sig, "_payload", nothing)
+    src = get(sig, "payload", nothing)
     src isa AbstractDict && haskey(src, "w") || (src = get(sig, "bbox", nothing))
     src isa AbstractDict || return (W0, S0, E0, N0)
     (_num(get(src, "w", W0), W0), _num(get(src, "s", S0), S0),
@@ -290,8 +295,10 @@ function handle_series(req::HTTP.Request)
     sig = parse_signals(req)
     w, s, e, n = _bbox(sig)
     smooth = _num(get(sig, "smooth", 12.0), 12.0)
+    y0 = clamp(round(Int, _num(get(sig, "yr0", START0), START0)), Y_LO, Y_HI)
+    y1 = clamp(round(Int, _num(get(sig, "yr1", END0),   END0)),   y0,   Y_HI)
     sse_response([
-        patch_elements(plot_fragment(w, s, e, n, smooth); selector="#plot"),
+        patch_elements(plot_fragment(w, s, e, n, smooth, y0, y1); selector="#plot"),
         patch_signals((; bbox=(; w, s, e, n))),
     ]; headers=CORS_HEADERS)
 end
@@ -299,7 +306,7 @@ end
 # ╔═╡ 00000001-0000-0000-0000-000000000067
 function handle_click(req::HTTP.Request)
     sig  = parse_signals(req)
-    pl   = get(sig, "_payload", Dict{String, Any}())
+    pl   = get(sig, "payload", Dict{String, Any}())
     lat  = _num(get(pl, "lat", 0.0), 0.0)
     lon  = _num(get(pl, "lon", 0.0), 0.0)
     prop = get(pl, "properties", Dict{String, Any}())
@@ -378,7 +385,10 @@ function yearslider(text, sig, init)
               :min => string(Y_LO), :max => string(Y_HI), :step => "1",
               :value => string(init),
               ds_bind(sig),
-              on(:input, ds_post("$(BASE_URL)/cells"); debounce=300),
+              # Recolor the map (/cells) AND refresh the chart (/series) —
+              # the chart shades the selected year window.
+              on(:input, "@post('$(BASE_URL)/cells'); @post('$(BASE_URL)/series')";
+                 debounce=300),
               :style => "width:100%"))
 end
 
@@ -418,15 +428,21 @@ Frag(
         .demo h3 { margin:0 0 6px; font-weight:600; }
         .demo .nav { display:flex; gap:6px; align-items:center;
                      margin:6px 0 12px; flex-wrap:wrap; }
-        .demo .grid { display:grid; grid-template-columns: 1fr 1fr;
-                      gap:14px; align-items:start; }
+        /* Single column: map stacked on top of the chart, equal-sized. */
+        .demo .grid { display:grid; grid-template-columns: 1fr;
+                      gap:14px; align-items:stretch; }
         .demo .mapwrap { position:relative; }
         .demo #map_root { height:360px; border-radius:8px; overflow:hidden; }
         .demo .readout { position:absolute; left:8px; bottom:8px; z-index:5;
                          background:rgba(0,0,0,.6); color:#fff; padding:3px 8px;
                          border-radius:5px; font:12px/1.4 monospace;
                          pointer-events:none; }
-        .demo #plot svg { max-width:100%; height:auto; }
+        /* Chart box matches the map's height; the SVG scales to fit it
+           (preserveAspectRatio keeps it undistorted). */
+        .demo #plot { height:360px; display:flex;
+                      align-items:center; justify-content:center; }
+        .demo #plot svg { max-width:100%; max-height:100%;
+                          width:auto; height:auto; }
         .demo .sliders { display:grid; grid-template-columns:1fr 1fr 1fr;
                          gap:8px 18px; margin-top:14px; }
         .demo label { display:grid; grid-template-columns:64px 56px 1fr;
@@ -469,14 +485,15 @@ Frag(
                     ds_text("\$map_cursor ? " *
                             "(\$map_cursor[1]).toFixed(2)+'°, '+(\$map_cursor[0]).toFixed(2)+'°'" *
                             " : 'move over the map'"))),
-            plot_fragment(W0, S0, E0, N0, 12)),
+            plot_fragment(W0, S0, E0, N0, 12, START0, END0)),
         div(class="sliders",
             yearslider("start", "yr0", START0),
             yearslider("end", "yr1", END0),
             smoothslider()),
         p(class="hint",
-          "Polygons: mean SST over the year window. Drag the sliders to ",
-          "recolor (set_source_data); shift-drag the map to refresh the plot.")),
+          "Polygons: mean SST over the year window. Date sliders recolor the ",
+          "map and shade that window on the chart; shift-drag the map to pick ",
+          "the chart's region; the smooth slider sets the rolling window.")),
 )
 
 # ╔═╡ Cell order:
