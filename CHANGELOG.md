@@ -5,6 +5,8 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+## 0.4.0 — 2026-05-30
+
 ### Added
 - `ds_computed(name, expr)` — declare a read-only derived signal
   (`data-computed:<name>`); `ds_style(prop, expr)` — bind an inline CSS
