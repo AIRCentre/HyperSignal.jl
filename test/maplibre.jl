@@ -280,6 +280,92 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
             @test decoded["coordinates"][1][end] == [0.0, 0.0]
         end
 
+        MPt = GeoInterface.Wrappers.MultiPoint
+        MLS = GeoInterface.Wrappers.MultiLineString
+        MPoly = GeoInterface.Wrappers.MultiPolygon
+        GC = GeoInterface.Wrappers.GeometryCollection
+
+        @testset "geojson(MultiPoint) emits an array of positions" begin
+            # Why: scattered station/sensor sets arrive as MultiPoint; a
+            # bare MethodError on the internal _geojson used to be the
+            # only outcome.
+            out = MapLibre.geojson(MPt([(0.0, 0.0), (1.0, 1.0)]))
+            @test JSON.parse(JSON.json(out)) ==
+                  Dict("type" => "MultiPoint",
+                       "coordinates" => [[0.0, 0.0], [1.0, 1.0]])
+        end
+
+        @testset "geojson(MultiLineString) nests one level past LineString" begin
+            out = MapLibre.geojson(MLS([[(0.0, 0.0), (1.0, 1.0)],
+                                        [(2.0, 2.0), (3.0, 3.0)]]))
+            @test JSON.parse(JSON.json(out)) ==
+                  Dict("type" => "MultiLineString",
+                       "coordinates" => [[[0.0, 0.0], [1.0, 1.0]],
+                                         [[2.0, 2.0], [3.0, 3.0]]])
+        end
+
+        @testset "geojson(MultiPolygon) wraps each polygon's rings" begin
+            # Why: this is the load-bearing one — coastlines / EEZ
+            # boundaries / marine protected areas are MultiPolygons. The
+            # wire form is array-of-polygons, each array-of-rings, each
+            # array-of-positions: four levels deep, easy to under/over-nest.
+            sq(o) = [[(o + 0.0, 0.0), (o + 1.0, 0.0), (o + 1.0, 1.0),
+                      (o + 0.0, 1.0), (o + 0.0, 0.0)]]
+            out = MapLibre.geojson(MPoly([sq(0.0), sq(2.0)]))
+            decoded = JSON.parse(JSON.json(out))
+            @test decoded["type"] == "MultiPolygon"
+            @test length(decoded["coordinates"]) == 2        # two polygons
+            @test length(decoded["coordinates"][1]) == 1      # one ring each
+            @test length(decoded["coordinates"][1][1]) == 5   # closed ring
+            @test decoded["coordinates"][2][1][1] == [2.0, 0.0]  # 2nd offset
+        end
+
+        @testset "geojson(GeometryCollection) recurses through its members" begin
+            out = MapLibre.geojson(GC([Pt((1.0, 2.0)),
+                                       LS([(0.0, 0.0), (1.0, 1.0)])]))
+            decoded = JSON.parse(JSON.json(out))
+            @test decoded["type"] == "GeometryCollection"
+            @test decoded["geometries"][1] ==
+                  Dict("type" => "Point", "coordinates" => [1.0, 2.0])
+            @test decoded["geometries"][2]["type"] == "LineString"
+        end
+
+        @testset "feature_collection carries a MultiPolygon geometry column" begin
+            # Why: the common real case — a table of regions whose geometry
+            # is a MultiPolygon — must flow through feature_collection, not
+            # just single Points.
+            sq(o) = [[(o + 0.0, 0.0), (o + 1.0, 0.0), (o + 1.0, 1.0),
+                      (o + 0.0, 1.0), (o + 0.0, 0.0)]]
+            rows = [(geom=MPoly([sq(0.0), sq(2.0)]), name="region")]
+            fc = MapLibre.feature_collection(rows; geometry_col=:geom,
+                                             properties_cols=(:name,))
+            decoded = JSON.parse(JSON.json(fc))
+            @test decoded["features"][1]["geometry"]["type"] == "MultiPolygon"
+            @test decoded["features"][1]["properties"]["name"] == "region"
+        end
+
+        @testset "feature_collection emits null geometry for missing/nothing rows" begin
+            # Why: GeoJSON (RFC 7946 §3.2) allows a Feature's geometry to
+            # be null, and real feature tables carry rows that failed
+            # geocoding. One null-geometry row must not crash the whole
+            # collection — it serializes to `"geometry":null` while the
+            # valid rows still convert.
+            rows = [(geom=Pt((1.0, 2.0)), name="a"),
+                    (geom=missing, name="b"),
+                    (geom=nothing, name="c")]
+            fc = MapLibre.feature_collection(rows; geometry_col=:geom,
+                                             properties_cols=(:name,))
+            decoded = JSON.parse(JSON.json(fc))
+            @test decoded["features"][1]["geometry"] ==
+                  Dict("type" => "Point", "coordinates" => [1.0, 2.0])
+            @test decoded["features"][2]["geometry"] === nothing
+            @test decoded["features"][3]["geometry"] === nothing
+            # Properties on a null-geometry feature still survive.
+            @test decoded["features"][2]["properties"]["name"] == "b"
+            # The wire form is literal JSON null, not the string "nothing".
+            @test occursin("\"geometry\":null", JSON.json(fc))
+        end
+
         @testset "feature_collection builds a {type, features} envelope" begin
             # Why: this is the input shape `geojson_source` expects when
             # given a Dict. Every row becomes a Feature with geometry +
@@ -708,7 +794,7 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
         @testset "container div carries matching data-on:*__window listeners" begin
             # Why: each script-side CustomEvent must have a Datastar
             # expression listening for it. moveend/mousemove channels
-            # assign to \$signal; click/bbox set \$_payload and @post.
+            # assign to \$signal; click/bbox set \$payload and @post.
             @test occursin("data-on:hs-m_center__window=\"\$map_center = evt.detail\"", out)
             @test occursin("data-on:hs-m_zoom__window=\"\$map_zoom = evt.detail\"", out)
             @test occursin("data-on:hs-m_bounds__window=\"\$map_bounds = evt.detail\"", out)
@@ -717,6 +803,21 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
             @test occursin("@post(&#39;/api/click&#39;)", out)
             @test occursin("data-on:hs-m_bbox__window=", out)
             @test occursin("@post(&#39;/api/bbox&#39;)", out)
+        end
+
+        @testset "click/bbox payload signal is not underscore-prefixed" begin
+            # Why: Datastar's default request filter excludes any signal
+            # matching /(^|\.)_/ from @post bodies (underscore signals are
+            # client-local). A `$_payload` would be set locally but never
+            # sent, so the server sees no payload and the click/bbox post
+            # silently does nothing. Pin a plain `$payload` and forbid the
+            # `_`-prefixed form. (Caught by an in-browser run: shift-drag
+            # box posted but the timeseries never refreshed.)
+            out = HyperSignal.render(MapLibre.map_view(;
+                id_prefix="m_", center=(0.0, 0.0), zoom=2, style="/s.json",
+                click_post="/api/click", bbox_post="/api/bbox"))
+            @test occursin("\$payload = evt.detail", out)
+            @test !occursin("\$_payload", out)
         end
 
         @testset "window.__hs_maps is lazily initialised before assignment" begin
@@ -732,6 +833,38 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
             @test occursin("boxZoom", js)
             @test occursin(".disable()", js)
             @test occursin("document.addEventListener('mouseup'", js)
+        end
+
+        @testset "bbox handler suppresses dragPan so shift-drag selects, not pans" begin
+            # Why: MapLibre's own boxZoom is what disables dragPan during a
+            # shift-drag. Once we disable boxZoom (above) that suppression
+            # is gone, so a shift-drag would pan the map — the grab point
+            # tracks the cursor and start/end unproject to the same coord,
+            # collapsing the posted bbox to a zero-area point. The handler
+            # must disable dragPan on shift-mousedown and re-enable it on
+            # mouseup, or the gesture never produces a real rectangle.
+            @test occursin("dragPan", js)
+            @test occursin("dragPan&&_m.dragPan.disable()", js) ||
+                  occursin("dragPan.disable()", js)
+            @test occursin("dragPan.enable()", js)
+            # Re-enable must precede the threshold early-return so an
+            # accidental shift-click can't leave dragPan permanently off.
+            dis = findfirst("dragPan&&_m.dragPan.enable()", js)
+            ret = findfirst("_bs=null;return;", js)
+            @test dis !== nothing && ret !== nothing && first(dis) < first(ret)
+        end
+
+        @testset "bbox handler draws a live selection rectangle" begin
+            # Why: MapLibre's boxZoom drew a visible rectangle while
+            # dragging; disabling boxZoom removes it, leaving the user no
+            # feedback that a box is being drawn (the gesture "doesn't
+            # work" from their side). The handler must create an overlay
+            # div in the canvas container and size it on mousemove.
+            @test occursin("getCanvasContainer()", js)
+            @test occursin("document.addEventListener('mousemove'", js)
+            @test occursin("createElement('div')", js)
+            # The rectangle must be torn down on release, not leaked.
+            @test occursin(".remove()", js)
         end
 
         @testset "shift-click without drag does not fire bbox" begin

@@ -5,6 +5,56 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Fixed
+- **MapLibre `click_post` / `bbox_post` payloads now actually reach the
+  server.** The click and shift-drag-bbox handlers set `$_payload` before
+  `@post`ing it, but Datastar's default request filter excludes any
+  signal matching `/(^|\.)_/` from request bodies (underscore signals are
+  client-local), so the payload was set locally but never sent — the
+  handler saw no payload and silently fell back. The payload signal is
+  now a plain `$payload`, so both posts carry their `{lat, lon,
+  properties}` / `{w, s, e, n}` data.
+- **MapLibre shift-drag box-select no longer pans the map or collapses to
+  a zero-area bbox.** Disabling MapLibre's built-in `boxZoom` (to stop it
+  double-firing) also removed the `dragPan` suppression `boxZoom`
+  performs during a shift-drag, so the gesture panned the map and
+  start/end unprojected to the same coordinate. The handler now disables
+  `dragPan` itself on shift-mousedown and re-enables it on mouseup
+  (before any early return), and draws a live selection rectangle to
+  restore the visual feedback `boxZoom` used to provide.
+
+### Docs
+- The MapLibre example notebook (`docs/src/notebooks/example.jl`) stacks
+  the map over a full-width time-series chart (single column), makes the
+  date sliders recolor the map *and* shade the selected year window on
+  the chart, and bumps its Pluto format header to v1.0.1. The MapLibre
+  guide's payload table is updated to the non-underscore `$payload`
+  signal.
+
+## 0.3.1 — 2026-05-29
+
+Documentation-only release; no code changes since 0.3.0.
+
+### Docs
+- New **MapLibre** guide (`docs/src/maplibre.md`, added to the nav)
+  covering the 0.3.0 extension end to end: loading the weakdep-gated
+  extension, `map_view` / `marker`, sources, layers, the
+  paint-expression DSL, the GeoInterface bridge, and the
+  server-returned JS helpers. The extension shipped in 0.3.0 with no
+  docs page.
+- `api.md` now indexes `sse_stream` and `DATASTAR_SUPPORTED_VERSION`
+  (both exported in 0.3.0 but previously only `@ref`'d, leaving the
+  cross-references dangling); `security.md` documents that
+  `patch_svg`'s `add_class` / `aria_label` are attribute-escaped onto
+  the root `<svg>`.
+- Fixed stale copy: the home page described CairoMakie-only support and
+  the pre-0.3.0 slider demo; the Datastar page's response table called
+  SSE a "future" shape though `sse_response` / `sse_stream` are already
+  documented there.
+- The Install snippet is now build-context-aware — tagged-version docs
+  show `] add HyperSignal` (registered in General), while the `dev`
+  docs keep the Git-URL install for unreleased `main`.
+
 ## 0.3.0 — 2026-05-29
 
 ### Changed
@@ -58,6 +108,41 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the Datastar protocol/client version HyperSignal targets. Examples
   reference the constant instead of hard-coding the literal so future
   bumps land as a single visible diff.
+- GeoJSON support for `MultiPoint` / `MultiLineString` / `MultiPolygon` /
+  `GeometryCollection` in the MapLibre `GeoInterface` bridge — previously
+  only Point/Line/Polygon were handled and everything else hit a bare
+  `MethodError` (MultiPolygon is coastline / EEZ-boundary data, core to an
+  ocean org). Unsupported traits now raise a named `ArgumentError`.
+  `feature_collection` emits `"geometry": null` (GeoJSON RFC 7946 §3.2) for
+  rows whose geometry is missing/`nothing` instead of crashing the whole
+  collection. (#39)
+
+### Fixed
+- **Void elements given children now throw** (`br`, `img`, `input`, …)
+  instead of emitting invalid `<br>x</br>`. Browsers reparent such
+  "children" as siblings, diverging the server HTML from the client DOM and
+  breaking Datastar's morph idempotency; the error fires before any bytes are
+  written, matching the existing tag/attr-name validation. (#39)
+- **Duplicate attribute names now collapse last-wins** via `_dedup_attrs`
+  (stable first position, last value). HTML5 §13.2.5.33 keeps the *first*
+  duplicate, so the previous double-emit silently used the earlier value,
+  defeating the library's documented "later wins" intent. (#39)
+- `patch_svg`'s root-tag rewrite resumes past the matched `<svg>` by
+  `ncodeunits` (bytes) rather than `length` (chars); a multi-byte UTF-8
+  character inside the tag had been re-emitting a stray `>`. (#39)
+- The SSE encoder now treats CR and CRLF as line terminators alongside LF
+  (per the EventSource spec) — a lone CR previously truncated a data line
+  silently. (#39)
+
+### Security
+- `patch_svg`'s `add_class` is now attribute-escaped in `_patch_root_svg`.
+  An unescaped `"` closed the `class="…"` attribute and injected attributes
+  onto the root `<svg>` (e.g. `add_class='x" onload="alert(1)'`) — now
+  symmetric with the already-escaped `aria_label`. (#39)
+- `action_js` now JS-string-escapes the URL, not just `extras` values; a raw
+  `'` from an unencoded query param closed the JS string and broke the
+  action. The escape is factored into `_js_str_escape`, reused by `_js_value`
+  and `response.jl`'s `_js_escape` (one source of truth). (#39)
 
 ## 0.2.0 — 2026-05-26
 

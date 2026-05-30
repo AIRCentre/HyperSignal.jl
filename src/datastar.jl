@@ -94,7 +94,13 @@ ds_delete(url; kwargs...) = _action(:delete, url; kwargs...)
 function action_js(a::DSAction)
     io = IOBuffer()
     print(io, "@", a.verb, "('")
-    print(io, a.url)
+    # Escape the URL into its single-quoted JS string the same way extras
+    # values are (see _js_str_escape): a raw `'` in the URL — e.g. an
+    # unencoded query param like `?q=it's` — would otherwise close the JS
+    # string early and break the action, and a raw `</script>` could close
+    # an enclosing inline <script>. The escapes are transparent to the URL
+    # the browser fetches (`\'`→`'`, `<\/`→`</` after JS parsing).
+    print(io, _js_str_escape(a.url))
     print(io, "'")
     has_opts = a.form || !isempty(a.extras)
     if has_opts
@@ -123,13 +129,16 @@ Base.show(io::IO, a::DSAction) = print(io, action_js(a))
 
 _js_value(v::Bool)   = v ? "true" : "false"
 _js_value(v::Number) = string(v)
-# Escape order matters: backslashes first (so we don't re-escape escapes
-# we ourselves introduce), then single-quote (the string delimiter), then
+# Escape a string for embedding inside a single-quoted JS string literal.
+# Order matters: backslashes first (so we don't re-escape escapes we
+# ourselves introduce), then single-quote (the string delimiter), then
 # `</` (the HTML parser will close an enclosing <script> on `</script>`
 # regardless of JS quoting — break the sequence at the HTML level by
-# inserting a backslash, which the JS parser ignores).
-_js_value(v::String) =
-    "'$(replace(replace(replace(v, "\\" => "\\\\"), "'" => "\\'"), "</" => "<\\/"))'"
+# inserting a backslash, which the JS parser ignores). Shared by the URL
+# and every extras value in action_js.
+_js_str_escape(s::AbstractString) =
+    replace(s, "\\" => "\\\\", "'" => "\\'", "</" => "<\\/")
+_js_value(v::String) = "'$(_js_str_escape(v))'"
 _js_value(v)         = string(v)  # fallback; caller's responsibility
 
 """

@@ -196,9 +196,7 @@ function script_response(js::AbstractString; script_attributes=nothing,
 end
 
 _strip_hash(s::AbstractString) = chopprefix(s, "#")
-# Escape: backslashes (so the JS string parser doesn't eat the next char), single
-# quotes (the JS string delimiter), and "</" (the HTML parser will close the
-# enclosing <script> on </script> regardless of JS quoting — break the sequence
-# at the HTML level by inserting a backslash, which the JS parser ignores).
-_js_escape(s::AbstractString) =
-    replace(s, "\\" => "\\\\", "'" => "\\'", "</" => "<\\/")
+# The window.location='…' redirect string is a single-quoted JS literal in
+# an inline <script>, so it needs the exact same escaping as a Datastar
+# action's URL/extras — one source of truth in _js_str_escape (datastar.jl).
+const _js_escape = _js_str_escape

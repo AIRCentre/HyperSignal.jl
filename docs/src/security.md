@@ -85,6 +85,11 @@ the output through [`patch_svg`](@ref). The patch removes:
   prefix containing `\` won't get interpreted as a regex
   back-reference.
 
+The `add_class` and `aria_label` arguments patched onto the root
+`<svg>` are both attribute-escaped before splicing, so a value
+containing `"` cannot break out of the attribute and inject markup
+onto the root element.
+
 The patched SVG is wrapped in `Raw` because by then it's been
 re-emitted by the lib, not the caller. If you ever pass an SVG from
 an untrusted source through `patch_svg`, treat it the same as any
