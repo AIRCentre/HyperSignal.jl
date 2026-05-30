@@ -35,7 +35,8 @@ emits the bare attribute name, anything falsy omits the attribute
 entirely. `Number`s are written as their decimal representation
 (no escape needed). A [`DSAction`](@ref) value (Datastar action) is
 formatted by the renderer; the JS string inside is escaped against
-single quote, backslash, and `</script>`.
+single quote, backslash, `</script>`, and the four JS line terminators
+(LF, CR, U+2028, U+2029).
 
 ## Attribute and tag *names*
 
@@ -103,8 +104,10 @@ button(on_click(ds_post("/api/save")),       # safe — typed action
 ```
 
 A [`DSAction`](@ref) value is formatted by the renderer with
-`single-quote → \'`, `\ → \\`, `</ → <\/` (the same triple-escape
-used by [`redirect_via_fragment`](@ref) and `DSAction` extras). A raw
+`single-quote → \'`, `\ → \\`, `</ → <\/`, and the four JS line
+terminators (`LF → \n`, `CR → \r`, `U+2028 → \u2028`, `U+2029 → \u2029`)
+(the same JS-string escape used by [`redirect_via_fragment`](@ref) and
+`DSAction` extras). A raw
 JS-string action — the second form above — is passed through
 verbatim into the attribute value; the HTML-attribute escape still
 fires (so `"` becomes `&quot;`), but the JS-string quoting inside is

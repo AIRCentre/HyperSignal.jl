@@ -64,6 +64,28 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test String(take!(io)) == ""
     end
 
+    @testset "Attribute nested in a container child → actionable error" begin
+        # An Attribute is lifted into attrs only as a TOP-LEVEL positional
+        # arg. Nested inside a Vector/Tuple/Generator it becomes a child and
+        # has no renderable form — surface a message that names the fix
+        # (splat) instead of an opaque internal MethodError. Covers the
+        # realistic mistake of collecting attrs into a vector (as
+        # signal_dialog does) but forgetting to splat.
+        @test_throws ArgumentError render(div([on(:click, ds_get("/x"))], "child"))
+        @test_throws ArgumentError render(div((on(:click, ds_get("/x")),), "child"))
+        @test_throws ArgumentError render(div(on(:click, ds_get("/x")) for _ in 1:1))
+        err = try
+            render(div([on(:click, ds_get("/x"))]))
+        catch e
+            e
+        end
+        @test err isa ArgumentError
+        @test occursin("Splat", err.msg)
+        # Splatting the same collection is the correct form and still works.
+        @test occursin("data-on:click",
+                       render(div([on(:click, ds_get("/x"))]..., "child")))
+    end
+
     @testset "boolean attribute true → bare; false/nothing → omitted" begin
         @test render(input(type="checkbox", checked=true))  == "<input type=\"checkbox\" checked>"
         @test render(input(type="checkbox", checked=false)) == "<input type=\"checkbox\">"
@@ -783,6 +805,11 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         # A letter/underscore start (optionally one leading hyphen) is fine.
         @test render(preset_button("X", ["-data-x" => "a"])) isa AbstractString
         @test render(preset_button("X", ["_k" => "a"])) isa AbstractString
+        # A trailing newline must be rejected: anchored with `\z` not `$`, so
+        # PCRE's "`$` matches before a final \n" can't let `"foo\n"` through
+        # (it would land raw in the CSS selector, breaking it in the browser).
+        @test_throws ErrorException preset_button("X", ["foo\n" => "v"])
+        @test_throws ErrorException preset_button("X", ["foo\nbar" => "v"])
     end
 
     @testset "preset_button generates the click-side JS to set named radios + fire change" begin

@@ -58,8 +58,19 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `-Infinity` / `NaN` instead of Julia's `Inf` / `-Inf` (a bare `Inf` is a
   JS `ReferenceError`). Relevant to numeric action options such as
   `retryMaxCount=Inf`.
+- `_validate_preset_name` now anchors with `\z`, not `$`. PCRE `$` also
+  matches just before a trailing `\n`, so a preset name like `"foo\n"` slipped
+  past the CSS-identifier check and landed a raw newline in the
+  `querySelector` selector (silently breaking the handler in the browser).
 
 ### Changed
+- **An `Attribute` that reaches `render` as a child now raises an actionable
+  `ArgumentError`** naming the fix (splat the collection) instead of an opaque
+  internal `MethodError`. `_make_element` only lifts an `Attribute` into attrs
+  when it is a *top-level* positional arg; nesting one inside a
+  `Vector`/`Tuple`/`Generator` (e.g. collecting attrs into a vector as
+  `signal_dialog` does, then forgetting to splat) previously failed deep in
+  the renderer.
 - **A caller-supplied header no longer double-emits.** Every response helper
   (`html_response`, `fragment_response`, `signals_response`,
   `script_response`, `redirect_*`, `sse_response`, `sse_stream`) prepended
@@ -81,6 +92,11 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   per-child dispatch lands directly (no runtime `isa` ladder); `is_void` is
   hoisted to one lookup per element; and the tag/attribute name validators
   share one `_is_invalid_name_byte` predicate.
+
+### Docs
+- `security.md` now lists the full `DSAction` JS-string escape set — the four
+  JS line terminators (`LF`, `CR`, `U+2028`, `U+2029`) alongside the original
+  `'` / `\` / `</` — and drops the now-incorrect "triple-escape" wording.
 
 ## 0.3.1 — 2026-05-29
 

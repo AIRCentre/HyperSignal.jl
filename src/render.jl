@@ -240,6 +240,18 @@ render(io::IO, n::Number) = print(io, n)
 render(io::IO, ::Bool) = nothing
 render(io::IO, ::Nothing) = nothing
 render(io::IO, ::Missing) = nothing
+# An Attribute reached render as a child. _make_element only lifts an
+# Attribute into attrs when it's a TOP-LEVEL positional arg; an Attribute
+# nested inside a Vector/Tuple/Generator positional arg is appended as a
+# child instead, then has no renderable representation here. Without this
+# method the failure is an opaque `MethodError: render(::IO, ::Attribute)`
+# from deep in the renderer; name the real fix (splat the collection) so
+# the diagnostic points at the call site. Valid code never reaches here.
+render(io::IO, ::Attribute) = throw(ArgumentError(
+    "HyperSignal: an Attribute (from on(...)/ds_*(...)) reached render as a child. " *
+    "Attributes are only lifted into attrs when passed as a top-level positional arg, " *
+    "not when nested inside a Vector/Tuple/Generator. " *
+    "Splat the collection — tag(attrs..., children...) — so each Attribute is top-level."))
 # Symbol children render as their text. The common case is a status
 # enum (`span(:Pending)`) where the caller pulled the value straight
 # from a model field without wanting to `string()` first. The escape

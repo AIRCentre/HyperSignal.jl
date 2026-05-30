@@ -405,7 +405,11 @@ function _validate_preset_name(name::AbstractString)
     # single leading hyphen), then the documented `[A-Za-z0-9_-]` tail. An
     # earlier per-char loop used `isletter`, which would also have let
     # non-ASCII letters (é, ñ, …) through; the regex pins the rule strictly.
-    occursin(r"^-?[A-Za-z_][A-Za-z0-9_-]*$", name) ||
+    # Anchor with `\z` (absolute end), not `$`: PCRE `$` also matches just
+    # before a single trailing `\n`, so `$` would accept `"foo\n"` — the
+    # newline then lands raw in the CSS selector (`input[name=foo⏎]`),
+    # breaking it silently in the browser. `\z` forbids the trailing newline.
+    occursin(r"^-?[A-Za-z_][A-Za-z0-9_-]*\z", name) ||
         error("preset_button: input name must be an ASCII CSS identifier " *
               "(letter or underscore start, then [A-Za-z0-9_-]), got $(repr(name))")
 end
