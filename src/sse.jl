@@ -14,6 +14,19 @@ struct PatchSignalsEvent
     only_if_missing::Bool
 end
 
+# A `data: selector <sel>` SSE line is terminated by CR/LF/CRLF (EventSource
+# treats all three as line ends), so a CR or LF in the selector would end the
+# line early and corrupt the rest of the event. Validate at build time (in
+# patch_elements, alongside the mode check) so the mistake surfaces at the
+# call site; _encode_event re-checks as defense-in-depth for a directly
+# constructed PatchElementsEvent. (Defined ABOVE patch_elements' docstring so
+# the docstring stays attached to patch_elements, not this helper.)
+function _validate_sse_selector(sel::AbstractString)
+    ('\n' in sel || '\r' in sel) &&
+        throw(ArgumentError("patch_elements: selector must not contain a CR or LF, got $(repr(sel))"))
+    nothing
+end
+
 """
     patch_elements(body; selector=nothing, mode=nothing, view_transition=false)
 
@@ -23,18 +36,6 @@ one `data: elements …` line per source line. `mode` is one of the
 fragment modes accepted by [`fragment_response`](@ref); unknown symbols
 throw `ArgumentError`.
 """
-# A `data: selector <sel>` SSE line is terminated by CR/LF/CRLF (EventSource
-# treats all three as line ends), so a CR or LF in the selector would end the
-# line early and corrupt the rest of the event. Validate at build time (in
-# patch_elements, alongside the mode check) so the mistake surfaces at the
-# call site; _encode_event re-checks as defense-in-depth for a directly
-# constructed PatchElementsEvent.
-function _validate_sse_selector(sel::AbstractString)
-    ('\n' in sel || '\r' in sel) &&
-        throw(ArgumentError("patch_elements: selector must not contain a CR or LF, got $(repr(sel))"))
-    nothing
-end
-
 function patch_elements(body; selector::Union{Nothing,AbstractString}=nothing,
                         mode::Union{Nothing,Symbol}=nothing,
                         view_transition::Bool=false)
