@@ -10,6 +10,8 @@ A sentence on what changed and why. Link the issue if there is one.
       and no >10% regression on any case.
 - [ ] If the change is user-facing: `CHANGELOG.md` updated under
       `## Unreleased`.
+- [ ] If the change touches `src/`, `ext/`, or how `Element` renders for
+      Pluto: the Pluto smoke job is expected to stay green.
 
 ## Test coverage
 

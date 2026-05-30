@@ -1,4 +1,4 @@
-# Headless Pluto smoke for examples/pluto_demo.jl.
+# Headless Pluto smoke for docs/src/notebooks/{smoke,datastar_responses,map_smoke}.jl.
 #
 # Spin up a Pluto session, open the notebook, wait for all cells to
 # settle, then assert that the cell rendering `div(class="card",

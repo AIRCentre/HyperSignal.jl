@@ -1,7 +1,13 @@
 # API reference
 
-Every exported name. Docstrings live alongside the source — this page
-just indexes them so the rendered docs site has clickable cross-references.
+Every exported helper, type, and macro. The 100-plus HTML tag constructors
+(`div`, `h1`, `form`, …) are generated programmatically and have no
+individual docstrings, so they aren't listed here — they come into scope
+with `using HyperSignal` (except the Base-shadowed
+`div`/`select`/`summary`/`mark`/`time`, which need [`@using_tags`](@ref));
+see the Quickstart under [Module overview](#Module-overview) below.
+Docstrings live alongside the source — this page just indexes them so the
+rendered docs site has clickable cross-references.
 
 ## Module overview
 
@@ -111,7 +117,13 @@ HyperSignal.Helpers.preset_button
 HyperSignal.Helpers.signal_dialog
 ```
 
-## CairoMakie SVG inlining
+## SVG inlining
+
+Pure string transforms — no Makie dependency. `patch_svg` / `inline_svg`
+take any SVG string (CairoMakie's `save("plot.svg", fig)` output is the
+motivating case). A `Figure` / `Scene` / `FigureAxisPlot` overload of
+`inline_svg` is added by the `HyperSignalMakieExt` extension when any
+Makie backend (e.g. CairoMakie) is loaded.
 
 ```@docs
 patch_svg
