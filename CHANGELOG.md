@@ -125,6 +125,31 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   completeness fixes; and CONTRIBUTING + the `.github` templates now cover the
   doctest build and Pluto smoke job. README/docs examples were verified to run
   against the current API.
+### Fixed
+- **MapLibre `click_post` / `bbox_post` payloads now actually reach the
+  server.** The click and shift-drag-bbox handlers set `$_payload` before
+  `@post`ing it, but Datastar's default request filter excludes any
+  signal matching `/(^|\.)_/` from request bodies (underscore signals are
+  client-local), so the payload was set locally but never sent — the
+  handler saw no payload and silently fell back. The payload signal is
+  now a plain `$payload`, so both posts carry their `{lat, lon,
+  properties}` / `{w, s, e, n}` data.
+- **MapLibre shift-drag box-select no longer pans the map or collapses to
+  a zero-area bbox.** Disabling MapLibre's built-in `boxZoom` (to stop it
+  double-firing) also removed the `dragPan` suppression `boxZoom`
+  performs during a shift-drag, so the gesture panned the map and
+  start/end unprojected to the same coordinate. The handler now disables
+  `dragPan` itself on shift-mousedown and re-enables it on mouseup
+  (before any early return), and draws a live selection rectangle to
+  restore the visual feedback `boxZoom` used to provide.
+
+### Docs
+- The MapLibre example notebook (`docs/src/notebooks/example.jl`) stacks
+  the map over a full-width time-series chart (single column), makes the
+  date sliders recolor the map *and* shade the selected year window on
+  the chart, and bumps its Pluto format header to v1.0.1. The MapLibre
+  guide's payload table is updated to the non-underscore `$payload`
+  signal.
 
 ## 0.3.1 — 2026-05-29
 

@@ -419,7 +419,7 @@ function _init_js(; id_prefix, center, zoom, style,
 
     # Click handler → dispatch event with {lat, lon, properties} from
     # queryRenderedFeatures restricted to click_layers. The container
-    # div's data-on:hs-<prefix>click handler runs `\$_payload = evt.detail; @post(...)`.
+    # div's data-on:hs-<prefix>click handler runs `\$payload = evt.detail; @post(...)`.
     if click_post !== nothing
         layers_js = JSON.json(click_layers)
         print(io, "_m.on('click',function(e){")
@@ -430,18 +430,56 @@ function _init_js(; id_prefix, center, zoom, style,
     end
 
     # Shift+drag rectangle → dispatch {w, s, e, n}. The mouseup listener
-    # is on `document` so off-canvas releases still fire; MapLibre's
-    # built-in shift-drag boxZoom is disabled to avoid double-firing.
+    # is on `document` so off-canvas releases still fire.
+    #
+    # Two of MapLibre's own handlers must be suppressed for the gesture
+    # to read as a box-select rather than a camera move:
+    #  - boxZoom is MapLibre's built-in shift-drag handler; left on it
+    #    would zoom to the rectangle and double-fire.
+    #  - dragPan normally pans on any drag, but MapLibre's boxZoom is what
+    #    disables dragPan for the duration of a shift-drag (see its
+    #    `shiftKey && ... disableDrag()` path). With boxZoom disabled that
+    #    suppression never happens, so a shift-drag would PAN the map: the
+    #    grabbed point stays under the cursor, start/end unproject to the
+    #    same lng/lat, and the posted bbox collapses to a zero-area point.
+    #    So we disable dragPan ourselves on shift-mousedown and re-enable
+    #    it on mouseup (in every branch, before any early return).
+    #
+    # We also draw a live selection rectangle while dragging. MapLibre's
+    # boxZoom rendered one; once we disable boxZoom that visual is gone, so
+    # without this the user gets no feedback that a box is being drawn —
+    # the gesture "doesn't work" from their side even when the post fires.
+    # The rectangle is a div appended to the map's canvas container (the
+    # positioned ancestor of the canvas, so absolute offsets line up with
+    # the canvas pixel coords) and updated on mousemove.
     if bbox_post !== nothing
         print(io, "_m.boxZoom&&_m.boxZoom.disable();")
-        print(io, "let _bs=null,_bs_x=0,_bs_y=0;")
+        print(io, "let _bs=null,_bs_x=0,_bs_y=0,_bx=null;")
+        print(io, "const _bcc=_m.getCanvasContainer();")
+        # Tear down the rectangle + restore dragPan from any branch.
+        print(io, "const _bclr=function(){if(_bx){_bx.remove();_bx=null;}");
+        print(io, "_m.dragPan&&_m.dragPan.enable();};")
         print(io, "_m.getCanvas().addEventListener('mousedown',function(e){")
         print(io, "if(!e.shiftKey)return;e.preventDefault();")
+        print(io, "_m.dragPan&&_m.dragPan.disable();")
         print(io, "_bs=_m.unproject([e.offsetX,e.offsetY]);")
         print(io, "_bs_x=e.offsetX;_bs_y=e.offsetY;")
         print(io, "});")
+        # Live rectangle: lazily create the div on first move, then keep
+        # it spanning mousedown→current in canvas-pixel space.
+        print(io, "document.addEventListener('mousemove',function(e){")
+        print(io, "if(!_bs)return;")
+        print(io, "const r=_m.getCanvas().getBoundingClientRect();")
+        print(io, "const cx=e.clientX-r.left,cy=e.clientY-r.top;")
+        print(io, "if(!_bx){_bx=document.createElement('div');")
+        print(io, "_bx.style.cssText='position:absolute;top:0;left:0;background:rgba(56,135,190,0.15);border:2px solid #3887be;pointer-events:none;z-index:5;';")
+        print(io, "_bcc.appendChild(_bx);}")
+        print(io, "_bx.style.transform='translate('+Math.min(_bs_x,cx)+'px,'+Math.min(_bs_y,cy)+'px)';")
+        print(io, "_bx.style.width=Math.abs(cx-_bs_x)+'px';_bx.style.height=Math.abs(cy-_bs_y)+'px';")
+        print(io, "});")
         print(io, "document.addEventListener('mouseup',function(e){")
-        print(io, "if(!_bs)return;const r=_m.getCanvas().getBoundingClientRect();")
+        print(io, "if(!_bs)return;_bclr();")
+        print(io, "const r=_m.getCanvas().getBoundingClientRect();")
         print(io, "const ux=e.clientX-r.left,uy=e.clientY-r.top;")
         # 3px threshold per axis: smaller than a deliberate drag, large
         # enough to absorb hand tremor on a shift-click.
@@ -484,8 +522,14 @@ function map_view(; id_prefix::AbstractString="map_",
     zoom_signal   === nothing || _on("zoom",   "\$$zoom_signal = evt.detail")
     bounds_signal === nothing || _on("bounds", "\$$bounds_signal = evt.detail")
     cursor_signal === nothing || _on("cursor", "\$$cursor_signal = evt.detail")
-    click_post === nothing    || _on("click",  "\$_payload = evt.detail; @post('$(_js_squote(click_post))')")
-    bbox_post  === nothing    || _on("bbox",   "\$_payload = evt.detail; @post('$(_js_squote(bbox_post))')")
+    # The payload signal must NOT be `_`-prefixed: Datastar's default
+    # request filter excludes any signal matching /(^|\.)_/ from @post
+    # bodies (underscore signals are client-local), so a `$_payload` would
+    # be set locally but never reach the server — the handler would see no
+    # payload and silently fall back, so the click/bbox post looks like it
+    # does nothing. Use a plain `$payload` so it's included in the body.
+    click_post === nothing    || _on("click",  "\$payload = evt.detail; @post('$(_js_squote(click_post))')")
+    bbox_post  === nothing    || _on("bbox",   "\$payload = evt.detail; @post('$(_js_squote(bbox_post))')")
 
     HyperSignal.Frag(
         HyperSignal.div(attrs...),

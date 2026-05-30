@@ -59,8 +59,8 @@ M.map_view(;
 | `layers` | Tuple of layer specs; added after the sources. |
 | `center_signal` / `zoom_signal` / `bounds_signal` | Signal names written on `moveend` (idle). |
 | `cursor_signal` | Signal name written `[lon, lat]` on every `mousemove`. |
-| `click_post` | URL `@post`ed on click; the payload signal `$_payload` holds `{lat, lon, properties}` from the top feature under the cursor (restricted to `click_layers`). |
-| `bbox_post` | URL `@post`ed after a shift-drag rectangle; `$_payload` holds `{w, s, e, n}`. |
+| `click_post` | URL `@post`ed on click; the payload signal `$payload` holds `{lat, lon, properties}` from the top feature under the cursor (restricted to `click_layers`). |
+| `bbox_post` | URL `@post`ed after a shift-drag rectangle; `$payload` holds `{w, s, e, n}`. |
 | `click_layers` | Layer ids `queryRenderedFeatures` restricts to for the click payload. |
 
 Each channel you leave at `nothing` emits no handler — the script body
@@ -74,7 +74,7 @@ shift-drag) dispatches a `CustomEvent` on `document` with `bubbles:
 true`. `map_view` renders a matching `data-on:hs-<prefix><channel>__window`
 attribute on the container; that attribute is where the real Datastar
 expression lives — a `$signal = evt.detail` assignment for the viewport
-/ cursor channels, or `$_payload = evt.detail; @post('…')` for the click
+/ cursor channels, or `$payload = evt.detail; @post('…')` for the click
 / bbox channels. Keeping `@post` and `$signal` inside attribute context
 (the only place Datastar parses them) lets the script body stay plain
 JS.
