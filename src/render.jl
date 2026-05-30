@@ -289,12 +289,29 @@ render(io::IO, v::AbstractVector{UInt8}) = (write(io, v); nothing)
     b == 0x22 || b == 0x27 || b == 0x3e || b == 0x3c ||
     b == 0x2f || b == 0x3d || b == 0x00
 
-const _VALID_TAG_NAMES = Set{Symbol}()
+# Copy-on-write atomic cache. The lock-free hot path atomically loads an
+# IMMUTABLE Set snapshot and only reads it (no concurrent in-place mutation
+# under a reader); a cold miss validates, then under the lock copies-and-swaps
+# the reference. Plain concurrent `push!` into a shared Set is NOT safe: a
+# writer's `rehash!` swaps the backing arrays non-atomically while a reader's
+# `in` indexes them, corrupting the cache or crashing the process. HTTP.jl can
+# render on many threads at once against a cold cache (first-traffic burst), so
+# this is a real hazard, not a theoretical one.
+mutable struct _NameCache
+    @atomic names::Set{Symbol}
+    lk::ReentrantLock
+end
+
+const _VALID_TAG_NAMES = _NameCache(Set{Symbol}(), ReentrantLock())
 
 @inline function _check_tag_name(t::Symbol)
-    t in _VALID_TAG_NAMES && return nothing
+    t in (@atomic _VALID_TAG_NAMES.names) && return nothing
     _check_tag_name_uncached(t)
-    push!(_VALID_TAG_NAMES, t)
+    lock(_VALID_TAG_NAMES.lk) do
+        cur = @atomic _VALID_TAG_NAMES.names
+        t in cur && return
+        @atomic _VALID_TAG_NAMES.names = push!(copy(cur), t)
+    end
     nothing
 end
 
@@ -321,14 +338,18 @@ end
 # Cache validated symbols: HTML attribute names form a small, bounded
 # vocabulary, and Symbols are interned, so identity-keyed Set lookup
 # is constant-time and skips the codeunit walk after the first check.
-# A race on Set push only duplicates work — harmless beyond a brief
-# extra walk — so we don't lock.
-const _VALID_ATTR_NAMES = Set{Symbol}()
+# See `_NameCache` above for why the cache is copy-on-write under a lock
+# rather than a bare concurrently-mutated Set.
+const _VALID_ATTR_NAMES = _NameCache(Set{Symbol}(), ReentrantLock())
 
 @inline function _check_attr_name(k::Symbol)
-    k in _VALID_ATTR_NAMES && return nothing
+    k in (@atomic _VALID_ATTR_NAMES.names) && return nothing
     _check_attr_name_uncached(k)
-    push!(_VALID_ATTR_NAMES, k)
+    lock(_VALID_ATTR_NAMES.lk) do
+        cur = @atomic _VALID_ATTR_NAMES.names
+        k in cur && return
+        @atomic _VALID_ATTR_NAMES.names = push!(copy(cur), k)
+    end
     nothing
 end
 

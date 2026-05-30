@@ -104,12 +104,9 @@ function sse_response(events; status::Int=200, headers=Pair{String,String}[])
     for ev in events
         _encode_event(io, ev)
     end
-    h = Pair{String,String}[
-        "Content-Type" => "text/event-stream; charset=utf-8",
-        "Cache-Control" => "no-cache",
-        "Connection" => "keep-alive",
-    ]
-    append!(h, headers)
+    h = _with_default(headers, "Connection", "keep-alive")
+    h = _with_default(h, "Cache-Control", "no-cache")
+    h = _with_default(h, "Content-Type", "text/event-stream; charset=utf-8")
     HTTP.Response(status, h, take!(io))
 end
 
@@ -138,12 +135,9 @@ end, "127.0.0.1", 8080; stream=true)
 ```
 """
 function sse_stream(f; status::Int=200, headers=Pair{String,String}[])
-    base_headers = Pair{String,String}[
-        "Content-Type" => "text/event-stream; charset=utf-8",
-        "Cache-Control" => "no-cache",
-        "Connection" => "keep-alive",
-    ]
-    append!(base_headers, headers)
+    base_headers = _with_default(headers, "Connection", "keep-alive")
+    base_headers = _with_default(base_headers, "Cache-Control", "no-cache")
+    base_headers = _with_default(base_headers, "Content-Type", "text/event-stream; charset=utf-8")
     function handler(stream::HTTP.Stream)
         HTTP.setstatus(stream, status)
         for (k, v) in base_headers

@@ -395,19 +395,29 @@ end
 # must be a plain identifier — anything else would let a stray character break
 # the selector or the surrounding JS. We refuse rather than silently mangle.
 function _validate_preset_name(name::AbstractString)
-    # `^[A-Za-z0-9_-]+$` enforces what the error message advertises: ASCII
-    # identifier chars only. An earlier per-char loop used `isletter`,
-    # which would have let non-ASCII letters (é, ñ, …) through despite
-    # the comment promising ASCII; the regex pins the rule strictly.
-    occursin(r"^[A-Za-z0-9_-]+$", name) ||
-        error("preset_button: input name must match [A-Za-z0-9_-], got $(repr(name))")
+    # The name lands UNQUOTED in a CSS attribute selector (`input[name=…]`),
+    # so it must be a valid plain CSS identifier — not merely an
+    # `[A-Za-z0-9_-]` run. A CSS identifier cannot start with a digit (nor a
+    # hyphen-then-digit): `input[name=123]` / `input[name=-1]` make
+    # `querySelector` throw a SyntaxError at click time, silently disabling
+    # the preset — exactly the silent-in-the-browser failure this validator
+    # exists to prevent. Require a letter/underscore start (optionally after a
+    # single leading hyphen), then the documented `[A-Za-z0-9_-]` tail. An
+    # earlier per-char loop used `isletter`, which would also have let
+    # non-ASCII letters (é, ñ, …) through; the regex pins the rule strictly.
+    occursin(r"^-?[A-Za-z_][A-Za-z0-9_-]*$", name) ||
+        error("preset_button: input name must be an ASCII CSS identifier " *
+              "(letter or underscore start, then [A-Za-z0-9_-]), got $(repr(name))")
 end
 
-# A preset's `val` lives inside the JS-string delimited by double-quotes inside
-# the selector. Escape the JS string boundary characters; the surrounding HTML
-# attribute escape handles the outer layer.
+# A preset's `val` is double-escaped at the JS layer: the whole selector is the
+# single-quoted argument to `querySelector('…')`, and `val` additionally sits
+# inside the double-quoted CSS `[value="…"]`. BOTH quote families therefore bound
+# a JS string here, so a `'` (outer arg) or `"` (inner) in `val` would terminate
+# it and break the handler. Escape backslash, double-quote, and single-quote; the
+# surrounding HTML attribute escape handles the HTML layer.
 _escape_preset_value(v::AbstractString) =
-    replace(v, "\\" => "\\\\", "\"" => "\\\"")
+    replace(v, "\\" => "\\\\", "\"" => "\\\"", "'" => "\\'")
 
 """
     signal_dialog(open_expr, body...; close_action, id=nothing, class="")

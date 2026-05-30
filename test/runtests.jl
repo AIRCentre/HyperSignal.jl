@@ -269,6 +269,26 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test occursin("window.location='/a\\\\b'", String(resp.body))
     end
 
+    @testset "redirect_via_fragment attaches Set-Cookie headers and honors wrapper_tag" begin
+        # Why: the documented post-login flow sets a session cookie AND
+        # navigates in one response. A regression dropping/misattaching the
+        # Set-Cookie header would silently leave the user logged out.
+        resp = redirect_via_fragment("#login-form", "/dashboard";
+            cookies=["sid=abc; HttpOnly; Path=/; SameSite=Lax"],
+            wrapper_tag=:li)
+        body = String(resp.body)
+        @test occursin("<li id=\"login-form\">", body)   # wrapper_tag overrides <div>
+        @test occursin("<script>window.location='/dashboard'</script>", body)
+        cookies = [String(v) for (k, v) in resp.headers if lowercase(String(k)) == "set-cookie"]
+        @test cookies == ["sid=abc; HttpOnly; Path=/; SameSite=Lax"]
+        h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+        @test h["datastar-selector"] == "#login-form"   # fragment delegation intact
+        # Multiple cookies each get their own Set-Cookie header.
+        resp2 = redirect_via_fragment("#x", "/home"; cookies=["a=1", "b=2"])
+        c2 = [String(v) for (k, v) in resp2.headers if lowercase(String(k)) == "set-cookie"]
+        @test c2 == ["a=1", "b=2"]
+    end
+
     @testset "signals_response emits JSON body with the right Content-Type" begin
         resp = signals_response((; count=3, label="hi"))
         h = Dict(String(k) => String(v) for (k, v) in resp.headers)
@@ -744,6 +764,27 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test occursin("[value=&quot;a\\&quot;b&quot;]", out)
     end
 
+    @testset "preset_button escapes ' inside value" begin
+        # Why: the whole selector is the single-quoted argument to
+        # `querySelector('…')`, so a `'` in the value (e.g. `it's`) would close
+        # that outer JS string mid-call and make the handler a SyntaxError.
+        # The backslash-escape survives the HTML un-escape as `\'`, which the JS
+        # parser turns into a literal `'` that CSS receives unchanged.
+        out = render(preset_button("X", ["mode" => "it's"]))
+        @test occursin("[value=&quot;it\\&#39;s&quot;]", out)
+    end
+
+    @testset "preset_button rejects a digit-leading name (invalid unquoted CSS selector)" begin
+        # Why: the name lands UNQUOTED in `input[name=…]`; a CSS identifier
+        # can't start with a digit (nor a hyphen-then-digit), so `name=123`
+        # would make querySelector throw at click time. Fail loud at build.
+        @test_throws ErrorException preset_button("X", ["123" => "a"])
+        @test_throws ErrorException preset_button("X", ["-1" => "a"])
+        # A letter/underscore start (optionally one leading hyphen) is fine.
+        @test render(preset_button("X", ["-data-x" => "a"])) isa AbstractString
+        @test render(preset_button("X", ["_k" => "a"])) isa AbstractString
+    end
+
     @testset "preset_button generates the click-side JS to set named radios + fire change" begin
         # Why: this JS is otherwise hand-typed at every preset, with the
         # quote-escaping that breaks under one wrong character. Centralizing
@@ -1116,6 +1157,17 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test occursin("xlink:href=\"#fig1_glyph0\"", out)
         @test occursin("href=\"#fig1_g1\"", out)
         @test !occursin("xlink:href=\"#fig1_fig1_", out)  # idempotency guard
+    end
+
+    @testset "patch_svg id namespacing leaves *-id / xml:id attributes alone" begin
+        # Why: the id matcher anchors on a name-char boundary, not a bare \b
+        # word boundary — `data-id`/`xml:id`/`aria-id` are NOT the SVG `id`
+        # attribute and must keep their values verbatim under id_prefix.
+        src = """<svg viewBox="0 0 1 1"><rect data-id="keep" xml:id="x" id="real"/></svg>"""
+        out = patch_svg(src; id_prefix="p_")
+        @test occursin("data-id=\"keep\"", out)
+        @test occursin("xml:id=\"x\"", out)
+        @test occursin("id=\"p_real\"", out)
     end
 
     @testset "patch_svg id_prefix containing \$ or \\ is treated literally, not as a backreference" begin

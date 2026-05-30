@@ -15,6 +15,26 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   helper. (exported)
 
 ### Fixed
+- **Thread-safe validator caches.** `_VALID_TAG_NAMES` / `_VALID_ATTR_NAMES`
+  were plain `Set{Symbol}` mutated lock-free on every tag/attribute render.
+  Under multithreaded `HTTP.serve`, concurrent `push!` into a cold cache
+  races a `rehash!` that swaps the backing arrays non-atomically — which can
+  **corrupt the cache (poisoning later validations) or segfault the
+  process**, not merely "duplicate work" as the old comment claimed. Both
+  caches are now a copy-on-write `_NameCache` (lock-free atomic-snapshot read
+  on the hot path, copy-and-swap under a lock on a cold miss); the warm read
+  path is unchanged (~1 ns).
+- **`preset_button` now escapes `'` in a preset value.** The whole
+  `querySelector('…')` selector is a single-quoted JS string, so a value like
+  `it's` closed it early and made the generated `onclick` a `SyntaxError`
+  (the preset silently did nothing). `_escape_preset_value` escaped only `"`
+  and `\`; it now escapes `'` too. `preset_button` also rejects a non-CSS-
+  identifier name (digit-leading, e.g. `name=123`) at build time rather than
+  emitting an `input[name=123]` selector that throws in the browser.
+- **`patch_svg` id-namespacing no longer rewrites `data-id` / `xml:id` /
+  `aria-id`.** The `_ID_RE` matcher used a bare `\b` word boundary, so under
+  `id_prefix` it mutated the values of any `*-id` / `xml:id` attribute, not
+  just the SVG `id`. Anchored to a name-char boundary (`(?<![\w:-])`).
 - **`ds_signal` now emits the keyed `data-signals:<name>` form** (colon,
   plural). It previously rendered the singular `data-signal-<name>`, which
   is not a Datastar v1.0 attribute — Datastar matched no plugin and ignored
@@ -40,6 +60,16 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `retryMaxCount=Inf`.
 
 ### Changed
+- **A caller-supplied header no longer double-emits.** Every response helper
+  (`html_response`, `fragment_response`, `signals_response`,
+  `script_response`, `redirect_*`, `sse_response`, `sse_stream`) prepended
+  its library-owned `Content-Type` (and the SSE trio) then appended the
+  caller's `headers`, so a caller passing their own `Content-Type` (custom
+  charset, `application/problem+json`, …) put **two** `Content-Type` lines on
+  the wire — a malformed message whose interpretation diverges across
+  consumers. A new `_with_default` skips the library default when the caller
+  already supplied that field (matched case-insensitively); the caller wins,
+  with exactly one header. The default path is byte-identical.
 - `parse_signals` now throws `ArgumentError` (not the bare `ErrorException`
   from `error()`) for a top-level non-object JSON body, matching the
   malformed-JSON path — both bad-request-body cases now raise one
