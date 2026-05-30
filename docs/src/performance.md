@@ -18,7 +18,7 @@ the per-case median time. Re-run before and after touching
 allocation count won't surface in the correctness tests but will show
 up here.
 
-## Indicative numbers (`v0.1.0`, typical workstation)
+## Indicative numbers (measured on `v0.1.0`; relative shape still holds)
 
 | benchmark                           | time      |
 |-------------------------------------|-----------|
@@ -35,7 +35,9 @@ up here.
 
 Numbers vary with CPU and Julia version — treat the relative
 shape (small fragment ≪ table ≪ form ≪ svg patch) as the
-contract, not the absolute nanoseconds.
+contract, not the absolute nanoseconds. These figures were last
+measured on v0.1.0; regenerate with the command above after renderer
+changes.
 
 ## Workloads
 
@@ -53,15 +55,22 @@ bound for a Datastar-morph data view; bigger tables paginate.
 
 ### `render wide form 100 fields`
 
-A `<form>` with 100 `<input>`s carrying labels, names, values, and a
-`data-on:input` binding. Stress for attribute emission and the
+A `<form>` carrying one `data-on:submit` binding
+(`on_submit(ds_post("/save"; form=true))`) and wrapping a
+`<fieldset>`/`<legend>` of 100 `radio_field` entries. Each entry renders
+as a `<label>` around an `<input type="radio">` with `name`, `value`,
+and (on the first only) a `checked` flag. Stresses attribute emission,
+the form-helper layer (`radio_field` / `fieldset` / `legend`), and the
 `on(...)` / `DSAction` formatting path.
 
 ### `escape 10k adversarial chars`
 
 A 10 KB string that's 100% HTML metacharacters (`<>&"'`). Pins the
 cost of the `escape_html` inner loop; the run-of-safe-bytes
-fast path doesn't help here.
+fast path doesn't help here. This is the worst case by construction —
+real text is mostly safe runs, each flushed with a single
+`unsafe_write`, so the per-character entity branch fires rarely; treat
+~48 µs/10 KB as a ceiling, not a typical cost.
 
 ### `html_response` / `fragment_response`
 
@@ -71,16 +80,31 @@ end-to-end cost of returning a body from a handler.
 
 ### `patch_svg` on 200- and 1000-path SVGs
 
-A synthetic CairoMakie-shaped SVG with N `<path>` elements: prolog,
-hard-coded `width`/`height`, `clip0` / `glyph0` ids. Exercises both
-the regex passes and the `id_prefix` rewrite. The 1000-path case
-roughly matches a busy histogram or scatter.
+A synthetic CairoMakie-shaped *input* SVG with N `<path>`-like elements:
+XML prolog, fixed `width="800px"` / `height="600px"`, and
+`clip0…clipN` / `glyph0…glyphN` ids. `patch_svg` exercises both the
+regex passes and the `id_prefix` rewrite over that input. The 1000-path
+case roughly matches a busy histogram or scatter.
 
 ### `parse_signals` of 4- and 50-key JSON bodies
 
 [`parse_signals`](@ref) runs on every Datastar action POST that
 carries form state. Both sizes are realistic — a 4-key body is a
 filter form, a 50-key body is a settings dialog.
+
+## Concurrent serving
+
+[`render`](@ref) is safe to call from many threads at once — the
+expected shape when HTTP.jl serves requests on a thread pool. `render`
+itself holds no shared mutable state. The only shared state is the
+tag-name / attribute-name validator cache, which is copy-on-write under
+a lock: a reader atomically loads an immutable `Set` snapshot and never
+mutates it, and a cold miss validates the name, then copies-and-swaps
+the cache reference under a `ReentrantLock`. The hot path (a cache hit)
+is lock-free — just an atomic load of the snapshot plus a `Set`
+membership test. The first burst of traffic against a cold cache pays a
+one-time validation per distinct tag/attribute name; steady state is the
+lock-free membership test.
 
 ## Future work
 

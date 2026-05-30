@@ -1,4 +1,4 @@
-# Run with: julia --project=. benchmark/runbench.jl
+# Run with: julia --project=benchmark benchmark/runbench.jl
 #
 # Why this exists: the renderer is on the request-handler hot path in
 # services that swap fragments dozens of times per page interaction. A

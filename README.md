@@ -90,7 +90,8 @@ element constructors lift them out of the children list automatically.
 Same idea for a fragment response that targets a morph point:
 
 ```julia
-fragment_response(div(id="count-estimate", small("~$(format_number(n)) images")),
+n = 1234
+fragment_response(div(id="count-estimate", small("~$n images")),
                   "#count-estimate")
 ```
 
@@ -182,7 +183,8 @@ Every escape boundary in one paragraph:
 
 Full write-up: [Security page of the docs site][docs-security].
 
-[docs-security]: https://aircentre.github.io/HyperSignal.jl/
+[docs-security]: https://AIRCentre.github.io/HyperSignal.jl/dev/security/
+[docs-datastar]: https://AIRCentre.github.io/HyperSignal.jl/dev/datastar/
 
 ## What it deliberately doesn't do
 
@@ -262,11 +264,14 @@ transitions) before emit. That's helpful for ordinary HTML but
 **actively breaks Datastar's wire-format attribute names**:
 
 ```julia
-# Hyperscript:
+# Hyperscript.jl mangles the wire-format name before emit:
 button("Click"; Symbol("data-on:click") => "@post('/x')")
 # → <button data-on-:click="...">                    ⚠ extra hyphen
 button("Click"; Symbol("data-on:change__debounce.300ms") => "@get('/c')")
 # → <button data-on-:change-_-_debounce-.300ms="..."> ⚠ multiple injections
+
+# HyperSignal emits the name verbatim:
+on(:click, ds_post("/x")).key   # → Symbol("data-on:click")  ✓ unmodified
 ```
 
 Datastar's client binds on the exact attribute names — mangled names
@@ -293,7 +298,8 @@ At the time of writing no other Julia binding for
 (`DSAction`, `ds_get` / `ds_post` / `ds_put` / `ds_delete`, `on` /
 `on_click` / `on_submit` / `on_change_debounced` / `on_interval`,
 `ds_indicator` / `ds_bind` / `ds_signal` / `ds_signals` / `ds_show` /
-`ds_text` / `ds_ignore_morph`, `ds_ref` / `ds_attr` / `ds_effect` /
+`ds_text` / `ds_json_signals` / `ds_ignore_morph`, `ds_ref` /
+`ds_attr` / `ds_class` / `ds_computed` / `ds_style` / `ds_effect` /
 `ds_init`, `parse_signals`, `fragment_response` /
 `redirect_via_fragment`) is the actual novel surface — the AST, render,
 and form helpers exist to serve it.
@@ -310,7 +316,9 @@ without `contentType: 'form'` (a JSON object the server reads).
 # once and lets the renderer's attribute escape handle the `"` round-trip.
 div(ds_signals((showDetails=false, count=0)),
     span(ds_show("\$showDetails"), "Details…"))
-# → <div data-signals='{"showDetails":false,"count":0}'>…</div>
+# → <div data-signals="{&quot;showDetails&quot;:false,&quot;count&quot;:0}">…</div>
+#   (the attribute is double-quoted and the JSON's " is escaped to &quot;;
+#    Datastar decodes the entities back to " before reading the JSON)
 
 # Decode: parse the JSON body of a non-form action, get a Dict back.
 function handle_increment(req::HTTP.Request)
@@ -324,6 +332,20 @@ For form-mode submits (`@post('/x', {contentType: 'form'})`), parse the
 body with your service's form parser — that wire format and the
 JSON-mode signals payload are distinct.
 
+## Responses beyond a page
+
+Beyond `html_response` and `fragment_response`, the response layer covers
+the rest of the Datastar wire surface:
+
+- `signals_response(signals)` — patch JSON signals (`application/json`);
+  pass anything `JSON.jl` encodes (a `NamedTuple`, `Dict`, or struct).
+- `script_response(js)` — append and run a `<script>` (`text/javascript`).
+- `sse_response(events)` / `sse_stream(f)` — buffered or streaming
+  Server-Sent Events; `patch_elements` / `patch_signals` build the
+  individual events. Use `sse_stream` to push progress over a long task.
+
+Full reference on the [docs site][docs-datastar].
+
 ## Runnable example
 
 A 50-line Datastar counter app lives in
@@ -334,9 +356,9 @@ julia --project=examples examples/counter_app.jl
 # → serving on http://127.0.0.1:8080
 ```
 
-It uses every part of the public surface — `html_response`,
-`fragment_response`, `on_click(ds_post(...))`, fragment morph via the
-`datastar-selector` header — in the smallest pasteable shape.
+It uses the core public surface — `html_response`, `fragment_response`,
+`on_click(ds_post(...))`, and id-matched fragment morph — in the
+smallest pasteable shape.
 
 A CairoMakie dashboard with two figures on one page lives in
 [`examples/cairomakie_dashboard.jl`](examples/cairomakie_dashboard.jl) —
@@ -370,7 +392,8 @@ benchmark suite lives in `benchmark/` so regressions are catchable.
 julia --project=benchmark benchmark/runbench.jl
 ```
 
-Indicative numbers on a typical workstation (`v0.1.0`):
+Indicative numbers on a typical workstation; figures are approximate and
+meant for catching regressions, not precise comparison:
 
 | benchmark                           | time      |
 |-------------------------------------|-----------|

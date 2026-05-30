@@ -112,6 +112,19 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `security.md` now lists the full `DSAction` JS-string escape set — the four
   JS line terminators (`LF`, `CR`, `U+2028`, `U+2029`) alongside the original
   `'` / `\` / `</` — and drops the now-incorrect "triple-escape" wording.
+- **Documentation overhaul** (README + Documenter site). Fixed accuracy bugs:
+  the README quickstart's undefined `format_number`, a `data-signals` example
+  showing single-quoted output the renderer never emits, the counter example's
+  misattributed `datastar-selector` header, a `v0.1.0` benchmark tag, and a
+  `docs-security` link pointing at the docs root. The Datastar guide gained a
+  full attribute/action/`parse_signals` reference (incl. `ds_computed` /
+  `ds_style` / `ds_json_signals`) plus the `html_response` and redirect
+  helpers; `security.md` documents the `redirect_via_fragment` `#id`
+  requirement and the build-time SSE-selector check; `performance.md` gained a
+  concurrent-serving note; `index.md`/`cairomakie.md`/`api.md` accuracy and
+  completeness fixes; and CONTRIBUTING + the `.github` templates now cover the
+  doctest build and Pluto smoke job. README/docs examples were verified to run
+  against the current API.
 
 ## 0.3.1 — 2026-05-29
 

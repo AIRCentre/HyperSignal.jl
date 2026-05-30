@@ -22,7 +22,7 @@ using HyperSignal
 
 **Environment**
 
-- HyperSignal version (`Pkg.status("HyperSignal")`):
+- HyperSignal version (`pkgversion(HyperSignal)` after `using HyperSignal`, or `Pkg.status("HyperSignal")`):
 - Julia version (`versioninfo()`):
 - OS:
 - If the bug involves CairoMakie inlining: CairoMakie / Makie versions.

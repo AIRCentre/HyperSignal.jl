@@ -35,8 +35,9 @@ emits the bare attribute name, anything falsy omits the attribute
 entirely. `Number`s are written as their decimal representation
 (no escape needed). A [`DSAction`](@ref) value (Datastar action) is
 formatted by the renderer; the JS string inside is escaped against
-single quote, backslash, `</script>`, and the four JS line terminators
-(LF, CR, U+2028, U+2029).
+single quote, backslash, `</` (which an HTML parser treats as the start
+of an end-tag, closing an enclosing `<script>` regardless of JS
+quoting), and the four JS line terminators (LF, CR, U+2028, U+2029).
 
 ## Attribute and tag *names*
 
@@ -74,10 +75,12 @@ trust model as `Raw`. The common case is a pre-rendered, cached HTML
 fragment. The lib doesn't autodetect malicious bytes; if the buffer
 comes from user input, scrub it first.
 
-## CairoMakie SVG inlining
+## SVG inlining (Makie / `patch_svg`)
 
-`inline_svg(::Figure)` calls Makie's SVG backend, then runs
-the output through [`patch_svg`](@ref). The patch removes:
+`inline_svg(fig)` (provided by the Makie extension) renders a
+`Figure` / `Scene` / `FigureAxisPlot` to SVG via whatever Makie
+backend is loaded — CairoMakie in practice — then runs the output
+through [`patch_svg`](@ref). The patch removes:
 
 - The XML prolog and DOCTYPE (would break HTML parsing).
 - The hard-coded `width`/`height` (responsive embed).
@@ -141,12 +144,29 @@ trust model as the other helpers, with two boundaries worth naming:
   [`html_response`](@ref).
 - `selector` and `script_attributes` are written into the wire format
   verbatim. Sanitize before passing if they can carry user input. A
-  `selector` containing a literal newline would split the SSE line and
-  corrupt the rest of the event; `sse_response` rejects this with an
-  `ArgumentError` rather than emitting malformed output.
+  `selector` containing a CR or LF would split the SSE line and corrupt
+  the rest of the event; [`patch_elements`](@ref) rejects this with an
+  `ArgumentError` at event-build time (so the mistake surfaces at the
+  call site), and [`sse_response`](@ref) re-checks as defense-in-depth
+  for a directly-constructed event.
 
 `patch_signals` JSON-encodes its argument; `JSON.json` escapes
 embedded newlines, so signals are safe to round-trip.
+
+## `redirect_via_fragment` selector
+
+[`redirect_via_fragment`](@ref) renders the morph target itself, with
+`id` set to the selector minus its leading `#`, so it accepts only a
+single `"#id"` selector. It rejects anything that isn't `#` followed by
+non-whitespace (length > 1, no whitespace) with an `ArgumentError` at
+build time. This closes two failure modes at once: a class/compound/
+whitespace selector (`.card`, `#a #b`) would produce an `id` the
+selector can't match (the redirect silently no-ops), and a CR/LF in the
+selector would be injected raw into the `datastar-selector` header. The
+`location` argument is escaped for its single-quoted inline-`<script>`
+JS literal via the same `_js_str_escape` set used by [`DSAction`](@ref)
+(backslash, single quote, `</`, and the four line terminators
+LF/CR/U+2028/U+2029).
 
 ## Reporting a security issue
 
