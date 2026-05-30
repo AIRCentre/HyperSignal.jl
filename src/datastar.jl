@@ -32,7 +32,7 @@ struct DSAction
 end
 
 function _action(verb::Symbol, url::String; form::Bool=false, kwargs...)
-    DSAction(verb, url, form, Pair{Symbol, Any}[Symbol(k) => v for (k, v) in pairs(kwargs)])
+    DSAction(verb, url, form, Pair{Symbol, Any}[k => v for (k, v) in pairs(kwargs)])
 end
 
 """
@@ -91,33 +91,51 @@ ds_delete(url; kwargs...) = _action(:delete, url; kwargs...)
 # data-action. Auto-escape on attribute values handles HTML-quoting; the
 # JS-quoting (single-quote escape) is handled here so the JS string stays
 # valid inside the attribute.
-function action_js(a::DSAction)
-    io = IOBuffer()
-    print(io, "@", a.verb, "('")
+# Stream a DSAction as the JS expression that goes inside data-on:* /
+# data-action. The JS-quoting (single-quote escape) is handled here so the
+# JS string stays valid; the caller's `escval` handles HTML-quoting for the
+# target medium. `escval(io, s)` writes `s` escaped for that medium — in the
+# render hot path it is `escape_html` (each chunk streams straight into the
+# response IO, with no intermediate String that escape_html would then have
+# to re-walk); for the plain `action_js` String contract it is `print`.
+function _action_js(io::IO, a::DSAction, escval::F) where {F}
+    print(io, "@", a.verb, "(")
+    escval(io, "'")
     # Escape the URL into its single-quoted JS string the same way extras
     # values are (see _js_str_escape): a raw `'` in the URL — e.g. an
     # unencoded query param like `?q=it's` — would otherwise close the JS
     # string early and break the action, and a raw `</script>` could close
     # an enclosing inline <script>. The escapes are transparent to the URL
     # the browser fetches (`\'`→`'`, `<\/`→`</` after JS parsing).
-    print(io, _js_str_escape(a.url))
-    print(io, "'")
-    has_opts = a.form || !isempty(a.extras)
-    if has_opts
+    escval(io, _js_str_escape(a.url))
+    escval(io, "'")
+    if a.form || !isempty(a.extras)
         print(io, ", {")
         first = true
         if a.form
-            print(io, "contentType: 'form'")
+            print(io, "contentType: ")
+            escval(io, "'form'")
             first = false
         end
         for (k, v) in a.extras
             first || print(io, ", ")
-            print(io, k, ": ", _js_value(v))
+            print(io, k, ": ")
+            escval(io, _js_value(v))
             first = false
         end
         print(io, "}")
     end
     print(io, ")")
+    nothing
+end
+
+_plain_chunk(io::IO, s) = print(io, s)
+
+# Public String form (Base.show, doctests, the response/test boundary):
+# byte-identical to the old buffered builder.
+function action_js(a::DSAction)
+    io = IOBuffer()
+    _action_js(io, a, _plain_chunk)
     String(take!(io))
 end
 
@@ -128,17 +146,37 @@ end
 Base.show(io::IO, a::DSAction) = print(io, action_js(a))
 
 _js_value(v::Bool)   = v ? "true" : "false"
+# Non-finite floats: `string(Inf)`/`string(-Inf)` give `Inf`/`-Inf`, which are
+# not JS literals (a bare `Inf` is a ReferenceError in the Datastar
+# expression). Emit the JS globals instead. `NaN` already round-trips. Finite
+# floats fall through to the generic `string(v)` and render identically.
+_js_value(v::AbstractFloat) =
+    isnan(v) ? "NaN" : isinf(v) ? (v > 0 ? "Infinity" : "-Infinity") : string(v)
 _js_value(v::Number) = string(v)
 # Escape a string for embedding inside a single-quoted JS string literal.
 # Order matters: backslashes first (so we don't re-escape escapes we
 # ourselves introduce), then single-quote (the string delimiter), then
 # `</` (the HTML parser will close an enclosing <script> on `</script>`
 # regardless of JS quoting — break the sequence at the HTML level by
-# inserting a backslash, which the JS parser ignores). Shared by the URL
-# and every extras value in action_js.
+# inserting a backslash, which the JS parser ignores). Finally the four JS
+# line terminators (LF, CR, U+2028 LINE SEPARATOR, U+2029 PARAGRAPH
+# SEPARATOR): a raw one of these inside a single-quoted JS string is a
+# SyntaxError, so a newline in a URL/extras value (a reflected query param,
+# a multi-line search box) would silently break the whole action — escape
+# them to their JS escapes, which round-trip to the same character after JS
+# parsing. Shared by the URL and every extras value in action_js, and by
+# response.jl's inline-<script> redirect.
 _js_str_escape(s::AbstractString) =
-    replace(s, "\\" => "\\\\", "'" => "\\'", "</" => "<\\/")
+    replace(s, "\\" => "\\\\", "'" => "\\'", "</" => "<\\/",
+               "\n" => "\\n", "\r" => "\\r",
+               "\u2028" => "\\u2028", "\u2029" => "\\u2029")
 _js_value(v::String) = "'$(_js_str_escape(v))'"
+# Structured option values (e.g. `headers=Dict(...)`,
+# `filterSignals=(include=...)`) serialize as a JSON object/array literal —
+# valid JS, which Julia's `repr` of a Dict/NamedTuple/Tuple/Vector is not.
+# These extras land only in HTML attributes (data-on:*/data-action), where
+# render's escape_html neutralizes `<`/`'`, so JSON's own quoting is enough.
+_js_value(v::Union{AbstractDict, NamedTuple, AbstractVector, Tuple}) = JSON.json(v)
 _js_value(v)         = string(v)  # fallback; caller's responsibility
 
 """
@@ -308,15 +346,16 @@ ds_bind(signal::AbstractString) = Attribute(Symbol("data-bind"), signal)
 """
     ds_signal(name::AbstractString, value) -> Attribute
 
-Initialize a Datastar signal on this element. Renders as
-`data-signal-<name>="value"`.
+Initialize a Datastar signal on this element. Renders as the keyed
+`data-signals:<name>="value"` form. Note Datastar's kebab→camel mapping:
+`ds_signal("my-signal", …)` creates the signal `\$mySignal`.
 
 # Examples
 ```julia
 div(ds_signal("count", 0), ds_text("count"))   # signal "count" starts at 0
 ```
 """
-ds_signal(name::AbstractString, value) = Attribute(Symbol("data-signal-", name), value)
+ds_signal(name::AbstractString, value) = Attribute(Symbol("data-signals:", name), value)
 
 """
     ds_signals(state) -> Attribute
@@ -385,7 +424,7 @@ function parse_signals(body::AbstractString)
         throw(ArgumentError("parse_signals: invalid JSON body (first 80 chars: $(repr(snippet))) — $(err)"))
     end
     parsed isa AbstractDict ? Dict{String, Any}(parsed) :
-        error("parse_signals: expected a JSON object at the top level, got $(typeof(parsed))")
+        throw(ArgumentError("parse_signals: expected a JSON object at the top level, got $(typeof(parsed))"))
 end
 
 """
@@ -414,6 +453,37 @@ span(ds_text("count"))    # text content tracks the signal "count"
 ```
 """
 ds_text(expr::AbstractString) = Attribute(Symbol("data-text"), expr)
+
+"""
+    ds_json_signals() -> Attribute
+    ds_json_signals(filter::AbstractString) -> Attribute
+
+Set this element's text content to a live, JSON-stringified view of the
+Datastar signal store — the standard in-page signal debugger. Drop a
+`pre(ds_json_signals())` onto a page during development and it tracks the
+store reactively as signals change. Renders as the bare `data-json-signals`
+attribute (no value).
+
+Pass `filter` — a Datastar filter-object JS expression such as
+`"{include: /user/}"` or `"{exclude: /temp\$/}"` — to scope the output to
+matching signal names. Renders as `data-json-signals="<filter>"`.
+
+# Examples
+```jldoctest
+julia> a = ds_json_signals();
+
+julia> (a.key, a.value)
+(Symbol("data-json-signals"), true)
+
+julia> b = ds_json_signals("{include: /user/}");
+
+julia> b.value
+"{include: /user/}"
+```
+"""
+ds_json_signals() = Attribute(Symbol("data-json-signals"), true)
+ds_json_signals(filter::AbstractString) =
+    Attribute(Symbol("data-json-signals"), String(filter))
 
 """
     ds_ref(name::AbstractString) -> Attribute
@@ -467,6 +537,51 @@ button(class="grid-toggle", ds_class("outline", "\$view !== 'grid'"), "Grid")
 """
 ds_class(name::AbstractString, expr::AbstractString) =
     Attribute(Symbol("data-class:", name), String(expr))
+
+"""
+    ds_computed(name::AbstractString, expr::AbstractString) -> Attribute
+
+Declare a read-only derived signal computed from a Datastar expression.
+The computed signal `name` re-evaluates whenever any signal `expr` reads
+changes. Renders as `data-computed:NAME="expr"`. Reach it elsewhere as
+`\$NAME` (totals, validation flags, formatted strings). Use this instead
+of recomputing the same expression at every read site.
+
+Datastar camel-cases hyphenated signal names, so `ds_computed("full-name", …)`
+is read as `\$fullName`; prefer camelCase names to avoid surprise.
+
+# Examples
+```julia
+# A line-item total that tracks its inputs; read elsewhere as \$total
+div(ds_computed("total", "\$price * \$qty"),
+    span(ds_text("\$total")))
+```
+"""
+ds_computed(name::AbstractString, expr::AbstractString) =
+    Attribute(Symbol("data-computed:", name), String(expr))
+
+"""
+    ds_style(name::AbstractString, expr::AbstractString) -> Attribute
+
+Set an inline CSS style property reactively. Renders as
+`data-style:NAME="expr"` — Datastar evaluates `expr` and writes the result
+to `element.style.NAME`, keeping it in sync as the signals it reads change.
+The reactive-binding sibling of [`ds_class`](@ref) (toggle a class) and
+[`ds_attr`](@ref) (bind any attribute); reach for `ds_style` when the value
+is a dynamic dimension/color/transform that isn't expressible as a static
+class.
+
+# Examples
+```julia
+# Drive a progress bar's width from a signal (0–100)
+div(class="bar", ds_style("width", "\$pct + '%'"))
+
+# Hide via inline display rather than a class
+div(ds_style("display", "\$hiding && 'none'"))
+```
+"""
+ds_style(name::AbstractString, expr::AbstractString) =
+    Attribute(Symbol("data-style:", name), String(expr))
 
 """
     ds_effect(expr::AbstractString) -> Attribute

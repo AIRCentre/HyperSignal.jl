@@ -124,7 +124,7 @@ function inline_svg end
 # function-form replacement also lets us splice the prefix as
 # literal text without any SubstitutionString escape juggling for
 # `\` in a user-supplied prefix.
-const _ID_RE = r"\bid=\"([^\"]+)\"|url\(#([^)]+)\)|(?:xlink:)?href=\"#([^\"]+)\""
+const _ID_RE = r"(?<![\w:-])id=\"([^\"]+)\"|url\(#([^)]+)\)|(?:xlink:)?href=\"#([^\"]+)\""
 
 function _namespace_ids(s::AbstractString, prefix::AbstractString)
     io = IOBuffer(sizehint=sizeof(s))

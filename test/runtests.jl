@@ -64,6 +64,28 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test String(take!(io)) == ""
     end
 
+    @testset "Attribute nested in a container child → actionable error" begin
+        # An Attribute is lifted into attrs only as a TOP-LEVEL positional
+        # arg. Nested inside a Vector/Tuple/Generator it becomes a child and
+        # has no renderable form — surface a message that names the fix
+        # (splat) instead of an opaque internal MethodError. Covers the
+        # realistic mistake of collecting attrs into a vector (as
+        # signal_dialog does) but forgetting to splat.
+        @test_throws ArgumentError render(div([on(:click, ds_get("/x"))], "child"))
+        @test_throws ArgumentError render(div((on(:click, ds_get("/x")),), "child"))
+        @test_throws ArgumentError render(div(on(:click, ds_get("/x")) for _ in 1:1))
+        err = try
+            render(div([on(:click, ds_get("/x"))]))
+        catch e
+            e
+        end
+        @test err isa ArgumentError
+        @test occursin("Splat", err.msg)
+        # Splatting the same collection is the correct form and still works.
+        @test occursin("data-on:click",
+                       render(div([on(:click, ds_get("/x"))]..., "child")))
+    end
+
     @testset "boolean attribute true → bare; false/nothing → omitted" begin
         @test render(input(type="checkbox", checked=true))  == "<input type=\"checkbox\" checked>"
         @test render(input(type="checkbox", checked=false)) == "<input type=\"checkbox\">"
@@ -269,6 +291,41 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test occursin("window.location='/a\\\\b'", String(resp.body))
     end
 
+    @testset "redirect_via_fragment attaches Set-Cookie headers and honors wrapper_tag" begin
+        # Why: the documented post-login flow sets a session cookie AND
+        # navigates in one response. A regression dropping/misattaching the
+        # Set-Cookie header would silently leave the user logged out.
+        resp = redirect_via_fragment("#login-form", "/dashboard";
+            cookies=["sid=abc; HttpOnly; Path=/; SameSite=Lax"],
+            wrapper_tag=:li)
+        body = String(resp.body)
+        @test occursin("<li id=\"login-form\">", body)   # wrapper_tag overrides <div>
+        @test occursin("<script>window.location='/dashboard'</script>", body)
+        cookies = [String(v) for (k, v) in resp.headers if lowercase(String(k)) == "set-cookie"]
+        @test cookies == ["sid=abc; HttpOnly; Path=/; SameSite=Lax"]
+        h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+        @test h["datastar-selector"] == "#login-form"   # fragment delegation intact
+        # Multiple cookies each get their own Set-Cookie header.
+        resp2 = redirect_via_fragment("#x", "/home"; cookies=["a=1", "b=2"])
+        c2 = [String(v) for (k, v) in resp2.headers if lowercase(String(k)) == "set-cookie"]
+        @test c2 == ["a=1", "b=2"]
+    end
+
+    @testset "redirect_via_fragment rejects a selector that isn't a single #id" begin
+        # Why: the helper renders the morph target itself with `id` = selector
+        # minus its leading `#`, so it only works for a single `#id`. A class,
+        # compound, or whitespace selector produces an `id` the selector can't
+        # match (the redirect silently no-ops), and a CR/LF would inject into
+        # the datastar-selector header. Fail loud at the call site instead.
+        @test_throws ArgumentError redirect_via_fragment(".card", "/x")
+        @test_throws ArgumentError redirect_via_fragment("#a #b", "/x")   # compound
+        @test_throws ArgumentError redirect_via_fragment("#a\nb", "/x")   # header injection
+        @test_throws ArgumentError redirect_via_fragment("login", "/x")   # no leading #
+        @test_throws ArgumentError redirect_via_fragment("#", "/x")       # empty id
+        # The supported single #id form still works.
+        @test occursin("id=\"ok\"", String(redirect_via_fragment("#ok", "/x").body))
+    end
+
     @testset "signals_response emits JSON body with the right Content-Type" begin
         resp = signals_response((; count=3, label="hi"))
         h = Dict(String(k) => String(v) for (k, v) in resp.headers)
@@ -380,6 +437,18 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         # '\n', so it must be rejected the same way.
         @test_throws ArgumentError sse_response([patch_elements(div("x");
                                                                 selector="#a\r#b")])
+    end
+
+    @testset "patch_elements validates the selector at build time, not just at encode time" begin
+        # Why: the CR/LF selector check now fires in patch_elements (alongside
+        # the mode check), so the mistake surfaces at the call site with a
+        # stacktrace pointing there — not deep inside sse_response/sse_stream's
+        # encode loop. No sse_response wrapper needed to trigger it.
+        @test_throws ArgumentError patch_elements(div("x"); selector="#a\nb")
+        @test_throws ArgumentError patch_elements(div("x"); selector="#a\rb")
+        # A clean selector still builds fine.
+        @test patch_elements(div("x"); selector="#card") isa
+              HyperSignal.PatchElementsEvent
     end
 
     @testset "patch_elements splits payload on lone CR and CRLF, not just LF" begin
@@ -628,7 +697,7 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     @testset "cls rejects Pair values that aren't Bool — fail loud, not silent" begin
         # Why: `"active" => some_string` would silently include the class
         # if we coerced. A loud error catches the typo.
-        @test_throws ErrorException cls("btn", "active" => "yes")
+        @test_throws ArgumentError cls("btn", "active" => "yes")
     end
 
     @testset "redirect_to emits a 303 with the Location header" begin
@@ -732,9 +801,9 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         # Why: name lands in a CSS attribute selector unquoted; a stray
         # character would break the selector or escape the surrounding JS.
         # Fail loud at build time, not silently in the browser.
-        @test_throws ErrorException preset_button("Bad", ["bad name" => "v"])
-        @test_throws ErrorException preset_button("Bad", ["x'y" => "v"])
-        @test_throws ErrorException preset_button("Bad", ["" => "v"])
+        @test_throws ArgumentError preset_button("Bad", ["bad name" => "v"])
+        @test_throws ArgumentError preset_button("Bad", ["x'y" => "v"])
+        @test_throws ArgumentError preset_button("Bad", ["" => "v"])
     end
 
     @testset "preset_button escapes \" and \\ inside value" begin
@@ -742,6 +811,32 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         # `value=\"a\"b\"` would close the JS string mid-selector.
         out = render(preset_button("X", ["k" => "a\"b"]))
         @test occursin("[value=&quot;a\\&quot;b&quot;]", out)
+    end
+
+    @testset "preset_button escapes ' inside value" begin
+        # Why: the whole selector is the single-quoted argument to
+        # `querySelector('…')`, so a `'` in the value (e.g. `it's`) would close
+        # that outer JS string mid-call and make the handler a SyntaxError.
+        # The backslash-escape survives the HTML un-escape as `\'`, which the JS
+        # parser turns into a literal `'` that CSS receives unchanged.
+        out = render(preset_button("X", ["mode" => "it's"]))
+        @test occursin("[value=&quot;it\\&#39;s&quot;]", out)
+    end
+
+    @testset "preset_button rejects a digit-leading name (invalid unquoted CSS selector)" begin
+        # Why: the name lands UNQUOTED in `input[name=…]`; a CSS identifier
+        # can't start with a digit (nor a hyphen-then-digit), so `name=123`
+        # would make querySelector throw at click time. Fail loud at build.
+        @test_throws ArgumentError preset_button("X", ["123" => "a"])
+        @test_throws ArgumentError preset_button("X", ["-1" => "a"])
+        # A letter/underscore start (optionally one leading hyphen) is fine.
+        @test render(preset_button("X", ["-data-x" => "a"])) isa AbstractString
+        @test render(preset_button("X", ["_k" => "a"])) isa AbstractString
+        # A trailing newline must be rejected: anchored with `\z` not `$`, so
+        # PCRE's "`$` matches before a final \n" can't let `"foo\n"` through
+        # (it would land raw in the CSS selector, breaking it in the browser).
+        @test_throws ArgumentError preset_button("X", ["foo\n" => "v"])
+        @test_throws ArgumentError preset_button("X", ["foo\nbar" => "v"])
     end
 
     @testset "preset_button generates the click-side JS to set named radios + fire change" begin
@@ -911,6 +1006,31 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         # ...and a raw JS string
         out_expr = render(div(ds_init("\$x = 1")))
         @test occursin("data-init=\"\$x = 1\"", out_expr)
+        # ds_signal seeds a single signal via the KEYED data-signals:<name>
+        # form (colon). Why: Datastar's plugin is `data-signals` (plural);
+        # there is no `data-signal` (singular) attribute, so the old
+        # dash-singular form silently no-op'd — the signal was never created.
+        @test render(div(ds_signal("count", 0))) ==
+            "<div data-signals:count=\"0\"></div>"
+        # ds_computed declares a derived signal (data-computed:<name>).
+        @test render(div(ds_computed("total", "\$price * \$qty"))) ==
+            "<div data-computed:total=\"\$price * \$qty\"></div>"
+        # ds_style binds an inline style property reactively (data-style:<prop>).
+        # The `&&` in the expression HTML-escapes to `&amp;&amp;`.
+        @test render(div(ds_style("display", "\$hiding && 'none'"))) ==
+            "<div data-style:display=\"\$hiding &amp;&amp; &#39;none&#39;\"></div>"
+    end
+
+    @testset "ds_json_signals renders the bare debug attribute (and an optional filter)" begin
+        # Why: data-json-signals sets an element's text to a live JSON dump of
+        # the signal store — the in-page debugger. Bare form takes no value
+        # (renders as a valueless attribute, like ds_indicator()); the filter
+        # overload scopes it to matching signal names.
+        @test render(pre(ds_json_signals())) == "<pre data-json-signals></pre>"
+        a = ds_json_signals()
+        @test (a.key, a.value) == (Symbol("data-json-signals"), true)
+        @test render(pre(ds_json_signals("{include: /user/}"))) ==
+            "<pre data-json-signals=\"{include: /user/}\"></pre>"
     end
 
     @testset "ds_signals JSON-encodes a NamedTuple into data-signals" begin
@@ -963,9 +1083,11 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     @testset "parse_signals rejects a top-level non-object payload loud" begin
         # Why: Datastar wraps signals in a JSON object. A bare array or a
         # number would silently become a Vector{Any} or Int — surprising at
-        # the call site. Fail loud and steer toward the right shape.
-        @test_throws ErrorException parse_signals("[1, 2, 3]")
-        @test_throws ErrorException parse_signals("42")
+        # the call site. Fail loud and steer toward the right shape. The error
+        # is an ArgumentError, matching the malformed-JSON path below (both
+        # "bad request body" cases now throw one consistent type).
+        @test_throws ArgumentError parse_signals("[1, 2, 3]")
+        @test_throws ArgumentError parse_signals("42")
     end
 
     @testset "Symbol-keyed Pairs lift into attrs alongside kwargs and Attributes" begin
@@ -1089,6 +1211,17 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test occursin("xlink:href=\"#fig1_glyph0\"", out)
         @test occursin("href=\"#fig1_g1\"", out)
         @test !occursin("xlink:href=\"#fig1_fig1_", out)  # idempotency guard
+    end
+
+    @testset "patch_svg id namespacing leaves *-id / xml:id attributes alone" begin
+        # Why: the id matcher anchors on a name-char boundary, not a bare \b
+        # word boundary — `data-id`/`xml:id`/`aria-id` are NOT the SVG `id`
+        # attribute and must keep their values verbatim under id_prefix.
+        src = """<svg viewBox="0 0 1 1"><rect data-id="keep" xml:id="x" id="real"/></svg>"""
+        out = patch_svg(src; id_prefix="p_")
+        @test occursin("data-id=\"keep\"", out)
+        @test occursin("xml:id=\"x\"", out)
+        @test occursin("id=\"p_real\"", out)
     end
 
     @testset "patch_svg id_prefix containing \$ or \\ is treated literally, not as a backreference" begin
@@ -1379,9 +1512,9 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         # `cls("a", 1)` recursed forever and stack-overflowed. Now the
         # iterator path is restricted to actual collection types, and
         # everything else hits a clear error message.
-        @test_throws ErrorException cls("a", 1)
-        @test_throws ErrorException cls("a", 3.14)
-        @test_throws ErrorException cls("a", :symbol_input)
+        @test_throws ArgumentError cls("a", 1)
+        @test_throws ArgumentError cls("a", 3.14)
+        @test_throws ArgumentError cls("a", :symbol_input)
         # Collections still flatten correctly.
         @test cls("a", ["b", "c"]) == "a b c"
         @test cls("a", ("b", "c")) == "a b c"
@@ -1589,6 +1722,58 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         # End-to-end through an attribute: no bare `'` escapes the binding.
         out = render(button("Go", on_click(ds_get("/search?q=it's"))))
         @test occursin("@get(&#39;/search?q=it\\&#39;s&#39;)", out)
+    end
+
+    @testset "action_js: JS line terminators in URL/extras are escaped, not emitted raw" begin
+        # Why: a raw LF/CR (or U+2028/U+2029) inside the single-quoted JS
+        # string is an ECMAScript SyntaxError — the whole Datastar action
+        # silently fails to compile. They reach the URL via reflected query
+        # params / multi-line search boxes. Escape to JS escapes that
+        # round-trip to the same character after parsing, so the fetched URL
+        # is unchanged. Mirrors the SSE path's existing CR/LF defenses.
+        # (\u2028/\u2029 written as escapes here, not invisible literals.)
+        @test HyperSignal.action_js(ds_get("/s?q=a\nb")) == "@get('/s?q=a\\nb')"
+        @test HyperSignal.action_js(ds_get("/s?q=a\rb")) == "@get('/s?q=a\\rb')"
+        @test HyperSignal.action_js(ds_get("/s?q=a\u2028b")) == "@get('/s?q=a\\u2028b')"
+        @test HyperSignal.action_js(ds_get("/s?q=a\u2029b")) == "@get('/s?q=a\\u2029b')"
+        # A literal backslash followed by a real newline must not double-decode:
+        # backslash doubles, then the LF escapes independently.
+        @test HyperSignal.action_js(ds_get("/x\\\ny")) == "@get('/x\\\\\\ny')"
+        # The redirect path shares _js_str_escape (response.jl): a newline in
+        # the location must not land as a raw LF inside the inline <script>.
+        let body = String(redirect_via_fragment("#x", "/a\nb").body)
+            @test occursin("window.location='/a\\nb'", body)
+            @test !occursin("'/a\nb'", body)
+        end
+    end
+
+    @testset "ds_post extras: structured values serialize as JSON object/array literals" begin
+        # Why: options like `headers` / `filterSignals` are objects; Julia's
+        # `repr` of a Dict/NamedTuple is not valid JS (`Dict("a"=>"b")` →
+        # "Dict{...}(...)"). JSON makes them valid JS object literals. JSON's
+        # own double-quotes round-trip through the attribute escape as &quot;.
+        @test HyperSignal.action_js(ds_post("/x"; headers=Dict("X-Csrf" => "abc"))) ==
+              "@post('/x', {headers: {\"X-Csrf\":\"abc\"}})"
+        # NamedTuple preserves field order (deterministic, unlike a multi-key Dict):
+        @test HyperSignal.action_js(ds_post("/x"; filterSignals=(include="^foo",))) ==
+              "@post('/x', {filterSignals: {\"include\":\"^foo\"}})"
+        # Array-valued option:
+        @test HyperSignal.action_js(ds_get("/x"; ids=[1, 2, 3])) == "@get('/x', {ids: [1,2,3]})"
+        # Renders safely through the attribute boundary (JSON quotes → &quot;):
+        out = render(button("Go", on_click(ds_post("/x"; headers=Dict("X-Csrf" => "abc")))))
+        @test occursin("headers: {&quot;X-Csrf&quot;:&quot;abc&quot;}", out)
+    end
+
+    @testset "ds_post extras: non-finite floats render as JS globals, not Julia's Inf" begin
+        # Why: `string(Inf)`/`string(-Inf)` give `Inf`/`-Inf`, which are a JS
+        # ReferenceError; `Infinity`/`-Infinity`/`NaN` are valid JS. Numeric
+        # action options (retryMaxCount, retryMaxWait, …) make Infinity a
+        # natural value (unlimited retries). Finite floats are unchanged.
+        @test HyperSignal.action_js(ds_post("/x"; retryMaxCount=Inf)) ==
+              "@post('/x', {retryMaxCount: Infinity})"
+        @test HyperSignal.action_js(ds_post("/x"; t=-Inf)) == "@post('/x', {t: -Infinity})"
+        @test HyperSignal.action_js(ds_post("/x"; t=NaN)) == "@post('/x', {t: NaN})"
+        @test HyperSignal.action_js(ds_post("/x"; t=1.5)) == "@post('/x', {t: 1.5})"
     end
 
     @testset "stress: 5000-deep nesting renders without stack overflow" begin
