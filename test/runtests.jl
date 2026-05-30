@@ -311,6 +311,21 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test c2 == ["a=1", "b=2"]
     end
 
+    @testset "redirect_via_fragment rejects a selector that isn't a single #id" begin
+        # Why: the helper renders the morph target itself with `id` = selector
+        # minus its leading `#`, so it only works for a single `#id`. A class,
+        # compound, or whitespace selector produces an `id` the selector can't
+        # match (the redirect silently no-ops), and a CR/LF would inject into
+        # the datastar-selector header. Fail loud at the call site instead.
+        @test_throws ArgumentError redirect_via_fragment(".card", "/x")
+        @test_throws ArgumentError redirect_via_fragment("#a #b", "/x")   # compound
+        @test_throws ArgumentError redirect_via_fragment("#a\nb", "/x")   # header injection
+        @test_throws ArgumentError redirect_via_fragment("login", "/x")   # no leading #
+        @test_throws ArgumentError redirect_via_fragment("#", "/x")       # empty id
+        # The supported single #id form still works.
+        @test occursin("id=\"ok\"", String(redirect_via_fragment("#ok", "/x").body))
+    end
+
     @testset "signals_response emits JSON body with the right Content-Type" begin
         resp = signals_response((; count=3, label="hi"))
         h = Dict(String(k) => String(v) for (k, v) in resp.headers)
@@ -422,6 +437,18 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         # '\n', so it must be rejected the same way.
         @test_throws ArgumentError sse_response([patch_elements(div("x");
                                                                 selector="#a\r#b")])
+    end
+
+    @testset "patch_elements validates the selector at build time, not just at encode time" begin
+        # Why: the CR/LF selector check now fires in patch_elements (alongside
+        # the mode check), so the mistake surfaces at the call site with a
+        # stacktrace pointing there — not deep inside sse_response/sse_stream's
+        # encode loop. No sse_response wrapper needed to trigger it.
+        @test_throws ArgumentError patch_elements(div("x"); selector="#a\nb")
+        @test_throws ArgumentError patch_elements(div("x"); selector="#a\rb")
+        # A clean selector still builds fine.
+        @test patch_elements(div("x"); selector="#card") isa
+              HyperSignal.PatchElementsEvent
     end
 
     @testset "patch_elements splits payload on lone CR and CRLF, not just LF" begin

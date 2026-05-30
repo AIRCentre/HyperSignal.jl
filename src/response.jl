@@ -138,6 +138,15 @@ return redirect_via_fragment("#login-form", "/dashboard";
 function redirect_via_fragment(selector::AbstractString, location::AbstractString;
                                cookies::AbstractVector=String[],
                                wrapper_tag::Symbol=:div)
+    # This helper renders the morph target itself, with `id` set to the
+    # selector minus its leading `#` — so it ONLY works for a single `#id`
+    # selector. A class/compound/whitespace selector (`.card`, `#a #b`) would
+    # produce an `id` the selector can't match (the redirect silently no-ops),
+    # and a CR/LF would be injected raw into the `datastar-selector` header.
+    # Reject anything that isn't `#` followed by non-whitespace, loudly.
+    (startswith(selector, "#") && !occursin(r"\s", selector) && length(selector) > 1) ||
+        throw(ArgumentError("redirect_via_fragment: selector must be a single \"#id\" " *
+              "(the morph target is rendered with that id), got $(repr(selector))"))
     el = Element(wrapper_tag,
                  Pair{Symbol, Any}[:id => _strip_hash(selector)],
                  Any[Raw("<script>window.location='$(_js_escape(location))'</script>")])

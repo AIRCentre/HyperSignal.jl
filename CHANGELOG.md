@@ -90,6 +90,15 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   raises one consistent exception type. The SSE `selector` CR/LF rejection
   message is now prefixed (`patch_elements:`) and echoes the offending value,
   matching the rest of the library's error messages.
+- `patch_elements` now validates the `selector` for CR/LF at **build time**
+  (alongside the existing `mode` check) rather than only at encode time, so
+  the mistake surfaces at the call site; `_encode_event` keeps the check as
+  defense-in-depth for a directly-constructed event.
+- `redirect_via_fragment` now rejects a `selector` that isn't a single `#id`
+  (a class/compound/whitespace selector, or a missing `#`). The helper renders
+  the morph target with `id` = selector minus `#`, so only `#id` ever worked —
+  a non-matching selector previously silently no-op'd the redirect, and a CR/LF
+  would inject into the `datastar-selector` header. Now an `ArgumentError`.
 - Internal, no behavior change: the render hot path streams `DSAction`
   attributes straight into the response `IO` (dropping a throwaway
   intermediate `String` that `escape_html` then re-walked); `escape_html`

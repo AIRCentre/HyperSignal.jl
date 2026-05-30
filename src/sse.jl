@@ -23,10 +23,23 @@ one `data: elements …` line per source line. `mode` is one of the
 fragment modes accepted by [`fragment_response`](@ref); unknown symbols
 throw `ArgumentError`.
 """
+# A `data: selector <sel>` SSE line is terminated by CR/LF/CRLF (EventSource
+# treats all three as line ends), so a CR or LF in the selector would end the
+# line early and corrupt the rest of the event. Validate at build time (in
+# patch_elements, alongside the mode check) so the mistake surfaces at the
+# call site; _encode_event re-checks as defense-in-depth for a directly
+# constructed PatchElementsEvent.
+function _validate_sse_selector(sel::AbstractString)
+    ('\n' in sel || '\r' in sel) &&
+        throw(ArgumentError("patch_elements: selector must not contain a CR or LF, got $(repr(sel))"))
+    nothing
+end
+
 function patch_elements(body; selector::Union{Nothing,AbstractString}=nothing,
                         mode::Union{Nothing,Symbol}=nothing,
                         view_transition::Bool=false)
     mode === nothing || _validate_mode(mode)
+    selector === nothing || _validate_sse_selector(selector)
     PatchElementsEvent(render(body),
                        selector === nothing ? nothing : String(selector),
                        mode, view_transition)
@@ -45,10 +58,10 @@ patch_signals(signals; only_if_missing::Bool=false) =
 function _encode_event(io::IO, ev::PatchElementsEvent)
     print(io, "event: datastar-patch-elements\n")
     if ev.selector !== nothing
-        # EventSource treats CR, LF, and CRLF all as line terminators, so a
-        # bare '\r' would end the SSE line early just like '\n' — reject both.
-        ('\n' in ev.selector || '\r' in ev.selector) &&
-            throw(ArgumentError("patch_elements: selector must not contain a CR or LF, got $(repr(ev.selector))"))
+        # Defense-in-depth: patch_elements already validated this for the
+        # public path; re-check here so a directly-built PatchElementsEvent
+        # can't emit a CR/LF that splits the SSE line.
+        _validate_sse_selector(ev.selector)
         print(io, "data: selector ", ev.selector, "\n")
     end
     ev.mode === nothing || print(io, "data: mode ", ev.mode, "\n")
