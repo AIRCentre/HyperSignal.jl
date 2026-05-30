@@ -301,28 +301,39 @@ render(io::IO, v::AbstractVector{UInt8}) = (write(io, v); nothing)
     b == 0x22 || b == 0x27 || b == 0x3e || b == 0x3c ||
     b == 0x2f || b == 0x3d || b == 0x00
 
-# Copy-on-write atomic cache. The lock-free hot path atomically loads an
-# IMMUTABLE Set snapshot and only reads it (no concurrent in-place mutation
-# under a reader); a cold miss validates, then under the lock copies-and-swaps
-# the reference. Plain concurrent `push!` into a shared Set is NOT safe: a
-# writer's `rehash!` swaps the backing arrays non-atomically while a reader's
-# `in` indexes them, corrupting the cache or crashing the process. HTTP.jl can
-# render on many threads at once against a cold cache (first-traffic burst), so
-# this is a real hazard, not a theoretical one.
-mutable struct _NameCache
-    @atomic names::Set{Symbol}
+# Lock-guarded validator cache. The valid-name vocabulary is small and
+# bounded, so caching by interned-Symbol identity skips the codeunit walk
+# after the first check. `render` runs on many threads at once under a
+# multithreaded HTTP server, and the cache is shared mutable state, so every
+# access is guarded by a lock: a bare concurrent `push!` would let one task's
+# `rehash!` swap the Set's backing arrays non-atomically while another task's
+# `in` indexes them — corrupting the cache or segfaulting the process. The
+# lock is uncontended after warm-up: the cache only grows during the first
+# traffic burst, then every call is a read hit. (We guard with a
+# `ReentrantLock` rather than an `@atomic` Set field — the latter segfaults on
+# the julia 1.10 compat floor. The name is validated OUTSIDE the lock so a
+# rejected name throws without holding it.)
+struct _NameCache
+    names::Set{Symbol}
     lk::ReentrantLock
 end
 
 const _VALID_TAG_NAMES = _NameCache(Set{Symbol}(), ReentrantLock())
 
 @inline function _check_tag_name(t::Symbol)
-    t in (@atomic _VALID_TAG_NAMES.names) && return nothing
+    lk = _VALID_TAG_NAMES.lk
+    lock(lk)
+    try
+        t in _VALID_TAG_NAMES.names && return nothing
+    finally
+        unlock(lk)
+    end
     _check_tag_name_uncached(t)
-    lock(_VALID_TAG_NAMES.lk) do
-        cur = @atomic _VALID_TAG_NAMES.names
-        t in cur && return
-        @atomic _VALID_TAG_NAMES.names = push!(copy(cur), t)
+    lock(lk)
+    try
+        push!(_VALID_TAG_NAMES.names, t)
+    finally
+        unlock(lk)
     end
     nothing
 end
@@ -350,17 +361,24 @@ end
 # Cache validated symbols: HTML attribute names form a small, bounded
 # vocabulary, and Symbols are interned, so identity-keyed Set lookup
 # is constant-time and skips the codeunit walk after the first check.
-# See `_NameCache` above for why the cache is copy-on-write under a lock
-# rather than a bare concurrently-mutated Set.
+# See `_NameCache` above for why the cache is guarded by a lock rather
+# than a bare concurrently-mutated Set.
 const _VALID_ATTR_NAMES = _NameCache(Set{Symbol}(), ReentrantLock())
 
 @inline function _check_attr_name(k::Symbol)
-    k in (@atomic _VALID_ATTR_NAMES.names) && return nothing
+    lk = _VALID_ATTR_NAMES.lk
+    lock(lk)
+    try
+        k in _VALID_ATTR_NAMES.names && return nothing
+    finally
+        unlock(lk)
+    end
     _check_attr_name_uncached(k)
-    lock(_VALID_ATTR_NAMES.lk) do
-        cur = @atomic _VALID_ATTR_NAMES.names
-        k in cur && return
-        @atomic _VALID_ATTR_NAMES.names = push!(copy(cur), k)
+    lock(lk)
+    try
+        push!(_VALID_ATTR_NAMES.names, k)
+    finally
+        unlock(lk)
     end
     nothing
 end

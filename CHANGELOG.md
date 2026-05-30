@@ -21,9 +21,10 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   races a `rehash!` that swaps the backing arrays non-atomically — which can
   **corrupt the cache (poisoning later validations) or segfault the
   process**, not merely "duplicate work" as the old comment claimed. Both
-  caches are now a copy-on-write `_NameCache` (lock-free atomic-snapshot read
-  on the hot path, copy-and-swap under a lock on a cold miss); the warm read
-  path is unchanged (~1 ns).
+  caches are now guarded by a `ReentrantLock` (a `_NameCache` holding the Set
+  + its lock); every `in`/`push!` runs under the lock, and a name is validated
+  outside it. The lock is uncontended after warm-up — the cache only grows
+  during the first traffic burst, then every call is a read hit.
 - **`preset_button` now escapes `'` in a preset value.** The whole
   `querySelector('…')` selector is a single-quoted JS string, so a value like
   `it's` closed it early and made the generated `onclick` a `SyntaxError`
