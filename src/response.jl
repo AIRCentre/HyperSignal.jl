@@ -80,7 +80,7 @@ The positional `fragment_response(body, selector)` form is preserved.
 ```jldoctest
 julia> r = fragment_response(p("ok"), "#count");
 
-julia> r.status, Dict(r.headers)["datastar-selector"]
+julia> r.status, HTTP.header(r, "datastar-selector")
 (200, "#count")
 
 julia> String(r.body)
@@ -89,7 +89,7 @@ julia> String(r.body)
 julia> r2 = fragment_response(p("ok"); selector="#count", mode=:inner,
                               view_transition=true);
 
-julia> Dict(r2.headers)["datastar-mode"], Dict(r2.headers)["datastar-use-view-transition"]
+julia> HTTP.header(r2, "datastar-mode"), HTTP.header(r2, "datastar-use-view-transition")
 ("inner", "true")
 ```
 """

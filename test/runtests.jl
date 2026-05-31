@@ -303,7 +303,7 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test occursin("<script>window.location='/dashboard'</script>", body)
         cookies = [String(v) for (k, v) in resp.headers if lowercase(String(k)) == "set-cookie"]
         @test cookies == ["sid=abc; HttpOnly; Path=/; SameSite=Lax"]
-        h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+        h = Dict(lowercase(String(k)) => String(v) for (k, v) in resp.headers)
         @test h["datastar-selector"] == "#login-form"   # fragment delegation intact
         # Multiple cookies each get their own Set-Cookie header.
         resp2 = redirect_via_fragment("#x", "/home"; cookies=["a=1", "b=2"])
@@ -328,9 +328,9 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
 
     @testset "signals_response emits JSON body with the right Content-Type" begin
         resp = signals_response((; count=3, label="hi"))
-        h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+        h = Dict(lowercase(String(k)) => String(v) for (k, v) in resp.headers)
         @test resp.status == 200
-        @test h["Content-Type"] == "application/json; charset=utf-8"
+        @test h["content-type"] == "application/json; charset=utf-8"
         @test !haskey(h, "datastar-only-if-missing")
         # JSON.json on a NamedTuple yields a JSON object; assert by parse.
         parsed = JSON.parse(String(resp.body))
@@ -339,54 +339,54 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
 
     @testset "signals_response only_if_missing=true adds the header" begin
         resp = signals_response(Dict("x" => 1); only_if_missing=true)
-        h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+        h = Dict(lowercase(String(k)) => String(v) for (k, v) in resp.headers)
         @test h["datastar-only-if-missing"] == "true"
     end
 
     @testset "signals_response passes through status + extra headers" begin
         resp = signals_response(Dict("x" => 1); status=202, headers=["X-Tag" => "v1"])
-        h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+        h = Dict(lowercase(String(k)) => String(v) for (k, v) in resp.headers)
         @test resp.status == 202
-        @test h["X-Tag"] == "v1"
-        @test h["Content-Type"] == "application/json; charset=utf-8"
+        @test h["x-tag"] == "v1"
+        @test h["content-type"] == "application/json; charset=utf-8"
     end
 
     @testset "script_response writes the JS verbatim with text/javascript" begin
         js = "console.log('hi')"
         resp = script_response(js)
-        h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+        h = Dict(lowercase(String(k)) => String(v) for (k, v) in resp.headers)
         @test resp.status == 200
-        @test h["Content-Type"] == "text/javascript; charset=utf-8"
+        @test h["content-type"] == "text/javascript; charset=utf-8"
         @test String(resp.body) == js
         @test !haskey(h, "datastar-script-attributes")
     end
 
     @testset "script_response with a string script_attributes sets the header verbatim" begin
         resp = script_response("doStuff()"; script_attributes="type=\"module\"")
-        h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+        h = Dict(lowercase(String(k)) => String(v) for (k, v) in resp.headers)
         @test h["datastar-script-attributes"] == "type=\"module\""
     end
 
     @testset "script_response JSON-encodes a NamedTuple of script_attributes" begin
         resp = script_response("x"; script_attributes=(; type="module", defer=true))
-        h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+        h = Dict(lowercase(String(k)) => String(v) for (k, v) in resp.headers)
         parsed = JSON.parse(h["datastar-script-attributes"])
         @test parsed == Dict("type" => "module", "defer" => true)
     end
 
     @testset "script_response JSON-encodes a Dict of script_attributes" begin
         resp = script_response("x"; script_attributes=Dict("type" => "module"))
-        h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+        h = Dict(lowercase(String(k)) => String(v) for (k, v) in resp.headers)
         @test JSON.parse(h["datastar-script-attributes"]) == Dict("type" => "module")
     end
 
     @testset "sse_response emits text/event-stream with SSE headers" begin
         resp = sse_response([patch_elements(div("ok"))])
-        h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+        h = Dict(lowercase(String(k)) => String(v) for (k, v) in resp.headers)
         @test resp.status == 200
-        @test h["Content-Type"] == "text/event-stream; charset=utf-8"
-        @test h["Cache-Control"] == "no-cache"
-        @test h["Connection"] == "keep-alive"
+        @test h["content-type"] == "text/event-stream; charset=utf-8"
+        @test h["cache-control"] == "no-cache"
+        @test h["connection"] == "keep-alive"
     end
 
     @testset "patch_elements with defaults emits only the elements data line" begin
@@ -516,10 +516,10 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     @testset "sse_response passes through status and extra headers" begin
         resp = sse_response([patch_elements(div("ok"))]; status=202,
                             headers=["X-Tag" => "v1"])
-        h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+        h = Dict(lowercase(String(k)) => String(v) for (k, v) in resp.headers)
         @test resp.status == 202
-        @test h["X-Tag"] == "v1"
-        @test h["Content-Type"] == "text/event-stream; charset=utf-8"
+        @test h["x-tag"] == "v1"
+        @test h["content-type"] == "text/event-stream; charset=utf-8"
     end
 
     @testset "a single sse event round-trips through a naive SSE parser" begin
@@ -539,12 +539,21 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         # Helper: spin up a server with the given sse_stream handler, GET /,
         # return (status, headers Dict, body String).
         function _hit_stream(handler)
-            srv = HTTP.serve!(handler, Sockets.localhost, 0; stream=true)
-            try
+            # HTTP 1.x needs `stream=true` for a `::HTTP.Stream` handler, accepts an
+            # IPAddr host, and exposes the OS-assigned port via the listener socket.
+            # HTTP 2.x auto-detects a streaming handler (rejects `stream=true`), wants
+            # a String host, and exposes the bound port on the Server struct.
+            if pkgversion(HTTP) >= v"2"
+                srv = HTTP.serve!(handler, "127.0.0.1", 0)
+                port = srv.bound_port
+            else
+                srv = HTTP.serve!(handler, Sockets.localhost, 0; stream=true)
                 port = Sockets.getsockname(srv.listener.server)[2]
+            end
+            try
                 resp = HTTP.get("http://127.0.0.1:$port/"; retry=false,
                                 decompress=false, status_exception=false)
-                h = Dict(String(k) => String(v) for (k, v) in resp.headers)
+                h = Dict(lowercase(String(k)) => String(v) for (k, v) in resp.headers)
                 return resp.status, h, String(resp.body)
             finally
                 close(srv)
@@ -557,9 +566,9 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
             end
             status, h, _ = _hit_stream(handler)
             @test status == 200
-            @test h["Content-Type"] == "text/event-stream; charset=utf-8"
-            @test h["Cache-Control"] == "no-cache"
-            @test get(h, "Transfer-Encoding", "") == "chunked"
+            @test h["content-type"] == "text/event-stream; charset=utf-8"
+            @test h["cache-control"] == "no-cache"
+            @test get(h, "transfer-encoding", "") == "chunked"
         end
 
         @testset "emits each writer call as a separate SSE event in order" begin
@@ -597,8 +606,8 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
             end
             status, h, _ = _hit_stream(handler)
             @test status == 202
-            @test h["X-Tag"] == "v1"
-            @test h["Content-Type"] == "text/event-stream; charset=utf-8"
+            @test h["x-tag"] == "v1"
+            @test h["content-type"] == "text/event-stream; charset=utf-8"
         end
 
         @testset "handler with zero writes still completes with SSE headers" begin
@@ -607,10 +616,10 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
             end
             status, h, body = _hit_stream(handler)
             @test status == 200
-            @test h["Content-Type"] == "text/event-stream; charset=utf-8"
+            @test h["content-type"] == "text/event-stream; charset=utf-8"
             # Why: chunked transfer must be in effect even for a zero-write
             # handler, so a trivial Response stub would not satisfy this.
-            @test get(h, "Transfer-Encoding", "") == "chunked"
+            @test get(h, "transfer-encoding", "") == "chunked"
             @test body == ""
         end
 

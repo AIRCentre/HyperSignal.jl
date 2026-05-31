@@ -1,5 +1,6 @@
 [deps]
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"
 HyperSignal = "0aa5b41a-51a1-41e7-8512-17ccb31a7c30"
 
 [sources]

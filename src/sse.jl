@@ -132,7 +132,10 @@ chunked `text/event-stream` response. `f` receives a `writer` callable:
 each call with a [`patch_elements`](@ref) / [`patch_signals`](@ref)
 event encodes the event and flushes it as its own chunk so the client
 sees progress in real time. Register the returned handler with
-`HTTP.serve(handler, host, port; stream=true)`.
+`HTTP.serve(handler, host, port; stream=true)` on **HTTP.jl 1.x**. On
+**HTTP.jl 2.x**, drop the `stream=true` keyword — a `::HTTP.Stream` handler
+is auto-detected as streaming — and pass the host as a `String`:
+`HTTP.serve(handler, "127.0.0.1", port)`.
 
 `writer` is **not** concurrency-safe — concurrent calls from multiple
 tasks will interleave chunks. Serialize calls (or guard `writer` with
