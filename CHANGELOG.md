@@ -5,6 +5,13 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Docs
+- README install section now leads with `] add HyperSignal` (the package is
+  registered in General) and demotes the Git-URL install to the
+  track-unreleased-`main` case — it previously showed only the Git URL and
+  called a registry release "planned". README doc cross-references now point at
+  `/stable/` instead of `/dev/`, matching the released docs.
+
 ## 0.4.0 — 2026-05-30
 
 ### Added

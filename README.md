@@ -33,11 +33,14 @@ fragment_response(page, "#card")              # Datastar morph w/ selector heade
 ## Install
 
 ```julia
-] add https://github.com/AIRCentre/HyperSignal.jl
+] add HyperSignal
 ```
 
-A General-registry release is planned; once published you'll be able to
-`] add HyperSignal`.
+To track the unreleased `main` instead of the latest registered version:
+
+```julia
+] add https://github.com/AIRCentre/HyperSignal.jl
+```
 
 ## Why
 
@@ -183,8 +186,8 @@ Every escape boundary in one paragraph:
 
 Full write-up: [Security page of the docs site][docs-security].
 
-[docs-security]: https://AIRCentre.github.io/HyperSignal.jl/dev/security/
-[docs-datastar]: https://AIRCentre.github.io/HyperSignal.jl/dev/datastar/
+[docs-security]: https://AIRCentre.github.io/HyperSignal.jl/stable/security/
+[docs-datastar]: https://AIRCentre.github.io/HyperSignal.jl/stable/datastar/
 
 ## What it deliberately doesn't do
 
