@@ -8,8 +8,8 @@ Compatible with Datastar v1.0.1.
 
 ```julia
 using HyperSignal
-using HyperSignal.Helpers: radio_field
-HyperSignal.@using_tags
+using HyperSignal.Helpers: radio_field   # app-grade helpers live in a submodule
+HyperSignal.@using_tags                  # brings div / select / summary / mark / time into scope
 
 page = Frag(DOCTYPE,
     html(lang="en",
@@ -22,7 +22,8 @@ page = Frag(DOCTYPE,
                  button("Save", type="submit")),
         )))
 
-html_response(page)
+html_response(page)                           # HTTP.Response, text/html
+fragment_response(page, "#card")              # Datastar morph w/ selector header
 ```
 
 ## Install
@@ -59,8 +60,20 @@ user input.
   server: viewport / cursor / click / drag-box as signals, recolor and
   fly back with JS snippets.
 - [Datastar response shapes](datastar.md) — the HTML / JSON / JS / SSE
-  responses a handler returns.
+  responses a handler returns, plus the full attribute-helper surface
+  (`ds_signals`, `ds_computed`, `ds_style`, `ds_bind`, `ds_show`, …).
+- [Security model](security.md) — every escape boundary in the lib:
+  where input is auto-escaped, where attribute/tag names raise
+  `ArgumentError`, and the single `Raw` opt-out.
+- [Performance](performance.md) — the renderer is on the request-handler
+  hot path; how to regenerate the benchmark numbers and what to watch
+  when changing `elements.jl` / `render.jl` / `svg.jl`.
 - [API reference](api.md) — every exported name, with examples.
+- [`examples/counter_app.jl`](https://github.com/AIRCentre/HyperSignal.jl/blob/main/examples/counter_app.jl)
+  — a ~50-line Datastar counter you can run with
+  `julia --project=examples examples/counter_app.jl` (then open
+  http://127.0.0.1:8080) to see `html_response` / `fragment_response`
+  driving a live page.
 - [`example.jl`](https://github.com/AIRCentre/HyperSignal.jl/blob/main/docs/src/notebooks/example.jl)
   — a runnable Pluto notebook: NOAA ERSSTv5 North Atlantic SST loaded
   from a vendored netCDF, rendered as a MapLibre map of per-cell mean

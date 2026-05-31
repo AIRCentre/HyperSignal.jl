@@ -44,8 +44,9 @@ fragment_response(page, "#card")      # Datastar morph with selector header
   for global listeners.
 - Datastar attributes: [`ds_indicator`](@ref), [`ds_ignore_morph`](@ref),
   [`ds_bind`](@ref), [`ds_signal`](@ref), [`ds_signals`](@ref),
-  [`ds_show`](@ref), [`ds_text`](@ref), [`ds_ref`](@ref),
-  [`ds_attr`](@ref), [`ds_class`](@ref), [`ds_effect`](@ref),
+  [`ds_show`](@ref), [`ds_text`](@ref), [`ds_json_signals`](@ref),
+  [`ds_ref`](@ref), [`ds_attr`](@ref), [`ds_class`](@ref),
+  [`ds_computed`](@ref), [`ds_style`](@ref), [`ds_effect`](@ref),
   [`ds_init`](@ref).
 - Datastar signal decoding: [`parse_signals`](@ref) (read the JSON body
   of a non-form Datastar action into a `Dict{String, Any}`).
@@ -99,8 +100,8 @@ export audio, video, picture, source, track, iframe, embed, object, param, area
 # Datastar
 export DATASTAR_SUPPORTED_VERSION
 export DSAction, ds_get, ds_post, ds_put, ds_delete
-export ds_indicator, ds_ignore_morph, ds_bind, ds_signal, ds_signals, ds_show, ds_text
-export ds_ref, ds_attr, ds_class, ds_effect, ds_init
+export ds_indicator, ds_ignore_morph, ds_bind, ds_signal, ds_signals, ds_show, ds_text, ds_json_signals
+export ds_ref, ds_attr, ds_class, ds_computed, ds_style, ds_effect, ds_init
 export on, on_click, on_submit, on_change_debounced, on_interval
 export parse_signals
 

@@ -35,6 +35,23 @@ julia --project=benchmark benchmark/runbench.jl
 `BenchmarkTools` lives in `benchmark/Project.toml` so it stays out of
 the main runtime dependency tree.
 
+## Documentation and doctests
+
+Any `jldoctest` block in a docstring is executed as a test, and the docs
+build runs on every PR — so a doctest whose output no longer matches the
+code will fail CI. Build the docs and run doctests locally with:
+
+```bash
+julia --project=docs -e 'using Pkg; Pkg.instantiate()'
+julia --project=docs docs/make.jl
+```
+
+The docs environment is separate (`docs/Project.toml`) and path-depends
+on the working tree, so it always builds against your local changes.
+Exported symbols should carry a docstring (`checkdocs = :exports`); a
+missing one is currently only a warning (`warnonly = [:missing_docs]`),
+but a doctest mismatch is a hard failure both locally and in CI.
+
 ## What goes into `CHANGELOG.md`
 
 User-facing changes go under `## Unreleased`. Internal refactors and
@@ -55,7 +72,12 @@ under ~70 characters, with a blank line then a body that explains the
 3. If your change touches the hot path, attach benchmark numbers in
    the PR description.
 4. Update `CHANGELOG.md` under `## Unreleased`.
-5. Push and open a PR. CI runs on both Julia 1.10 and current stable.
+5. Push and open a PR. CI runs the test suite on Julia 1.10 (LTS) and
+   current stable, and builds the docs with doctests. For changes under
+   `src/`, `ext/`, `Project.toml`, or the smoke notebooks, a headless
+   Pluto smoke job (`.github/scripts/pluto_smoke.jl`) also runs: it
+   asserts the `text/html` MIME render of an `Element` and that the
+   Datastar-response and MapLibre example notebooks evaluate cleanly.
 
 ## Reporting a security issue
 

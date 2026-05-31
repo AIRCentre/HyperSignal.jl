@@ -178,7 +178,7 @@ end
 # _dedup_attrs (later wins) so the emitted tag carries each attribute once.
 function _make_element(tag::Symbol, args::Tuple, kwargs)
     children = Any[]
-    attrs = Pair{Symbol, Any}[Symbol(k) => v for (k, v) in pairs(kwargs)]
+    attrs = Pair{Symbol, Any}[k => v for (k, v) in pairs(kwargs)]
     for a in args
         a === nothing && continue
         if a isa Attribute

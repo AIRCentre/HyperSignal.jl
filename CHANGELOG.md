@@ -5,6 +5,135 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Docs
+- README install section now leads with `] add HyperSignal` (the package is
+  registered in General) and demotes the Git-URL install to the
+  track-unreleased-`main` case — it previously showed only the Git URL and
+  called a registry release "planned". README doc cross-references now point at
+  `/stable/` instead of `/dev/`, matching the released docs.
+
+## 0.4.0 — 2026-05-30
+
+### Added
+- `ds_computed(name, expr)` — declare a read-only derived signal
+  (`data-computed:<name>`); `ds_style(prop, expr)` — bind an inline CSS
+  style property reactively (`data-style:<prop>`), the natural partner to
+  `ds_class` / `ds_attr`; and `ds_json_signals()` (+ a filter overload) —
+  the bare `data-json-signals` in-page signal-store debugger. All three are
+  FREE-tier Datastar v1.0 attributes that previously had no first-class
+  helper. (exported)
+
+### Fixed
+- **Thread-safe validator caches.** `_VALID_TAG_NAMES` / `_VALID_ATTR_NAMES`
+  were plain `Set{Symbol}` mutated lock-free on every tag/attribute render.
+  Under multithreaded `HTTP.serve`, concurrent `push!` into a cold cache
+  races a `rehash!` that swaps the backing arrays non-atomically — which can
+  **corrupt the cache (poisoning later validations) or segfault the
+  process**, not merely "duplicate work" as the old comment claimed. Both
+  caches are now guarded by a `ReentrantLock` (a `_NameCache` holding the Set
+  + its lock); every `in`/`push!` runs under the lock, and a name is validated
+  outside it. The lock is uncontended after warm-up — the cache only grows
+  during the first traffic burst, then every call is a read hit.
+- **`preset_button` now escapes `'` in a preset value.** The whole
+  `querySelector('…')` selector is a single-quoted JS string, so a value like
+  `it's` closed it early and made the generated `onclick` a `SyntaxError`
+  (the preset silently did nothing). `_escape_preset_value` escaped only `"`
+  and `\`; it now escapes `'` too. `preset_button` also rejects a non-CSS-
+  identifier name (digit-leading, e.g. `name=123`) at build time rather than
+  emitting an `input[name=123]` selector that throws in the browser.
+- **`patch_svg` id-namespacing no longer rewrites `data-id` / `xml:id` /
+  `aria-id`.** The `_ID_RE` matcher used a bare `\b` word boundary, so under
+  `id_prefix` it mutated the values of any `*-id` / `xml:id` attribute, not
+  just the SVG `id`. Anchored to a name-char boundary (`(?<![\w:-])`).
+- **`ds_signal` now emits the keyed `data-signals:<name>` form** (colon,
+  plural). It previously rendered the singular `data-signal-<name>`, which
+  is not a Datastar v1.0 attribute — Datastar matched no plugin and ignored
+  it, so the signal was **never created** (a silent client-side no-op, the
+  exact failure class this library exists to prevent). Datastar's
+  kebab→camel mapping still applies (`ds_signal("my-signal", …)` → `$mySignal`).
+- **JS line terminators are now escaped in the single-quoted JS string**
+  built by `action_js` (the URL and every string `extras` value) and by
+  `redirect_via_fragment` (which shares `_js_str_escape`). A raw LF, CR,
+  U+2028, or U+2029 — reachable via a reflected query param or a multi-line
+  search box — is an ECMAScript `SyntaxError`, so the whole Datastar action
+  (or inline-`<script>` redirect) silently failed to compile. The escapes
+  round-trip to the same character after JS parsing, so the fetched
+  URL / navigated location is unchanged. Mirrors the SSE path's existing
+  CR/LF defenses.
+- **`DSAction` extras with a structured value** (`headers=Dict(...)`,
+  `filterSignals=(include=...)`, array-valued options) now serialize as a
+  JSON object/array literal — valid JS — instead of Julia's `repr`, which
+  is not (`Dict("a"=>"b")` had rendered as `Dict{String,…}(...)`).
+- **`_js_value` renders non-finite floats as JS globals** `Infinity` /
+  `-Infinity` / `NaN` instead of Julia's `Inf` / `-Inf` (a bare `Inf` is a
+  JS `ReferenceError`). Relevant to numeric action options such as
+  `retryMaxCount=Inf`.
+- `_validate_preset_name` now anchors with `\z`, not `$`. PCRE `$` also
+  matches just before a trailing `\n`, so a preset name like `"foo\n"` slipped
+  past the CSS-identifier check and landed a raw newline in the
+  `querySelector` selector (silently breaking the handler in the browser).
+
+### Changed
+- **An `Attribute` that reaches `render` as a child now raises an actionable
+  `ArgumentError`** naming the fix (splat the collection) instead of an opaque
+  internal `MethodError`. `_make_element` only lifts an `Attribute` into attrs
+  when it is a *top-level* positional arg; nesting one inside a
+  `Vector`/`Tuple`/`Generator` (e.g. collecting attrs into a vector as
+  `signal_dialog` does, then forgetting to splat) previously failed deep in
+  the renderer.
+- **A caller-supplied header no longer double-emits.** Every response helper
+  (`html_response`, `fragment_response`, `signals_response`,
+  `script_response`, `redirect_*`, `sse_response`, `sse_stream`) prepended
+  its library-owned `Content-Type` (and the SSE trio) then appended the
+  caller's `headers`, so a caller passing their own `Content-Type` (custom
+  charset, `application/problem+json`, …) put **two** `Content-Type` lines on
+  the wire — a malformed message whose interpretation diverges across
+  consumers. A new `_with_default` skips the library default when the caller
+  already supplied that field (matched case-insensitively); the caller wins,
+  with exactly one header. The default path is byte-identical.
+- `parse_signals` now throws `ArgumentError` (not the bare `ErrorException`
+  from `error()`) for a top-level non-object JSON body, matching the
+  malformed-JSON path — both bad-request-body cases now raise one
+  consistent type. `cls` (bad `Pair` value / unhandled type) and
+  `preset_button` (invalid input name) likewise now throw `ArgumentError`
+  rather than a bare `error()`, so every caller-input mistake in the library
+  raises one consistent exception type. The SSE `selector` CR/LF rejection
+  message is now prefixed (`patch_elements:`) and echoes the offending value,
+  matching the rest of the library's error messages.
+- `patch_elements` now validates the `selector` for CR/LF at **build time**
+  (alongside the existing `mode` check) rather than only at encode time, so
+  the mistake surfaces at the call site; `_encode_event` keeps the check as
+  defense-in-depth for a directly-constructed event.
+- `redirect_via_fragment` now rejects a `selector` that isn't a single `#id`
+  (a class/compound/whitespace selector, or a missing `#`). The helper renders
+  the morph target with `id` = selector minus `#`, so only `#id` ever worked —
+  a non-matching selector previously silently no-op'd the redirect, and a CR/LF
+  would inject into the `datastar-selector` header. Now an `ArgumentError`.
+- Internal, no behavior change: the render hot path streams `DSAction`
+  attributes straight into the response `IO` (dropping a throwaway
+  intermediate `String` that `escape_html` then re-walked); `escape_html`
+  is split into concrete `String` / `SubString{String}` methods so the
+  per-child dispatch lands directly (no runtime `isa` ladder); `is_void` is
+  hoisted to one lookup per element; and the tag/attribute name validators
+  share one `_is_invalid_name_byte` predicate.
+
+### Docs
+- `security.md` now lists the full `DSAction` JS-string escape set — the four
+  JS line terminators (`LF`, `CR`, `U+2028`, `U+2029`) alongside the original
+  `'` / `\` / `</` — and drops the now-incorrect "triple-escape" wording.
+- **Documentation overhaul** (README + Documenter site). Fixed accuracy bugs:
+  the README quickstart's undefined `format_number`, a `data-signals` example
+  showing single-quoted output the renderer never emits, the counter example's
+  misattributed `datastar-selector` header, a `v0.1.0` benchmark tag, and a
+  `docs-security` link pointing at the docs root. The Datastar guide gained a
+  full attribute/action/`parse_signals` reference (incl. `ds_computed` /
+  `ds_style` / `ds_json_signals`) plus the `html_response` and redirect
+  helpers; `security.md` documents the `redirect_via_fragment` `#id`
+  requirement and the build-time SSE-selector check; `performance.md` gained a
+  concurrent-serving note; `index.md`/`cairomakie.md`/`api.md` accuracy and
+  completeness fixes; and CONTRIBUTING + the `.github` templates now cover the
+  doctest build and Pluto smoke job. README/docs examples were verified to run
+  against the current API.
 ### Fixed
 - **MapLibre `click_post` / `bbox_post` payloads now actually reach the
   server.** The click and shift-drag-bbox handlers set `$_payload` before

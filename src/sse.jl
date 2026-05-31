@@ -14,6 +14,19 @@ struct PatchSignalsEvent
     only_if_missing::Bool
 end
 
+# A `data: selector <sel>` SSE line is terminated by CR/LF/CRLF (EventSource
+# treats all three as line ends), so a CR or LF in the selector would end the
+# line early and corrupt the rest of the event. Validate at build time (in
+# patch_elements, alongside the mode check) so the mistake surfaces at the
+# call site; _encode_event re-checks as defense-in-depth for a directly
+# constructed PatchElementsEvent. (Defined ABOVE patch_elements' docstring so
+# the docstring stays attached to patch_elements, not this helper.)
+function _validate_sse_selector(sel::AbstractString)
+    ('\n' in sel || '\r' in sel) &&
+        throw(ArgumentError("patch_elements: selector must not contain a CR or LF, got $(repr(sel))"))
+    nothing
+end
+
 """
     patch_elements(body; selector=nothing, mode=nothing, view_transition=false)
 
@@ -27,6 +40,7 @@ function patch_elements(body; selector::Union{Nothing,AbstractString}=nothing,
                         mode::Union{Nothing,Symbol}=nothing,
                         view_transition::Bool=false)
     mode === nothing || _validate_mode(mode)
+    selector === nothing || _validate_sse_selector(selector)
     PatchElementsEvent(render(body),
                        selector === nothing ? nothing : String(selector),
                        mode, view_transition)
@@ -45,10 +59,10 @@ patch_signals(signals; only_if_missing::Bool=false) =
 function _encode_event(io::IO, ev::PatchElementsEvent)
     print(io, "event: datastar-patch-elements\n")
     if ev.selector !== nothing
-        # EventSource treats CR, LF, and CRLF all as line terminators, so a
-        # bare '\r' would end the SSE line early just like '\n' — reject both.
-        ('\n' in ev.selector || '\r' in ev.selector) &&
-            throw(ArgumentError("selector must not contain a CR or LF"))
+        # Defense-in-depth: patch_elements already validated this for the
+        # public path; re-check here so a directly-built PatchElementsEvent
+        # can't emit a CR/LF that splits the SSE line.
+        _validate_sse_selector(ev.selector)
         print(io, "data: selector ", ev.selector, "\n")
     end
     ev.mode === nothing || print(io, "data: mode ", ev.mode, "\n")
@@ -104,12 +118,9 @@ function sse_response(events; status::Int=200, headers=Pair{String,String}[])
     for ev in events
         _encode_event(io, ev)
     end
-    h = Pair{String,String}[
-        "Content-Type" => "text/event-stream; charset=utf-8",
-        "Cache-Control" => "no-cache",
-        "Connection" => "keep-alive",
-    ]
-    append!(h, headers)
+    h = _with_default(headers, "Connection", "keep-alive")
+    h = _with_default(h, "Cache-Control", "no-cache")
+    h = _with_default(h, "Content-Type", "text/event-stream; charset=utf-8")
     HTTP.Response(status, h, take!(io))
 end
 
@@ -138,12 +149,9 @@ end, "127.0.0.1", 8080; stream=true)
 ```
 """
 function sse_stream(f; status::Int=200, headers=Pair{String,String}[])
-    base_headers = Pair{String,String}[
-        "Content-Type" => "text/event-stream; charset=utf-8",
-        "Cache-Control" => "no-cache",
-        "Connection" => "keep-alive",
-    ]
-    append!(base_headers, headers)
+    base_headers = _with_default(headers, "Connection", "keep-alive")
+    base_headers = _with_default(base_headers, "Cache-Control", "no-cache")
+    base_headers = _with_default(base_headers, "Content-Type", "text/event-stream; charset=utf-8")
     function handler(stream::HTTP.Stream)
         HTTP.setstatus(stream, status)
         for (k, v) in base_headers

@@ -1,6 +1,20 @@
 # Response helpers — bundle the `datastar-selector` header so callers
 # don't keep retyping it (and don't keep forgetting it).
 
+# Prepend a library-owned default header, but only when the caller hasn't
+# already supplied that field (matched case-insensitively, per RFC 9110
+# §5.1). Without this guard a caller-provided Content-Type would put TWO
+# Content-Type lines on the wire — a malformed message whose interpretation
+# diverges across consumers (HTTP.header reads the first, Dict()/browser
+# fetch read the last). The caller wins, with exactly one header.
+function _with_default(extra, name::String, val::String)
+    lname = lowercase(name)
+    any(lowercase(String(k)) == lname for (k, _) in extra) && return extra
+    h = Pair{String,String}[name => val]
+    append!(h, extra)
+    h
+end
+
 """
     html_response(body; status=200, headers=[]) -> HTTP.Response
 
@@ -28,7 +42,7 @@ julia> r2.status, Dict(r2.headers)["X-Tag"]
 ```
 """
 function html_response(body; status::Int=200, headers=Pair{String,String}[])
-    h = ["Content-Type" => "text/html; charset=utf-8", headers...]
+    h = _with_default(headers, "Content-Type", "text/html; charset=utf-8")
     HTTP.Response(status, h, render(body))
 end
 
@@ -124,6 +138,15 @@ return redirect_via_fragment("#login-form", "/dashboard";
 function redirect_via_fragment(selector::AbstractString, location::AbstractString;
                                cookies::AbstractVector=String[],
                                wrapper_tag::Symbol=:div)
+    # This helper renders the morph target itself, with `id` set to the
+    # selector minus its leading `#` — so it ONLY works for a single `#id`
+    # selector. A class/compound/whitespace selector (`.card`, `#a #b`) would
+    # produce an `id` the selector can't match (the redirect silently no-ops),
+    # and a CR/LF would be injected raw into the `datastar-selector` header.
+    # Reject anything that isn't `#` followed by non-whitespace, loudly.
+    (startswith(selector, "#") && !occursin(r"\s", selector) && length(selector) > 1) ||
+        throw(ArgumentError("redirect_via_fragment: selector must be a single \"#id\" " *
+              "(the morph target is rendered with that id), got $(repr(selector))"))
     el = Element(wrapper_tag,
                  Pair{Symbol, Any}[:id => _strip_hash(selector)],
                  Any[Raw("<script>window.location='$(_js_escape(location))'</script>")])
@@ -153,9 +176,10 @@ julia> String(r.body)
 """
 function signals_response(signals; only_if_missing::Bool=false,
                           status::Int=200, headers=Pair{String,String}[])
-    h = Pair{String,String}["Content-Type" => "application/json; charset=utf-8"]
+    h = Pair{String,String}[]
     only_if_missing && push!(h, "datastar-only-if-missing" => "true")
     append!(h, headers)
+    h = _with_default(h, "Content-Type", "application/json; charset=utf-8")
     HTTP.Response(status, h, JSON.json(signals))
 end
 
@@ -185,13 +209,14 @@ julia> String(r.body)
 """
 function script_response(js::AbstractString; script_attributes=nothing,
                          status::Int=200, headers=Pair{String,String}[])
-    h = Pair{String,String}["Content-Type" => "text/javascript; charset=utf-8"]
+    h = Pair{String,String}[]
     if script_attributes !== nothing
         attr = script_attributes isa AbstractString ?
                String(script_attributes) : JSON.json(script_attributes)
         push!(h, "datastar-script-attributes" => attr)
     end
     append!(h, headers)
+    h = _with_default(h, "Content-Type", "text/javascript; charset=utf-8")
     HTTP.Response(status, h, String(js))
 end
 
