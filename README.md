@@ -355,7 +355,7 @@ A 50-line Datastar counter app lives in
 [`examples/counter_app.jl`](examples/counter_app.jl):
 
 ```bash
-julia --project=examples examples/counter_app.jl
+julia --project=examples examples/counter_app.jl   # Julia 1.11+
 # → serving on http://127.0.0.1:8080
 ```
 

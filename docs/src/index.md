@@ -71,7 +71,7 @@ user input.
 - [API reference](api.md) — every exported name, with examples.
 - [`examples/counter_app.jl`](https://github.com/AIRCentre/HyperSignal.jl/blob/main/examples/counter_app.jl)
   — a ~50-line Datastar counter you can run with
-  `julia --project=examples examples/counter_app.jl` (then open
+  `julia --project=examples examples/counter_app.jl` on Julia 1.11+ (then open
   http://127.0.0.1:8080) to see `html_response` / `fragment_response`
   driving a live page.
 - [`example.jl`](https://github.com/AIRCentre/HyperSignal.jl/blob/main/docs/src/notebooks/example.jl)

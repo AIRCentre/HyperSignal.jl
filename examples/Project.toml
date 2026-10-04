@@ -3,5 +3,8 @@ CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"
 HyperSignal = "0aa5b41a-51a1-41e7-8512-17ccb31a7c30"
 
+[compat]
+julia = "1.11"
+
 [sources]
 HyperSignal = {path = ".."}
