@@ -353,7 +353,7 @@ the moment your code emits it.
 using HTTP, HyperSignal
 HyperSignal.@using_tags  # for div
 
-HTTP.serve(
+HTTP.listen(
     sse_stream() do writer
         for i in 1:5
             writer(patch_elements(
@@ -364,16 +364,16 @@ HTTP.serve(
         end
         writer(patch_signals((; done=true)))
     end,
-    "127.0.0.1", 8080; stream=true,
+    "127.0.0.1", 8080,
 )
 ```
 
-The handler must be registered with `HTTP.serve(...; stream=true)` —
-that is the HTTP.jl mode that exposes the per-connection
-`HTTP.Stream` `sse_stream` writes into. The same response headers as
-`sse_response` are set automatically (`Content-Type`,
-`Cache-Control`, `Connection`); `status` and `headers` kwargs work
-the same way. Each `writer(event)` call encodes the event with the
-shared SSE encoder and pushes one chunk; events already flushed
-remain visible to the client even if your task throws partway
-through.
+The handler must be registered with `HTTP.listen` / `HTTP.listen!` —
+on both HTTP.jl 1.x and 2.x, that is the entry point that exposes the
+per-connection `HTTP.Stream` `sse_stream` writes into. The same
+response headers as `sse_response` are set automatically
+(`Content-Type`, `Cache-Control`, `Connection`); `status` and
+`headers` kwargs work the same way. Each `writer(event)` call
+encodes the event with the shared SSE encoder and pushes one chunk;
+events already flushed remain visible to the client even if your
+task throws partway through.

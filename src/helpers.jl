@@ -88,9 +88,8 @@ julia> Dict(r.headers)["Location"]
 julia> r2 = redirect_to("/home";
                         cookies=["sid=abc; HttpOnly; Path=/"]);
 
-julia> [v for (k, v) in r2.headers if k == "Set-Cookie"]
-1-element Vector{SubString{String}}:
- "sid=abc; HttpOnly; Path=/"
+julia> HTTP.header(r2, "Set-Cookie")
+"sid=abc; HttpOnly; Path=/"
 ```
 """
 function redirect_to(location::AbstractString; cookies::AbstractVector=String[])

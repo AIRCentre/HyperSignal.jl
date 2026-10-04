@@ -1,7 +1,10 @@
 using Documenter, HyperSignal
 using Documenter: Remotes
 
-DocMeta.setdocmeta!(HyperSignal, :DocTestSetup, :(using HyperSignal); recursive=true)
+# `using HTTP` so doctests can read response headers case-insensitively via
+# `HTTP.header(resp, name)` — HTTP 2.0 title-cases header names, so a
+# case-sensitive `Dict(resp.headers)["datastar-selector"]` would break.
+DocMeta.setdocmeta!(HyperSignal, :DocTestSetup, :(using HyperSignal; using HTTP); recursive=true)
 # Helpers submodule doctests want unqualified names (`radio_field(...)`),
 # so layer a Helpers-specific setup on top of the recursive one.
 DocMeta.setdocmeta!(HyperSignal.Helpers, :DocTestSetup,

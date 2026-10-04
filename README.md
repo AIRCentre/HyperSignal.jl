@@ -355,7 +355,7 @@ A 50-line Datastar counter app lives in
 [`examples/counter_app.jl`](examples/counter_app.jl):
 
 ```bash
-julia --project=examples examples/counter_app.jl
+julia --project=examples examples/counter_app.jl   # Julia 1.11+
 # → serving on http://127.0.0.1:8080
 ```
 
@@ -392,7 +392,7 @@ The renderer is on the request-handler hot path; a self-contained
 benchmark suite lives in `benchmark/` so regressions are catchable.
 
 ```bash
-julia --project=benchmark benchmark/runbench.jl
+julia --project=benchmark benchmark/runbench.jl   # Julia 1.11+
 ```
 
 Indicative numbers on a typical workstation; figures are approximate and

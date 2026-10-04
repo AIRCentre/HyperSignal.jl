@@ -5,7 +5,17 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Added
+- HTTP.jl 2.x support: compat is now `HTTP = "1, 2"`. CI tests both majors.
+
+### Fixed
+- `parse_signals(req::HTTP.Request)` no longer throws on HTTP 2.x request
+  bodies (`HTTP.BytesBody`, `HTTP.EmptyBody`).
+
 ### Docs
+- `sse_stream` handlers are registered with `HTTP.listen` / `HTTP.listen!`,
+  which works on both HTTP majors. On 2.x, `HTTP.serve(...; stream=true)` is
+  gone and `HTTP.serve` with a stream handler answers 500.
 - README install section now leads with `] add HyperSignal` (the package is
   registered in General) and demotes the Git-URL install to the
   track-unreleased-`main` case — it previously showed only the Git URL and

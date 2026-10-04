@@ -132,7 +132,9 @@ chunked `text/event-stream` response. `f` receives a `writer` callable:
 each call with a [`patch_elements`](@ref) / [`patch_signals`](@ref)
 event encodes the event and flushes it as its own chunk so the client
 sees progress in real time. Register the returned handler with
-`HTTP.serve(handler, host, port; stream=true)`.
+`HTTP.listen!(handler, host, port)` (or blocking `HTTP.listen`), which
+works on HTTP.jl 1.x and 2.x. On 2.x, `HTTP.serve` only calls request
+handlers, so a stream handler mounted there answers 500.
 
 `writer` is **not** concurrency-safe — concurrent calls from multiple
 tasks will interleave chunks. Serialize calls (or guard `writer` with
@@ -140,12 +142,12 @@ a `ReentrantLock`) if `f` fans out work.
 
 # Example
 ```julia
-HTTP.serve(sse_stream() do writer
+HTTP.listen(sse_stream() do writer
     for i in 1:5
         writer(patch_elements(div(id="progress", "step \$i"); selector="#progress", mode=:inner))
         sleep(0.5)
     end
-end, "127.0.0.1", 8080; stream=true)
+end, "127.0.0.1", 8080)
 ```
 """
 function sse_stream(f; status::Int=200, headers=Pair{String,String}[])

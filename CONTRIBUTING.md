@@ -33,7 +33,9 @@ julia --project=benchmark benchmark/runbench.jl
 ```
 
 `BenchmarkTools` lives in `benchmark/Project.toml` so it stays out of
-the main runtime dependency tree.
+the main runtime dependency tree. The benchmark needs Julia 1.11+:
+`benchmark/Project.toml` finds HyperSignal via `[sources]`, which
+Julia 1.10 ignores.
 
 ## Documentation and doctests
 
@@ -43,11 +45,12 @@ code will fail CI. Build the docs and run doctests locally with:
 
 ```bash
 julia --project=docs -e 'using Pkg; Pkg.instantiate()'
-julia --project=docs docs/make.jl
+julia --project=docs docs/make.jl   # Julia 1.11+
 ```
 
 The docs environment is separate (`docs/Project.toml`) and path-depends
-on the working tree, so it always builds against your local changes.
+on the working tree via `[sources]`, so on Julia 1.11+ it builds against
+your local changes.
 Exported symbols should carry a docstring (`checkdocs = :exports`); a
 missing one is currently only a warning (`warnonly = [:missing_docs]`),
 but a doctest mismatch is a hard failure both locally and in CI.
