@@ -392,7 +392,7 @@ The renderer is on the request-handler hot path; a self-contained
 benchmark suite lives in `benchmark/` so regressions are catchable.
 
 ```bash
-julia --project=benchmark benchmark/runbench.jl
+julia --project=benchmark benchmark/runbench.jl   # Julia 1.11+
 ```
 
 Indicative numbers on a typical workstation; figures are approximate and

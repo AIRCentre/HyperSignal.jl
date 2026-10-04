@@ -412,9 +412,10 @@ end
 # `HTTP.payload`); its `.data` field is the underlying `Vector{UInt8}`. We reach
 # the bytes directly and hand them to the `Vector{UInt8}` method below — a
 # `String(::HTTP.BytesBody)` instead is O(n)-alloc (it iterates byte by byte),
-# which would make signal decoding scale badly with body size.
+# which would make signal decoding scale badly with body size. A bodyless 2.x
+# request carries an `HTTP.EmptyBody`, which has no `.data`.
 _request_body_bytes(b::AbstractVector{UInt8}) = b
-_request_body_bytes(b) = b.data
+_request_body_bytes(b) = hasproperty(b, :data) ? b.data : UInt8[]
 parse_signals(req::HTTP.Request) = parse_signals(_request_body_bytes(req.body))
 parse_signals(body::AbstractVector{UInt8}) =
     isempty(body) ? Dict{String, Any}() : parse_signals(String(body))

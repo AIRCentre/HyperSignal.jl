@@ -29,13 +29,18 @@ jobs:
               - '.github/workflows/CI.yml'
 
   test:
-    name: Julia ${{ matrix.version }} - ${{ matrix.os }}
+    name: Julia ${{ matrix.version }} - HTTP ${{ matrix.http }} - ${{ matrix.os }}
     needs: changes
     runs-on: ${{ matrix.os }}
+    # Julia 1.10 deadlocks precompiling the Makie extensions in parallel on a
+    # cold depot (JuliaLang/Pkg.jl#4822); serial precompile avoids it.
+    env:
+      JULIA_NUM_PRECOMPILE_TASKS: 1
     strategy:
       fail-fast: false
       matrix:
         version: ['1.10', '1']
+        http: ['1', '2']
         os: [ubuntu-latest]
         arch: [x64]
     steps:
@@ -50,6 +55,9 @@ jobs:
           arch: ${{ matrix.arch }}
       - if: needs.changes.outputs.code == 'true'
         uses: julia-actions/cache@v2
+      # Compat allows HTTP 1 and 2; without a pin the resolver always picks 2.
+      - if: needs.changes.outputs.code == 'true'
+        run: julia --project=. -e 'using Pkg; Pkg.add(name="HTTP", version="${{ matrix.http }}")'
       - if: needs.changes.outputs.code == 'true'
         uses: julia-actions/julia-buildpkg@v1
       - if: needs.changes.outputs.code == 'true'

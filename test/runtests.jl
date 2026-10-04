@@ -539,17 +539,11 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         # Helper: spin up a server with the given sse_stream handler, GET /,
         # return (status, headers Dict, body String).
         function _hit_stream(handler)
-            # HTTP 1.x needs `stream=true` for a `::HTTP.Stream` handler, accepts an
-            # IPAddr host, and exposes the OS-assigned port via the listener socket.
-            # HTTP 2.x auto-detects a streaming handler (rejects `stream=true`), wants
-            # a String host, and exposes the bound port on the Server struct.
-            if pkgversion(HTTP) >= v"2"
-                srv = HTTP.serve!(handler, "127.0.0.1", 0)
-                port = srv.bound_port
-            else
-                srv = HTTP.serve!(handler, Sockets.localhost, 0; stream=true)
-                port = Sockets.getsockname(srv.listener.server)[2]
-            end
+            # `listen!` takes a `::HTTP.Stream` handler on both majors (2.x `serve!`
+            # only calls `handler(::Request)`); only the bound-port lookup differs.
+            srv = HTTP.listen!(handler, "127.0.0.1", 0)
+            port = pkgversion(HTTP) >= v"2" ? srv.bound_port :
+                Sockets.getsockname(srv.listener.server)[2]
             try
                 resp = HTTP.get("http://127.0.0.1:$port/"; retry=false,
                                 decompress=false, status_exception=false)
@@ -1087,6 +1081,8 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         # guard `get(sig, "x", default)` then handles "no signals sent" cleanly.
         @test parse_signals("") == Dict{String, Any}()
         @test parse_signals(UInt8[]) == Dict{String, Any}()
+        # HTTP 2.x gives a bodyless request an `HTTP.EmptyBody`, not a Vector.
+        @test parse_signals(HTTP.Request("GET", "/")) == Dict{String, Any}()
     end
 
     @testset "parse_signals rejects a top-level non-object payload loud" begin

@@ -9,7 +9,7 @@ under `benchmark/`.
 ## Regenerating these numbers
 
 ```bash
-julia --project=benchmark benchmark/runbench.jl
+julia --project=benchmark benchmark/runbench.jl   # Julia 1.11+
 ```
 
 The script defines a `BenchmarkGroup`, tunes each case, then prints

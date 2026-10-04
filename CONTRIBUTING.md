@@ -33,7 +33,9 @@ julia --project=benchmark benchmark/runbench.jl
 ```
 
 `BenchmarkTools` lives in `benchmark/Project.toml` so it stays out of
-the main runtime dependency tree.
+the main runtime dependency tree. The benchmark needs Julia 1.11+:
+`benchmark/Project.toml` finds HyperSignal via `[sources]`, which
+Julia 1.10 ignores.
 
 ## Documentation and doctests
 
