@@ -1,7 +1,7 @@
 # Datastar
 
 HyperSignal targets the [Datastar](https://data-star.dev) protocol
-pinned by [`DATASTAR_SUPPORTED_VERSION`](@ref) (`v"1.0.1"`). A Datastar
+pinned by [`DATASTAR_SUPPORTED_VERSION`](@ref) (`v"1.0.4"`). A Datastar
 app has two halves: attributes and actions you put *into* the page to
 wire up reactivity, and the response shapes a handler sends *back*. This
 page covers both — actions/signals first, then the HTML / JSON / JS /

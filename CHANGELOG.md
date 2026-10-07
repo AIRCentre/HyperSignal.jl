@@ -12,6 +12,17 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `parse_signals(req::HTTP.Request)` no longer throws on HTTP 2.x request
   bodies (`HTTP.BytesBody`, `HTTP.EmptyBody`).
 
+### Changed
+- `DATASTAR_SUPPORTED_VERSION` is now `v"1.0.4"` (was `v"1.0.1"`), and the
+  vendored bundles in `examples/` and `docs/src/notebooks/assets/` match it.
+  Datastar 1.0.2–1.0.4 leave the attributes, SSE events and headers
+  HyperSignal emits unchanged. Client-side, since 1.0.2 a request aborts any
+  in-flight request with the same method and URL, from any element, and
+  `data-bind` on checkboxes and radios listens to `input`.
+- CI: GitHub Actions moved to their node24 majors (checkout v7, setup-julia
+  v3, cache v3, paths-filter v4, codecov v7). Dependabot replaces CompatHelper
+  for compat and Action updates.
+
 ### Docs
 - `sse_stream` handlers are registered with `HTTP.listen` / `HTTP.listen!`,
   which works on both HTTP majors. On 2.x, `HTTP.serve(...; stream=true)` is

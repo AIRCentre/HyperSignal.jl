@@ -29,8 +29,8 @@ jobs:
     outputs:
       relevant: ${{ steps.filter.outputs.relevant }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -51,13 +51,13 @@ jobs:
       - if: needs.changes.outputs.relevant != 'true'
         run: echo "No source/notebook changes; skipping smoke."
       - if: needs.changes.outputs.relevant == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - if: needs.changes.outputs.relevant == 'true'
-        uses: julia-actions/setup-julia@v2
+        uses: julia-actions/setup-julia@v3
         with:
           version: '1'
       - if: needs.changes.outputs.relevant == 'true'
-        uses: julia-actions/cache@v2
+        uses: julia-actions/cache@v3
       - if: needs.changes.outputs.relevant == 'true'
         name: Render smoke.jl and assert smoke fragment
         run: julia --project=. .github/scripts/pluto_smoke.jl
