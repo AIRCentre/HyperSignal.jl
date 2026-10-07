@@ -1061,8 +1061,8 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test ds"$open" isa DSExpr
         n, s = 3, "a'b\"c"
         @test ds"$count = $(n)" == "\$count = 3"
-        # Strings go through the same single-quote escaper as DSAction URLs.
-        @test ds"$label = $(s)" == "\$label = 'a\\'b\"c'"
+        # Strings go through the DSAction escaper, plus `"`, backtick and `$`.
+        @test ds"$label = $(s)" == "\$label = 'a\\'b\\\"c'"
         t = "a</b"
         @test ds"$x = $(t)" == "\$x = 'a<\\/b'"
         @test ds"$x = $(Inf)" == "\$x = Infinity"
@@ -1075,7 +1075,17 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test ds"$$(x)" == "\$(x)"
         @test ds"$v = 'it\'s $w'" == "\$v = 'it\\'s \$w'"
         @test render(button(on(:click, ds"$x = $(s)"))) ==
-            "<button data-on:click=\"\$x = &#39;a\\&#39;b&quot;c&#39;\"></button>"
+            "<button data-on:click=\"\$x = &#39;a\\&#39;b\\&quot;c&#39;\"></button>"
+        # The quote inside each regex flips the parser's quote tracking, so
+        # these splices are accepted though they sit inside real JS strings.
+        # Escaping every delimiter keeps the value inert in any quote context.
+        dq, bt, sq = "\"+alert(1)+\"", "\${alert(1)}", (a="'+alert(1)+'",)
+        @test ds"$ok = /\"/.test($a) ? \"$(dq)\" : /\"/" ==
+            "\$ok = /\"/.test(\$a) ? \"'\\\"+alert(1)+\\\"'\" : /\"/"
+        @test ds"$ok = /`/.test($a) ? `$(bt)` : /`/" ==
+            "\$ok = /`/.test(\$a) ? `'\\\${alert(1)}'` : /`/"
+        @test ds"$ok = /'/.test($a) ? '$(sq)' : /'/" ==
+            "\$ok = /'/.test(\$a) ? '{\"a\":\"\\'+alert(1)+\\'\"}' : /'/"
         # Errors are raised at macro expansion; test the parser directly.
         @test_throws ArgumentError HyperSignal._ds_parse("\\\$x")
         @test_throws ArgumentError HyperSignal._ds_parse("'hi \$(name)'")

@@ -210,12 +210,16 @@ Base.codeunit(e::DSExpr, i::Integer) = codeunit(e.s, i)
 Base.isvalid(e::DSExpr, i::Integer) = isvalid(e.s, i)
 Base.iterate(e::DSExpr, i::Integer=1) = iterate(e.s, i)
 
-# Same literals as DSAction extras. The fallback is JSON, not `_js_value`'s
-# `string(v)`, so an unexpected type (`nothing`, a Symbol) can't land as a
-# bare JS identifier.
-_ds_splice(x::Union{Bool, Number, AbstractString, AbstractDict, NamedTuple,
-                    AbstractVector, Tuple}) = _js_value(x)
-_ds_splice(x) = JSON.json(x)
+# _ds_parse's quote tracking can be fooled (a quote inside a regex literal),
+# so a splice must stay inert inside any JS string: `"`, backtick and `$`
+# are escaped too. Those escapes are no-ops in a JS string, and in JSON these
+# characters only occur inside strings. Other types go through JSON, not
+# `_js_value`'s `string(v)`, so `nothing` or a Symbol can't land as a bare
+# identifier.
+_ds_splice(x::Union{Bool, Number}) = _js_value(x)
+_ds_splice(x::AbstractString) =
+    "'" * replace(_js_str_escape(x), "\"" => "\\\"", "`" => "\\`", "\$" => "\\\$") * "'"
+_ds_splice(x) = replace(JSON.json(x), "'" => "\\'", "`" => "\\`", "\$" => "\\\$")
 _ds_splice(x::DSExpr) = x.s
 _ds_splice(a::DSAction) = action_js(a)
 
@@ -282,7 +286,7 @@ Write a Datastar expression without escaping `\$`. Unlike a Julia string,
 `\$name` is **not** interpolated: it stays a Datastar signal reference.
 `\$(expr)` evaluates the Julia `expr` and inserts it as a JS literal, the
 same way [`DSAction`](@ref) options are written: strings single-quoted and
-escaped, numbers and booleans as-is, `Dict`/`NamedTuple`/`Vector` as JSON,
+escaped (`"`, backtick and `\$` too), numbers and booleans as-is, `Dict`/`NamedTuple`/`Vector` as JSON,
 anything else via `JSON.json`. A [`DSAction`](@ref)
 or another `ds"…"` is inserted verbatim. Write `\$\$(` for a literal `\$(`.
 

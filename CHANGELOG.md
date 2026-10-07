@@ -9,7 +9,8 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - HTTP.jl 2.x support: compat is now `HTTP = "1, 2"`. CI tests both majors.
 - `ds"…"` (`@ds_str`, returns `DSExpr`) writes a Datastar expression
   without escaping `$`: `$name` stays a signal and `$(expr)` splices a Julia
-  value as an escaped JS literal, written the same way as `DSAction` options.
+  value as a JS literal with every string delimiter escaped, so it stays
+  inert in any quote context.
   `ds"$count = $(n)"` replaces `"\$count = $(n)"`, which pasted `n` into JS
   unquoted.
 - `ds_show`, `ds_text`, `ds_attr`, `ds_class`, `ds_style` and `ds_computed`
