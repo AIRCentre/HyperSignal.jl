@@ -511,60 +511,6 @@ Symbol("data-signals")
 """
 ds_signals(state) = Attribute(Symbol("data-signals"), JSON.json(state))
 
-# Read the request body across HTTP major versions. HTTP 1.x: `req.body` is a
-# `Vector{UInt8}`. HTTP 2.x wraps it in an `HTTP.BytesBody` (and removed
-# `HTTP.payload`); its `.data` field is the underlying `Vector{UInt8}`. We reach
-# the bytes directly and hand them to the `Vector{UInt8}` method below — a
-# `String(::HTTP.BytesBody)` instead is O(n)-alloc (it iterates byte by byte),
-# which would make signal decoding scale badly with body size. A bodyless 2.x
-# request carries an `HTTP.EmptyBody`, which has no `.data`.
-_request_body_bytes(b::AbstractVector{UInt8}) = b
-_request_body_bytes(b) = hasproperty(b, :data) ? b.data : UInt8[]
-
-"""
-    parse_signals(req_or_body) -> Dict{String, Any}
-
-Decode the Datastar signals payload from a request body. Datastar's
-default action mode (`@post('/x')` without `contentType: 'form'`) sends
-the active signals object as a JSON body. Pass either an
-`HTTP.Request`, a `Vector{UInt8}`, or an `AbstractString` — the helper
-normalizes the input and returns the parsed object as a
-`Dict{String, Any}`. Empty bodies map to an empty dict so a route can
-guard cleanly.
-
-For form-encoded posts (`@post('/x', {contentType: 'form'})`), use the
-service's `parse_form_body` instead — Datastar treats form-mode and
-JSON-mode as distinct wire formats, and so does this lib.
-
-# Examples
-```julia
-function handle_increment(req::HTTP.Request)
-    sig = parse_signals(req)
-    n = Int(get(sig, "count", 0)) + 1
-    fragment_response(div(id="counter", n), "#counter")
-end
-```
-"""
-parse_signals(req::HTTP.Request) = parse_signals(_request_body_bytes(req.body))
-parse_signals(body::AbstractVector{UInt8}) =
-    isempty(body) ? Dict{String, Any}() : parse_signals(String(body))
-parse_signals(io::IO) = parse_signals(read(io))
-function parse_signals(body::AbstractString)
-    isempty(body) && return Dict{String, Any}()
-    parsed = try
-        JSON.parse(String(body))
-    catch err
-        # JSON.jl raises ArgumentError with a position-tagged message;
-        # re-throw with the call site's name so a panicked handler log
-        # makes the source of the failure obvious. Truncate the body
-        # snippet so a giant malformed payload doesn't flood logs.
-        snippet = SubString(body, 1, min(lastindex(body), 80))
-        throw(ArgumentError("parse_signals: invalid JSON body (first 80 chars: $(repr(snippet))) — $(err)"))
-    end
-    parsed isa AbstractDict ? Dict{String, Any}(parsed) :
-        throw(ArgumentError("parse_signals: expected a JSON object at the top level, got $(typeof(parsed))"))
-end
-
 """
     ds_show(expr::AbstractString) -> Attribute
     ds_show(signal::Symbol) -> Attribute
@@ -770,3 +716,57 @@ div(ds_signals((width=0,)), ds_init("\$width = window.innerWidth"))
 """
 ds_init(action::Union{DSAction, AbstractString}) =
     Attribute(Symbol("data-init"), action)
+
+# Read the request body across HTTP major versions. HTTP 1.x: `req.body` is a
+# `Vector{UInt8}`. HTTP 2.x wraps it in an `HTTP.BytesBody` (and removed
+# `HTTP.payload`); its `.data` field is the underlying `Vector{UInt8}`. We reach
+# the bytes directly and hand them to the `Vector{UInt8}` method below — a
+# `String(::HTTP.BytesBody)` instead is O(n)-alloc (it iterates byte by byte),
+# which would make signal decoding scale badly with body size. A bodyless 2.x
+# request carries an `HTTP.EmptyBody`, which has no `.data`.
+_request_body_bytes(b::AbstractVector{UInt8}) = b
+_request_body_bytes(b) = hasproperty(b, :data) ? b.data : UInt8[]
+
+"""
+    parse_signals(req_or_body) -> Dict{String, Any}
+
+Decode the Datastar signals payload from a request body. Datastar's
+default action mode (`@post('/x')` without `contentType: 'form'`) sends
+the active signals object as a JSON body. Pass either an
+`HTTP.Request`, a `Vector{UInt8}`, or an `AbstractString` — the helper
+normalizes the input and returns the parsed object as a
+`Dict{String, Any}`. Empty bodies map to an empty dict so a route can
+guard cleanly.
+
+For form-encoded posts (`@post('/x', {contentType: 'form'})`), use the
+service's `parse_form_body` instead — Datastar treats form-mode and
+JSON-mode as distinct wire formats, and so does this lib.
+
+# Examples
+```julia
+function handle_increment(req::HTTP.Request)
+    sig = parse_signals(req)
+    n = Int(get(sig, "count", 0)) + 1
+    fragment_response(div(id="counter", n), "#counter")
+end
+```
+"""
+parse_signals(req::HTTP.Request) = parse_signals(_request_body_bytes(req.body))
+parse_signals(body::AbstractVector{UInt8}) =
+    isempty(body) ? Dict{String, Any}() : parse_signals(String(body))
+parse_signals(io::IO) = parse_signals(read(io))
+function parse_signals(body::AbstractString)
+    isempty(body) && return Dict{String, Any}()
+    parsed = try
+        JSON.parse(String(body))
+    catch err
+        # JSON.jl raises ArgumentError with a position-tagged message;
+        # re-throw with the call site's name so a panicked handler log
+        # makes the source of the failure obvious. Truncate the body
+        # snippet so a giant malformed payload doesn't flood logs.
+        snippet = SubString(body, 1, min(lastindex(body), 80))
+        throw(ArgumentError("parse_signals: invalid JSON body (first 80 chars: $(repr(snippet))) — $(err)"))
+    end
+    parsed isa AbstractDict ? Dict{String, Any}(parsed) :
+        throw(ArgumentError("parse_signals: expected a JSON object at the top level, got $(typeof(parsed))"))
+end
