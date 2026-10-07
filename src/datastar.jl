@@ -468,7 +468,7 @@ Two-way bind an input to a Datastar signal: the input's value mirrors
 input(type="text", ds_bind(:query))
 ```
 """
-ds_bind(signal::AbstractString) = Attribute(Symbol("data-bind"), signal)
+ds_bind(signal::AbstractString) = Attribute(Symbol("data-bind"), String(signal))
 ds_bind(signal::Symbol) = ds_bind(_signal_path(signal))
 
 """
@@ -524,7 +524,7 @@ renders `data-show="\$open"`.
 p(ds_show(ds"\$count > 0"), "You have items.")
 ```
 """
-ds_show(expr::AbstractString) = Attribute(Symbol("data-show"), expr)
+ds_show(expr::AbstractString) = Attribute(Symbol("data-show"), String(expr))
 ds_show(signal::Symbol) = ds_show(_signal_ref(signal))
 
 """
@@ -540,7 +540,7 @@ string when the value is a Datastar signal that may change client-side.
 span(ds_text(:count))    # text content tracks the signal "count"
 ```
 """
-ds_text(expr::AbstractString) = Attribute(Symbol("data-text"), expr)
+ds_text(expr::AbstractString) = Attribute(Symbol("data-text"), String(expr))
 ds_text(signal::Symbol) = ds_text(_signal_ref(signal))
 
 """
