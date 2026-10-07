@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. Format roughly
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## Unreleased
+## 0.4.1 — 2026-10-07
 
 ### Added
 - HTTP.jl 2.x support: compat is now `HTTP = "1, 2"`. CI tests both majors.
