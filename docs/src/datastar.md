@@ -130,7 +130,8 @@ escape:
 - [`ds"…"`](@ref @ds_str) writes any expression as Datastar syntax.
   `$name` stays a signal. `$(expr)` evaluates Julia and inserts the value
   as a JS literal, written like [`DSAction`](@ref) options: strings
-  single-quoted and escaped, `Dict`/`NamedTuple`/`Vector` as JSON. A
+  single-quoted and escaped, `Dict`/`NamedTuple`/`Vector` as JSON,
+  `nothing` as `null` (assigning `null` deletes a Datastar signal). A
   [`DSAction`](@ref) or another `ds"…"` goes in verbatim.
 
 ```julia
