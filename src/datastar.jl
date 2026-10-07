@@ -196,10 +196,9 @@ _signal_ref(sig::Symbol) = "\$" * _signal_path(sig)
 """
     DSExpr <: AbstractString
 
-A Datastar expression built by [`@ds_str`](@ref). It is a string, so it
-goes wherever an expression string does (`on`, `ds_show`, `ds_attr`, …).
-Splicing one `DSExpr` into another `ds"…"` inserts it verbatim instead of
-quoting it.
+A Datastar expression built by [`@ds_str`](@ref). As an `AbstractString`
+it is accepted wherever an expression string is (`on`, `ds_show`, …).
+Spliced into another `ds"…"`, it is inserted verbatim, not quoted.
 """
 struct DSExpr <: AbstractString
     s::String
@@ -258,7 +257,7 @@ function _ds_parse(s::AbstractString)
             if ex isa Expr && ex.head in (:incomplete, :error)
                 throw(ArgumentError("ds\"…\": unclosed or invalid \$(…) in $(repr(s))"))
             end
-            buf.size > 0 && push!(parts, String(take!(buf)))
+            position(buf) > 0 && push!(parts, String(take!(buf)))
             push!(parts, ex)
             continue
         end
@@ -267,7 +266,7 @@ function _ds_parse(s::AbstractString)
     end
     quote_char === nothing ||
         throw(ArgumentError("ds\"…\": unterminated $(quote_char) string in $(repr(s))"))
-    buf.size > 0 && push!(parts, String(take!(buf)))
+    position(buf) > 0 && push!(parts, String(take!(buf)))
     parts
 end
 

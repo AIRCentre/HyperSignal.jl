@@ -427,12 +427,11 @@ Applies to every `.md` + every code comment / docstring.
   too big — split.
 
   - 🚫 `@html"<div>$x</div>"` or any string-macro DSL.
-  - ✅ Exception: `ds"…"` (`@ds_str`). It is not a template. It writes
-    Datastar's own expression syntax, where `$name` is a signal, and a plain
-    string would need `\$` on every reference. Its splice rule (`$(expr)` →
-    JSON literal) is also the injection-safe way to put a Julia value into
-    JS. Any further string macro needs the same case: a foreign syntax that
-    plain strings can't write cleanly.
+  - ✅ Exception: `ds"…"` (`@ds_str`). It writes Datastar's own syntax,
+    where `$name` is a signal and a plain string needs `\$` on every
+    reference. Its `$(expr)` splice writes a JSON literal, the
+    injection-safe way to put a Julia value into JS. A further string macro
+    needs the same case: a foreign syntax plain strings can't write cleanly.
 
 - **No client-side state machine.** `[corr]`
 

@@ -47,8 +47,10 @@ fragment_response(page, "#card")      # Datastar morph with selector header
   [`ds_show`](@ref), [`ds_text`](@ref), [`ds_json_signals`](@ref),
   [`ds_ref`](@ref), [`ds_attr`](@ref), [`ds_class`](@ref),
   [`ds_computed`](@ref), [`ds_style`](@ref), [`ds_effect`](@ref),
-  [`ds_init`](@ref). Expression arguments take a `Symbol` for a single
-  signal (`ds_show(:open)`).
+  [`ds_init`](@ref). `ds_show`, `ds_text`, `ds_attr`, `ds_class`,
+  `ds_style` and `ds_computed` take a `Symbol` for one signal
+  (`ds_show(:open)`); `ds_bind` and `ds_indicator` take one for the bare
+  name.
 - Datastar expressions: [`@ds_str`](@ref) (`ds"\$count = \$(n)"`) writes
   `\$signal` without escaping and splices Julia values as JSON literals;
   it returns a [`DSExpr`](@ref).

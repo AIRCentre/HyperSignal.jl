@@ -299,7 +299,7 @@ which is what the `DSAction` type exists to avoid.
 At the time of writing no other Julia binding for
 [Datastar](https://data-star.dev) exists — the official SDK list covers
 13 languages but Julia is absent. The Datastar layer in this package
-(`DSAction`, `ds_get` / `ds_post` / `ds_put` / `ds_delete`, `on` /
+(`DSAction`, `ds"…"` / `DSExpr`, `ds_get` / `ds_post` / `ds_put` / `ds_delete`, `on` /
 `on_click` / `on_submit` / `on_change_debounced` / `on_interval`,
 `ds_indicator` / `ds_bind` / `ds_signal` / `ds_signals` / `ds_show` /
 `ds_text` / `ds_json_signals` / `ds_ignore_morph`, `ds_ref` /

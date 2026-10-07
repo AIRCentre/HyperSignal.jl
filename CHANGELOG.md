@@ -36,11 +36,13 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `data-bind` on checkboxes and radios listens to `input`.
 - CI: GitHub Actions moved to their node24 majors (checkout v7, setup-julia
   v3, cache v3, paths-filter v4, codecov v7). Dependabot replaces CompatHelper
-  for compat and Action updates.
+  for compat and Action updates. TagBot drops its unused `lookback` input.
 
 ### Docs
 - `ds_text("count")` examples rendered `data-text="count"`, which reads an
   undefined JS name instead of the signal; they now use `ds_text(:count)`.
+  Docstring and guide examples use `ds"…"` and Symbol arguments, and
+  `docs/src/datastar.md` gains a "Writing expressions" section.
 - `sse_stream` handlers are registered with `HTTP.listen` / `HTTP.listen!`,
   which works on both HTTP majors. On 2.x, `HTTP.serve(...; stream=true)` is
   gone and `HTTP.serve` with a stream handler answers 500.

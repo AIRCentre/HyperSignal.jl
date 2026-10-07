@@ -146,11 +146,13 @@ julia> ds"""$(ds_get("/feed")); $ready = true"""
 ```
 
 A bare `"` ends a custom string literal even inside `$(…)`, so use
-`ds"""…"""` when a splice contains a Julia string. Two mistakes fail when
-the code loads: `\$` (not needed inside `ds"…"`) and `$(…)` inside a JS
-`'…'` string, where the JSON quotes would end it (write
-`'Hi, ' + $(name)`). One does not: inside `ds"…"`, `$n` is the Datastar
-signal `n`, never the Julia variable. Use `$(n)` for the Julia value.
+`ds"""…"""` when a splice contains a Julia string. Write `$$(` for a
+literal `$(`.
+
+`\$` and a `$(…)` inside a JS `'…'` string fail when the code loads (the
+JSON quotes would end the JS string; write `'Hi, ' + $(name)`). A bare
+`$n` does not fail: it is the Datastar signal `n`, never the Julia
+variable. Use `$(n)` for the Julia value.
 
 `raw"$open = !$open"` also works with no splicing, since it is a plain
 `String`.
