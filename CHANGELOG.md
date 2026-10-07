@@ -9,8 +9,9 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - HTTP.jl 2.x support: compat is now `HTTP = "1, 2"`. CI tests both majors.
 - `ds"…"` (`@ds_str`, returns `DSExpr`) writes a Datastar expression
   without escaping `$`: `$name` stays a signal and `$(expr)` splices a Julia
-  value as a JSON literal. `ds"$count = $(n)"` replaces `"\$count = $(n)"`,
-  which pasted `n` into JS unquoted.
+  value as an escaped JS literal, written the same way as `DSAction` options.
+  `ds"$count = $(n)"` replaces `"\$count = $(n)"`, which pasted `n` into JS
+  unquoted.
 - `ds_show`, `ds_text`, `ds_attr`, `ds_class`, `ds_style` and `ds_computed`
   take a `Symbol` for one signal (`ds_show(:open)` → `data-show="$open"`);
   `ds_bind` and `ds_indicator` take one for the bare name. Hyphenated or
@@ -23,6 +24,9 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `data-on:submit__prevent`. Datastar throws `ValueRequired` on it, which
   stopped every other Datastar attribute on the page from initialising. It
   now renders `data-on:submit__prevent="void 0"`.
+- A `SubString` (or any non-`String` `AbstractString`) passed as a
+  `ds_get`/`ds_post`/… option rendered unquoted; it is now quoted and
+  escaped like a `String`.
 - `preset_button` fires `input` on each radio it checks. Datastar 1.0.2+
   updates a `data-bind` radio on `input`, so bound signals kept their old
   value after a preset click.

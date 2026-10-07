@@ -129,7 +129,8 @@ escape:
   camel-cases hyphens, so `:my-signal` is rejected.
 - [`ds"…"`](@ref @ds_str) writes any expression as Datastar syntax.
   `$name` stays a signal. `$(expr)` evaluates Julia and inserts the value
-  as a JSON literal, so strings arrive quoted and escaped. A
+  as a JS literal, written like [`DSAction`](@ref) options: strings
+  single-quoted and escaped, `Dict`/`NamedTuple`/`Vector` as JSON. A
   [`DSAction`](@ref) or another `ds"…"` goes in verbatim.
 
 ```julia
@@ -139,7 +140,7 @@ julia> render(button(on(:click, ds"$count = $count + $(n)")))
 "<button data-on:click=\"\$count = \$count + 3\"></button>"
 
 julia> render(button(on(:click, ds"$label = $(label)")))
-"<button data-on:click=\"\$label = &quot;it&#39;s&quot;\"></button>"
+"<button data-on:click=\"\$label = &#39;it\\&#39;s&#39;\"></button>"
 
 julia> ds"""$(ds_get("/feed")); $ready = true"""
 "@get('/feed'); \$ready = true"
@@ -150,7 +151,7 @@ A bare `"` ends a custom string literal even inside `$(…)`, so use
 literal `$(`.
 
 `\$` and a `$(…)` inside a JS `'…'` string fail when the code loads (the
-JSON quotes would end the JS string; write `'Hi, ' + $(name)`). A bare
+inserted quotes would end the JS string; write `'Hi, ' + $(name)`). A bare
 `$n` does not fail: it is the Datastar signal `n`, never the Julia
 variable. Use `$(n)` for the Julia value.
 

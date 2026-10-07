@@ -52,7 +52,7 @@ fragment_response(page, "#card")      # Datastar morph with selector header
   (`ds_show(:open)`); `ds_bind` and `ds_indicator` take one for the bare
   name.
 - Datastar expressions: [`@ds_str`](@ref) (`ds"\$count = \$(n)"`) writes
-  `\$signal` without escaping and splices Julia values as JSON literals;
+  `\$signal` without escaping and splices Julia values as escaped JS literals;
   it returns a [`DSExpr`](@ref).
 - Datastar signal decoding: [`parse_signals`](@ref) (read the JSON body
   of a non-form Datastar action into a `Dict{String, Any}`).

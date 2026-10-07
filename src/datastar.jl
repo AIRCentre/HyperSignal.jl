@@ -170,7 +170,7 @@ _js_str_escape(s::AbstractString) =
     replace(s, "\\" => "\\\\", "'" => "\\'", "</" => "<\\/",
                "\n" => "\\n", "\r" => "\\r",
                "\u2028" => "\\u2028", "\u2029" => "\\u2029")
-_js_value(v::String) = "'$(_js_str_escape(v))'"
+_js_value(v::AbstractString) = "'$(_js_str_escape(v))'"
 # Structured option values (e.g. `headers=Dict(...)`,
 # `filterSignals=(include=...)`) serialize as a JSON object/array literal —
 # valid JS, which Julia's `repr` of a Dict/NamedTuple/Tuple/Vector is not.
@@ -210,6 +210,11 @@ Base.codeunit(e::DSExpr, i::Integer) = codeunit(e.s, i)
 Base.isvalid(e::DSExpr, i::Integer) = isvalid(e.s, i)
 Base.iterate(e::DSExpr, i::Integer=1) = iterate(e.s, i)
 
+# Same literals as DSAction extras. The fallback is JSON, not `_js_value`'s
+# `string(v)`, so an unexpected type (`nothing`, a Symbol) can't land as a
+# bare JS identifier.
+_ds_splice(x::Union{Bool, Number, AbstractString, AbstractDict, NamedTuple,
+                    AbstractVector, Tuple}) = _js_value(x)
 _ds_splice(x) = JSON.json(x)
 _ds_splice(x::DSExpr) = x.s
 _ds_splice(a::DSAction) = action_js(a)
@@ -217,7 +222,7 @@ _ds_splice(a::DSAction) = action_js(a)
 # Split a ds"…" body into literal Strings and Julia Exprs to splice. Only
 # `$(` starts a splice: Datastar signal names never begin with `(`. Quotes
 # are tracked so a splice can't land inside a JS string literal, where its
-# JSON quotes would end the string early.
+# own quotes would end the string early.
 function _ds_parse(s::AbstractString)
     parts = Any[]
     buf = IOBuffer()
@@ -275,8 +280,10 @@ end
 
 Write a Datastar expression without escaping `\$`. Unlike a Julia string,
 `\$name` is **not** interpolated: it stays a Datastar signal reference.
-`\$(expr)` evaluates the Julia `expr` and inserts it as a JSON literal
-(strings quoted and escaped, numbers and booleans as-is). A [`DSAction`](@ref)
+`\$(expr)` evaluates the Julia `expr` and inserts it as a JS literal, the
+same way [`DSAction`](@ref) options are written: strings single-quoted and
+escaped, numbers and booleans as-is, `Dict`/`NamedTuple`/`Vector` as JSON,
+anything else via `JSON.json`. A [`DSAction`](@ref)
 or another `ds"…"` is inserted verbatim. Write `\$\$(` for a literal `\$(`.
 
 A misplaced splice fails when the code loads: `\\\$` (not needed here) and
@@ -293,7 +300,7 @@ julia> ds"\$count = \$count + \$(n)"
 julia> s = "it's";
 
 julia> render(button(on(:click, ds"\$label = \$(s)")))
-"<button data-on:click=\\"\\\$label = &quot;it&#39;s&quot;\\"></button>"
+"<button data-on:click=\\"\\\$label = &#39;it\\\\&#39;s&#39;\\"></button>"
 ```
 """
 macro ds_str(s)

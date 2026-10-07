@@ -1053,7 +1053,7 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test_throws ArgumentError ds_bind(Symbol("my-signal"))
     end
 
-    @testset "ds\"…\" keeps \$signal literal and splices \$(julia) as a JSON literal" begin
+    @testset "ds\"…\" keeps \$signal literal and splices \$(julia) as a JS literal" begin
         # Why: in a plain string `\$count` is Julia interpolation, so every
         # Datastar expression needed `\\\$`; and `"\\\$x = \$(v)"` pasted v into
         # JS unquoted. A wrong splice rule here is a JS injection.
@@ -1061,7 +1061,13 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test ds"$open" isa DSExpr
         n, s = 3, "a'b\"c"
         @test ds"$count = $(n)" == "\$count = 3"
-        @test ds"$label = $(s)" == "\$label = \"a'b\\\"c\""
+        # Strings go through the same single-quote escaper as DSAction URLs.
+        @test ds"$label = $(s)" == "\$label = 'a\\'b\"c'"
+        t = "a</b"
+        @test ds"$x = $(t)" == "\$x = 'a<\\/b'"
+        @test ds"$x = $(Inf)" == "\$x = Infinity"
+        @test ds"$x = $((a=1,))" == "\$x = {\"a\":1}"
+        @test ds"$x = $(nothing)" == "\$x = null"
         # A bare `"` ends a custom string literal, even inside `$(…)`.
         @test ds"""$(ds_get("/feed")); $ready = true""" == "@get('/feed'); \$ready = true"
         inner = ds"$a + 1"
@@ -1069,7 +1075,7 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test ds"$$(x)" == "\$(x)"
         @test ds"$v = 'it\'s $w'" == "\$v = 'it\\'s \$w'"
         @test render(button(on(:click, ds"$x = $(s)"))) ==
-            "<button data-on:click=\"\$x = &quot;a&#39;b\\&quot;c&quot;\"></button>"
+            "<button data-on:click=\"\$x = &#39;a\\&#39;b&quot;c&#39;\"></button>"
         # Errors are raised at macro expansion; test the parser directly.
         @test_throws ArgumentError HyperSignal._ds_parse("\\\$x")
         @test_throws ArgumentError HyperSignal._ds_parse("'hi \$(name)'")
@@ -1817,6 +1823,10 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
               "@post('/x', {filterSignals: {\"include\":\"^foo\"}})"
         # Array-valued option:
         @test HyperSignal.action_js(ds_get("/x"; ids=[1, 2, 3])) == "@get('/x', {ids: [1,2,3]})"
+        # Any AbstractString is quoted, not only String: a SubString (from
+        # split/match) used to fall through to `string(v)` and land unquoted.
+        @test HyperSignal.action_js(ds_get("/x"; tag=SubString("a'b", 1, 3))) ==
+              "@get('/x', {tag: 'a\\'b'})"
         # Renders safely through the attribute boundary (JSON quotes → &quot;):
         out = render(button("Go", on_click(ds_post("/x"; headers=Dict("X-Csrf" => "abc")))))
         @test occursin("headers: {&quot;X-Csrf&quot;:&quot;abc&quot;}", out)
