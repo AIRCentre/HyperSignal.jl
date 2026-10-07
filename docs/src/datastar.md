@@ -1,7 +1,7 @@
 # Datastar
 
 HyperSignal targets the [Datastar](https://data-star.dev) protocol
-pinned by [`DATASTAR_SUPPORTED_VERSION`](@ref) (`v"1.0.1"`). A Datastar
+pinned by [`DATASTAR_SUPPORTED_VERSION`](@ref) (`v"1.0.4"`). A Datastar
 app has two halves: attributes and actions you put *into* the page to
 wire up reactivity, and the response shapes a handler sends *back*. This
 page covers both — actions/signals first, then the HTML / JSON / JS /
@@ -46,8 +46,9 @@ julia> render(form(on_submit(ds_post("/save"; form=true)),
 ```
 
 [`on(event, action)`](@ref on) returns an [`Attribute`](@ref) you drop
-into a tag. `action` is a [`DSAction`](@ref) or a raw JS string (e.g.
-`"\$open = !\$open"` for a client-side toggle). The single-event
+into a tag. `action` is a [`DSAction`](@ref) or a JS expression (e.g.
+`ds"$open = !$open"` for a client-side toggle; see
+[Writing expressions](@ref)). The single-event
 shorthands read better when a tag binds exactly one event:
 
 - [`on_click(action)`](@ref on_click) → `on(:click, action)`
@@ -81,8 +82,8 @@ into client-side silence. Datastar camel-cases hyphenated names, so
 `ds_signal("my-signal", …)` is read as `\$mySignal`.
 
 ```julia
-julia> render(div(ds_signal("count", 0), ds_text("count")))
-"<div data-signals:count=\"0\" data-text=\"count\"></div>"
+julia> render(div(ds_signal("count", 0), ds_text(:count)))
+"<div data-signals:count=\"0\" data-text=\"\$count\"></div>"
 
 julia> render(div(ds_signals((showDetails=false, count=0))))
 "<div data-signals=\"{&quot;showDetails&quot;:false,&quot;count&quot;:0}\"></div>"
@@ -107,12 +108,56 @@ The reactive attribute helpers (all return an [`Attribute`](@ref)):
 | [`ds_json_signals()` / `ds_json_signals(filter)`](@ref ds_json_signals) | `data-json-signals` | In-page signal-store debugger |
 
 ```julia
-julia> render(div(class="bar", ds_style("width", "\$pct + '%'")))
+julia> render(div(class="bar", ds_style("width", ds"$pct + '%'")))
 "<div class=\"bar\" data-style:width=\"\$pct + &#39;%&#39;\"></div>"
 
 julia> render(pre(ds_json_signals()))   # drop on a page to watch the store live
 "<pre data-json-signals></pre>"
 ```
+
+### Writing expressions
+
+Datastar reads a signal as `$name`, and `$` is Julia's interpolation
+character, so a plain string needs `"\$open = !\$open"`. Two forms avoid the
+escape:
+
+- A `Symbol` names one signal. `ds_show(:open)` renders
+  `data-show="$open"`, and `ds_text(Symbol("form.email"))` reads a nested
+  signal. `ds_show`, `ds_text`, `ds_attr`, `ds_class`, `ds_style` and
+  `ds_computed` take one; `ds_bind(:query)` and `ds_indicator(:saving)`
+  take the bare name. Names must be identifiers or dotted paths: Datastar
+  camel-cases hyphens, so `:my-signal` is rejected.
+- [`ds"…"`](@ref @ds_str) writes any expression as Datastar syntax.
+  `$name` stays a signal. `$(expr)` evaluates Julia and inserts the value
+  as a JS literal, written like [`DSAction`](@ref) options: strings
+  single-quoted and escaped, `Dict`/`NamedTuple`/`Vector` as JSON,
+  `nothing` as `null` (assigning `null` deletes a Datastar signal). A
+  [`DSAction`](@ref) or another `ds"…"` goes in verbatim.
+
+```julia
+julia> n = 3; label = "it's";
+
+julia> render(button(on(:click, ds"$count = $count + $(n)")))
+"<button data-on:click=\"\$count = \$count + 3\"></button>"
+
+julia> render(button(on(:click, ds"$label = $(label)")))
+"<button data-on:click=\"\$label = &#39;it\\&#39;s&#39;\"></button>"
+
+julia> ds"""$(ds_get("/feed")); $ready = true"""
+"@get('/feed'); \$ready = true"
+```
+
+A bare `"` ends a custom string literal even inside `$(…)`, so use
+`ds"""…"""` when a splice contains a Julia string. Write `$$(` for a
+literal `$(`.
+
+`\$` and a `$(…)` inside a JS `'…'` string fail when the code loads (the
+inserted quotes would end the JS string; write `'Hi, ' + $(name)`). A bare
+`$n` does not fail: it is the Datastar signal `n`, never the Julia
+variable. Use `$(n)` for the Julia value.
+
+`raw"$open = !$open"` also works with no splicing, since it is a plain
+`String`.
 
 ## Reading signals back: `parse_signals`
 

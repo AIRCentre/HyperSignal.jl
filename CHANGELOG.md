@@ -7,12 +7,47 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 - HTTP.jl 2.x support: compat is now `HTTP = "1, 2"`. CI tests both majors.
+- `ds"…"` (`@ds_str`, returns `DSExpr`) writes a Datastar expression
+  without escaping `$`: `$name` stays a signal and `$(expr)` splices a Julia
+  value as a JS literal with every string delimiter escaped, so it stays
+  inert in any quote context.
+  `ds"$count = $(n)"` replaces `"\$count = $(n)"`, which pasted `n` into JS
+  unquoted.
+- `ds_show`, `ds_text`, `ds_attr`, `ds_class`, `ds_style` and `ds_computed`
+  take a `Symbol` for one signal (`ds_show(:open)` → `data-show="$open"`);
+  `ds_bind` and `ds_indicator` take one for the bare name. Hyphenated or
+  malformed names throw `ArgumentError`.
 
 ### Fixed
 - `parse_signals(req::HTTP.Request)` no longer throws on HTTP 2.x request
   bodies (`HTTP.BytesBody`, `HTTP.EmptyBody`).
+- A `form(...)` with no submit handler rendered a valueless
+  `data-on:submit__prevent`. Datastar throws `ValueRequired` on it, which
+  stopped every other Datastar attribute on the page from initialising. It
+  now renders `data-on:submit__prevent="void 0"`.
+- A `SubString` (or any non-`String` `AbstractString`) passed as a
+  `ds_get`/`ds_post`/… option rendered unquoted; it is now quoted and
+  escaped like a `String`.
+- `preset_button` fires `input` on each radio it checks. Datastar 1.0.2+
+  updates a `data-bind` radio on `input`, so bound signals kept their old
+  value after a preset click.
+
+### Changed
+- `DATASTAR_SUPPORTED_VERSION` is now `v"1.0.4"` (was `v"1.0.1"`), and the
+  vendored bundles in `examples/` and `docs/src/notebooks/assets/` match it.
+  Datastar 1.0.2–1.0.4 leave the attributes, SSE events and headers
+  HyperSignal emits unchanged. Client-side, since 1.0.2 a request aborts any
+  in-flight request with the same method and URL, from any element, and
+  `data-bind` on checkboxes and radios listens to `input`.
+- CI: GitHub Actions moved to their node24 majors (checkout v7, setup-julia
+  v3, cache v3, paths-filter v4, codecov v7). Dependabot replaces CompatHelper
+  for compat and Action updates. TagBot drops its unused `lookback` input.
 
 ### Docs
+- `ds_text("count")` examples rendered `data-text="count"`, which reads an
+  undefined JS name instead of the signal; they now use `ds_text(:count)`.
+  Docstring and guide examples use `ds"…"` and Symbol arguments, and
+  `docs/src/datastar.md` gains a "Writing expressions" section.
 - `sse_stream` handlers are registered with `HTTP.listen` / `HTTP.listen!`,
   which works on both HTTP majors. On 2.x, `HTTP.serve(...; stream=true)` is
   gone and `HTTP.serve` with a stream handler answers 500.

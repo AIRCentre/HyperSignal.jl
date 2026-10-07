@@ -17,8 +17,8 @@ jobs:
     outputs:
       code: ${{ steps.filter.outputs.code }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -47,14 +47,14 @@ jobs:
       - if: needs.changes.outputs.code != 'true'
         run: echo "Doc-only PR; skipping Julia tests."
       - if: needs.changes.outputs.code == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - if: needs.changes.outputs.code == 'true'
-        uses: julia-actions/setup-julia@v2
+        uses: julia-actions/setup-julia@v3
         with:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
       - if: needs.changes.outputs.code == 'true'
-        uses: julia-actions/cache@v2
+        uses: julia-actions/cache@v3
       # Compat allows HTTP 1 and 2; without a pin the resolver always picks 2.
       - if: needs.changes.outputs.code == 'true'
         run: julia --project=. -e 'using Pkg; Pkg.add(name="HTTP", version="${{ matrix.http }}")'
@@ -65,7 +65,7 @@ jobs:
       - if: needs.changes.outputs.code == 'true'
         uses: julia-actions/julia-processcoverage@v1
       - if: needs.changes.outputs.code == 'true'
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         with:
           files: lcov.info
           token: ${{ secrets.CODECOV_TOKEN }}

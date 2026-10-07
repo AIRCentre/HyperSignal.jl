@@ -4,7 +4,7 @@ Datastar-flavored HTML for Julia, with front-row support for inlining
 CairoMakie figures and driving interactive MapLibre maps from your
 pages.
 
-Compatible with Datastar v1.0.1.
+Compatible with Datastar v1.0.4.
 
 ```julia
 using HyperSignal

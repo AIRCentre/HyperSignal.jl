@@ -8,7 +8,7 @@ Datastar-flavored HTML for Julia, with front-row support for inlining
 CairoMakie figures into your pages. Build hypermedia UIs that read
 top-to-bottom and stay out of the way.
 
-Compatible with Datastar v1.0.1.
+Compatible with Datastar v1.0.4.
 
 ```julia
 using HyperSignal
@@ -195,8 +195,9 @@ Full write-up: [Security page of the docs site][docs-security].
   Datastar is that the server owns state and ships HTML. This lib stays in
   that lane.
 - No CSS-in-Julia. Use a stylesheet.
-- No macro DSL. Function calls compose better and play nicely with multiple
-  dispatch and IDE tooling.
+- No macro DSL: function calls compose better and play nicely with multiple
+  dispatch and IDE tooling. The one string macro, `ds"…"`, writes Datastar
+  expressions, not markup.
 
 ## Component helpers
 
@@ -298,7 +299,7 @@ which is what the `DSAction` type exists to avoid.
 At the time of writing no other Julia binding for
 [Datastar](https://data-star.dev) exists — the official SDK list covers
 13 languages but Julia is absent. The Datastar layer in this package
-(`DSAction`, `ds_get` / `ds_post` / `ds_put` / `ds_delete`, `on` /
+(`DSAction`, `ds"…"` / `DSExpr`, `ds_get` / `ds_post` / `ds_put` / `ds_delete`, `on` /
 `on_click` / `on_submit` / `on_change_debounced` / `on_interval`,
 `ds_indicator` / `ds_bind` / `ds_signal` / `ds_signals` / `ds_show` /
 `ds_text` / `ds_json_signals` / `ds_ignore_morph`, `ds_ref` /
@@ -318,7 +319,7 @@ without `contentType: 'form'` (a JSON object the server reads).
 # Encode: seed several signals from a NamedTuple — the lib JSON-encodes it
 # once and lets the renderer's attribute escape handle the `"` round-trip.
 div(ds_signals((showDetails=false, count=0)),
-    span(ds_show("\$showDetails"), "Details…"))
+    span(ds_show(:showDetails), "Details…"))
 # → <div data-signals="{&quot;showDetails&quot;:false,&quot;count&quot;:0}">…</div>
 #   (the attribute is double-quoted and the JSON's " is escaped to &quot;;
 #    Datastar decodes the entities back to " before reading the JSON)

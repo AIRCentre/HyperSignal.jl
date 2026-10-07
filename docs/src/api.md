@@ -56,6 +56,8 @@ DATASTAR_SUPPORTED_VERSION
 
 ```@docs
 DSAction
+DSExpr
+@ds_str
 ds_get
 ds_post
 ds_put

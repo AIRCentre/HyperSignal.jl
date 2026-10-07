@@ -38,6 +38,10 @@ formatted by the renderer; the JS string inside is escaped against
 single quote, backslash, `</` (which an HTML parser treats as the start
 of an end-tag, closing an enclosing `<script>` regardless of JS
 quoting), and the four JS line terminators (LF, CR, U+2028, U+2029).
+A `$(value)` spliced into [`ds"…"`](@ref @ds_str) has every JS string
+delimiter escaped (`'`, `"`, backtick, `$`), so it stays inert even where
+the macro misreads the surrounding quoting, such as a quote inside a regex
+literal.
 
 ## Attribute and tag *names*
 

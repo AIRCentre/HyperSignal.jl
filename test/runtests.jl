@@ -106,7 +106,7 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     @testset "DATASTAR_SUPPORTED_VERSION pins the targeted Datastar release" begin
         # Why: bumps should land as one visible diff; this test fails on
         # an unintentional change to the supported protocol/client version.
-        @test DATASTAR_SUPPORTED_VERSION == v"1.0.1"
+        @test DATASTAR_SUPPORTED_VERSION == v"1.0.4"
     end
 
     @testset "ds_post emits the Datastar form-encoded action expression" begin
@@ -125,7 +125,9 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         # and is almost never what the page wants. The tag constructor
         # forces preventDefault unless the caller wired a submit handler.
         out = render(form(input(type="text", name="q")))
-        @test occursin("data-on:submit__prevent", out)
+        # Datastar throws `ValueRequired` on a valueless data-on:*, which
+        # also stops every other attribute on the page from initialising.
+        @test occursin("data-on:submit__prevent=\"void 0\"", out)
     end
 
     @testset "<form> with an explicit submit handler keeps just that one" begin
@@ -850,11 +852,16 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
             ["confidence" => "all", "label_filter" => "both"]))
         @test occursin("type=\"button\"", out)
         @test occursin("class=\"secondary outline\"", out)
+        # Each radio gets its own `input` event: Datastar 1.0.2+ updates a
+        # `data-bind` input on `input`, and events bubble up, never down from
+        # the form. The form-level `change` keeps `data-on:change` handlers firing.
         @test occursin(
-            "document.querySelector(&#39;input[name=confidence][value=&quot;all&quot;]&#39;).checked=true;",
+            "{const e=document.querySelector(&#39;input[name=confidence][value=&quot;all&quot;]&#39;);" *
+            "e.checked=true;e.dispatchEvent(new Event(&#39;input&#39;,{bubbles:true}));}",
             out)
         @test occursin(
-            "document.querySelector(&#39;input[name=label_filter][value=&quot;both&quot;]&#39;).checked=true;",
+            "{const e=document.querySelector(&#39;input[name=label_filter][value=&quot;both&quot;]&#39;);" *
+            "e.checked=true;e.dispatchEvent(new Event(&#39;input&#39;,{bubbles:true}));}",
             out)
         @test occursin("this.form.dispatchEvent(new Event(&#39;change&#39;,{bubbles:true}))", out)
         @test occursin(">Easy</button>", out)
@@ -1022,6 +1029,68 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         # The `&&` in the expression HTML-escapes to `&amp;&amp;`.
         @test render(div(ds_style("display", "\$hiding && 'none'"))) ==
             "<div data-style:display=\"\$hiding &amp;&amp; &#39;none&#39;\"></div>"
+    end
+
+    @testset "a Symbol names one signal: \$name in expressions, bare in bind/indicator" begin
+        # Why: `"\$x"` needs a Julia escape, and forgetting the `\$` (`"count"`)
+        # makes Datastar read an undefined JS name instead of the signal.
+        @test render(span(ds_show(:open))) == "<span data-show=\"\$open\"></span>"
+        @test render(span(ds_text(Symbol("form.email")))) ==
+            "<span data-text=\"\$form.email\"></span>"
+        @test render(div(ds_attr("disabled", :busy))) ==
+            "<div data-attr:disabled=\"\$busy\"></div>"
+        @test render(div(ds_class("active", :isActive))) ==
+            "<div data-class:active=\"\$isActive\"></div>"
+        @test render(div(ds_style("width", :w))) == "<div data-style:width=\"\$w\"></div>"
+        @test render(div(ds_computed("copy", :total))) ==
+            "<div data-computed:copy=\"\$total\"></div>"
+        @test render(div(ds_bind(:query))) == "<div data-bind=\"query\"></div>"
+        @test render(div(ds_indicator(:saving))) == "<div data-indicator=\"saving\"></div>"
+        # Hyphens are camel-cased by Datastar, so `:my-signal` would name nothing.
+        for bad in (Symbol("my-signal"), Symbol("a..b"), Symbol("x y"), Symbol(""), Symbol("1a"))
+            @test_throws ArgumentError ds_show(bad)
+        end
+        @test_throws ArgumentError ds_bind(Symbol("my-signal"))
+    end
+
+    @testset "ds\"…\" keeps \$signal literal and splices \$(julia) as a JS literal" begin
+        # Why: in a plain string `\$count` is Julia interpolation, so every
+        # Datastar expression needed `\\\$`; and `"\\\$x = \$(v)"` pasted v into
+        # JS unquoted. A wrong splice rule here is a JS injection.
+        @test ds"$open = !$open" == "\$open = !\$open"
+        @test ds"$open" isa DSExpr
+        n, s = 3, "a'b\"c"
+        @test ds"$count = $(n)" == "\$count = 3"
+        # Strings go through the DSAction escaper, plus `"`, backtick and `$`.
+        @test ds"$label = $(s)" == "\$label = 'a\\'b\\\"c'"
+        t = "a</b"
+        @test ds"$x = $(t)" == "\$x = 'a<\\/b'"
+        @test ds"$x = $(Inf)" == "\$x = Infinity"
+        @test ds"$x = $((a=1,))" == "\$x = {\"a\":1}"
+        @test ds"$x = $(nothing)" == "\$x = null"
+        # A bare `"` ends a custom string literal, even inside `$(…)`.
+        @test ds"""$(ds_get("/feed")); $ready = true""" == "@get('/feed'); \$ready = true"
+        inner = ds"$a + 1"
+        @test ds"$b = $(inner)" == "\$b = \$a + 1"
+        @test ds"$$(x)" == "\$(x)"
+        @test ds"$v = 'it\'s $w'" == "\$v = 'it\\'s \$w'"
+        @test render(button(on(:click, ds"$x = $(s)"))) ==
+            "<button data-on:click=\"\$x = &#39;a\\&#39;b\\&quot;c&#39;\"></button>"
+        # The quote inside each regex flips the parser's quote tracking, so
+        # these splices are accepted though they sit inside real JS strings.
+        # Escaping every delimiter keeps the value inert in any quote context.
+        dq, bt, sq = "\"+alert(1)+\"", "\${alert(1)}", (a="'+alert(1)+'",)
+        @test ds"$ok = /\"/.test($a) ? \"$(dq)\" : /\"/" ==
+            "\$ok = /\"/.test(\$a) ? \"'\\\"+alert(1)+\\\"'\" : /\"/"
+        @test ds"$ok = /`/.test($a) ? `$(bt)` : /`/" ==
+            "\$ok = /`/.test(\$a) ? `'\\\${alert(1)}'` : /`/"
+        @test ds"$ok = /'/.test($a) ? '$(sq)' : /'/" ==
+            "\$ok = /'/.test(\$a) ? '{\"a\":\"\\'+alert(1)+\\'\"}' : /'/"
+        # Errors are raised at macro expansion; test the parser directly.
+        @test_throws ArgumentError HyperSignal._ds_parse("\\\$x")
+        @test_throws ArgumentError HyperSignal._ds_parse("'hi \$(name)'")
+        @test_throws ArgumentError HyperSignal._ds_parse("\$(a")
+        @test_throws ArgumentError HyperSignal._ds_parse("'open")
     end
 
     @testset "ds_json_signals renders the bare debug attribute (and an optional filter)" begin
@@ -1764,6 +1833,10 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
               "@post('/x', {filterSignals: {\"include\":\"^foo\"}})"
         # Array-valued option:
         @test HyperSignal.action_js(ds_get("/x"; ids=[1, 2, 3])) == "@get('/x', {ids: [1,2,3]})"
+        # Any AbstractString is quoted, not only String: a SubString (from
+        # split/match) used to fall through to `string(v)` and land unquoted.
+        @test HyperSignal.action_js(ds_get("/x"; tag=SubString("a'b", 1, 3))) ==
+              "@get('/x', {tag: 'a\\'b'})"
         # Renders safely through the attribute boundary (JSON quotes → &quot;):
         out = render(button("Go", on_click(ds_post("/x"; headers=Dict("X-Csrf" => "abc")))))
         @test occursin("headers: {&quot;X-Csrf&quot;:&quot;abc&quot;}", out)
@@ -1927,7 +2000,7 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         offenders_generated = String[]
         offenders_piracy = String[]
         # Owned types — Base.show etc. on these is fine.
-        owned = Set(["Element", "Frag", "Raw", "Attribute", "DSAction"])
+        owned = Set(["Element", "Frag", "Raw", "Attribute", "DSAction", "DSExpr"])
 
         for root in roots
             isdir(root) || continue
