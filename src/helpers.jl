@@ -360,8 +360,9 @@ end
     preset_button(text::AbstractString, settings::AbstractVector{<:Pair{<:AbstractString,<:AbstractString}})
 
 Render a "preset" button: clicking it sets each named radio input to
-`checked` (matching `value`), then dispatches a bubbling `change` event
-on the form so any `data-on:change` handler (e.g. a live-count GET)
+`checked` (matching `value`) and fires `input` on it, so a `data-bind`
+on the radio updates its signal. It then dispatches a bubbling `change`
+event on the form so any `data-on:change` handler (e.g. a live-count GET)
 recomputes. The `<button onclick="…">` JS is built once here so each
 preset doesn't repeat the escape-prone querySelector boilerplate.
 
@@ -382,8 +383,9 @@ function preset_button(text::AbstractString,
     io = IOBuffer()
     for (name, val) in settings
         _validate_preset_name(name)
-        print(io, "document.querySelector('input[name=", name,
-              "][value=\"", _escape_preset_value(val), "\"]').checked=true;")
+        print(io, "{const e=document.querySelector('input[name=", name,
+              "][value=\"", _escape_preset_value(val), "\"]');",
+              "e.checked=true;e.dispatchEvent(new Event('input',{bubbles:true}));}")
     end
     print(io, "this.form.dispatchEvent(new Event('change',{bubbles:true}))")
     button(type="button", class="secondary outline", onclick=String(take!(io)),

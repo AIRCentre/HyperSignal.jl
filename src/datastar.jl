@@ -179,6 +179,131 @@ _js_value(v::String) = "'$(_js_str_escape(v))'"
 _js_value(v::Union{AbstractDict, NamedTuple, AbstractVector, Tuple}) = JSON.json(v)
 _js_value(v)         = string(v)  # fallback; caller's responsibility
 
+# A signal path as Datastar reads it after `$`: dot-separated identifiers.
+# Hyphens are rejected because Datastar camel-cases them at declaration, so
+# `$my-signal` would read `$my` minus `signal`.
+const _SIGNAL_PATH = r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$"
+
+function _signal_path(sig::Symbol)
+    s = String(sig)
+    occursin(_SIGNAL_PATH, s) || throw(ArgumentError(
+        "signal name must be an identifier or dotted path such as :count or " *
+        "Symbol(\"form.email\") (camelCase, no hyphens); got $(repr(sig))"))
+    s
+end
+_signal_ref(sig::Symbol) = "\$" * _signal_path(sig)
+
+"""
+    DSExpr <: AbstractString
+
+A Datastar expression built by [`@ds_str`](@ref). It is a string, so it
+goes wherever an expression string does (`on`, `ds_show`, `ds_attr`, …).
+Splicing one `DSExpr` into another `ds"…"` inserts it verbatim instead of
+quoting it.
+"""
+struct DSExpr <: AbstractString
+    s::String
+end
+Base.String(e::DSExpr) = e.s
+Base.ncodeunits(e::DSExpr) = ncodeunits(e.s)
+Base.codeunit(e::DSExpr) = codeunit(e.s)
+Base.codeunit(e::DSExpr, i::Integer) = codeunit(e.s, i)
+Base.isvalid(e::DSExpr, i::Integer) = isvalid(e.s, i)
+Base.iterate(e::DSExpr, i::Integer=1) = iterate(e.s, i)
+
+_ds_splice(x) = JSON.json(x)
+_ds_splice(x::DSExpr) = x.s
+_ds_splice(a::DSAction) = action_js(a)
+
+# Split a ds"…" body into literal Strings and Julia Exprs to splice. Only
+# `$(` starts a splice: Datastar signal names never begin with `(`. Quotes
+# are tracked so a splice can't land inside a JS string literal, where its
+# JSON quotes would end the string early.
+function _ds_parse(s::AbstractString)
+    parts = Any[]
+    buf = IOBuffer()
+    quote_char = nothing
+    i = firstindex(s)
+    while i <= lastindex(s)
+        c = s[i]
+        nxt = nextind(s, i)
+        if c == '\\'
+            if quote_char === nothing && nxt <= lastindex(s) && s[nxt] == '$'
+                throw(ArgumentError("ds\"…\": `\\\$` is not needed; write \$name " *
+                                    "for a signal or \$(expr) to splice a Julia value"))
+            end
+            # Copy a JS escape pair whole so `\'` doesn't toggle the quote state.
+            print(buf, c)
+            if nxt <= lastindex(s)
+                print(buf, s[nxt])
+                nxt = nextind(s, nxt)
+            end
+            i = nxt
+            continue
+        elseif c in ('\'', '"', '`')
+            if quote_char === nothing
+                quote_char = c
+            elseif quote_char == c
+                quote_char = nothing
+            end
+        elseif c == '$' && startswith(SubString(s, nxt), "\$(")
+            print(buf, "\$(")
+            i = nextind(s, nextind(s, nxt))
+            continue
+        elseif c == '$' && nxt <= lastindex(s) && s[nxt] == '('
+            quote_char === nothing || throw(ArgumentError(
+                "ds\"…\": \$(…) inside a JS string literal would add a second " *
+                "set of quotes; write 'Hi, ' + \$(name) instead"))
+            ex, i = Meta.parseatom(s, nxt)
+            if ex isa Expr && ex.head in (:incomplete, :error)
+                throw(ArgumentError("ds\"…\": unclosed or invalid \$(…) in $(repr(s))"))
+            end
+            buf.size > 0 && push!(parts, String(take!(buf)))
+            push!(parts, ex)
+            continue
+        end
+        print(buf, c)
+        i = nxt
+    end
+    quote_char === nothing ||
+        throw(ArgumentError("ds\"…\": unterminated $(quote_char) string in $(repr(s))"))
+    buf.size > 0 && push!(parts, String(take!(buf)))
+    parts
+end
+
+"""
+    ds"…" -> DSExpr
+
+Write a Datastar expression without escaping `\$`. Unlike a Julia string,
+`\$name` is **not** interpolated: it stays a Datastar signal reference.
+`\$(expr)` evaluates the Julia `expr` and inserts it as a JSON literal
+(strings quoted and escaped, numbers and booleans as-is). A [`DSAction`](@ref)
+or another `ds"…"` is inserted verbatim. Write `\$\$(` for a literal `\$(`.
+
+A misplaced splice fails when the code loads: `\\\$` (not needed here) and
+`\$(…)` inside a JS `'…'`/`"…"` string (it would add quotes; concatenate
+with `+` instead).
+
+# Examples
+```jldoctest
+julia> n = 3;
+
+julia> ds"\$count = \$count + \$(n)"
+"\\\$count = \\\$count + 3"
+
+julia> s = "it's";
+
+julia> render(button(on(:click, ds"\$label = \$(s)")))
+"<button data-on:click=\\"\\\$label = &quot;it&#39;s&quot;\\"></button>"
+```
+"""
+macro ds_str(s)
+    parts = _ds_parse(s)
+    all(p -> p isa String, parts) && return DSExpr(join(parts))
+    args = [p isa String ? p : :(_ds_splice($(esc(p)))) for p in parts]
+    :(DSExpr(string($(args...))))
+end
+
 """
     on(event::Symbol, action; debounce=nothing, window=false) -> Attribute
 
@@ -307,14 +432,16 @@ ds_indicator() = Attribute(Symbol("data-indicator"), true)
 
 """
     ds_indicator(signal::AbstractString) -> Attribute
+    ds_indicator(signal::Symbol) -> Attribute
 
 Mark an element as the indicator for a *named* in-flight signal. Datastar
 sets `signal` to true while requests under this scope are in flight, so
-sibling elements can `ds_show("\$signal")` a spinner or grey out a panel
+sibling elements can `ds_show(:signal)` a spinner or grey out a panel
 without each having to track the request lifecycle themselves.
 """
 ds_indicator(signal::AbstractString) =
     Attribute(Symbol("data-indicator"), String(signal))
+ds_indicator(signal::Symbol) = ds_indicator(_signal_path(signal))
 
 """
     ds_ignore_morph() -> Attribute
@@ -332,16 +459,18 @@ ds_ignore_morph() = Attribute(Symbol("data-ignore-morph"), true)
 
 """
     ds_bind(signal::AbstractString) -> Attribute
+    ds_bind(signal::Symbol) -> Attribute
 
 Two-way bind an input to a Datastar signal: the input's value mirrors
 `signal`, and edits flow back. Returns the `data-bind="signal"` attribute.
 
 # Examples
 ```julia
-input(type="text", ds_bind("query"))
+input(type="text", ds_bind(:query))
 ```
 """
 ds_bind(signal::AbstractString) = Attribute(Symbol("data-bind"), signal)
+ds_bind(signal::Symbol) = ds_bind(_signal_path(signal))
 
 """
     ds_signal(name::AbstractString, value) -> Attribute
@@ -352,7 +481,7 @@ Initialize a Datastar signal on this element. Renders as the keyed
 
 # Examples
 ```julia
-div(ds_signal("count", 0), ds_text("count"))   # signal "count" starts at 0
+div(ds_signal("count", 0), ds_text(:count))   # signal "count" starts at 0
 ```
 """
 ds_signal(name::AbstractString, value) = Attribute(Symbol("data-signals:", name), value)
@@ -439,19 +568,23 @@ end
 
 """
     ds_show(expr::AbstractString) -> Attribute
+    ds_show(signal::Symbol) -> Attribute
 
 Show this element only when the JS expression `expr` is truthy. Renders
-as `data-show="expr"`.
+as `data-show="expr"`. A `Symbol` names one signal: `ds_show(:open)`
+renders `data-show="\$open"`.
 
 # Examples
 ```julia
-p(ds_show("count > 0"), "You have items.")
+p(ds_show(ds"\$count > 0"), "You have items.")
 ```
 """
 ds_show(expr::AbstractString) = Attribute(Symbol("data-show"), expr)
+ds_show(signal::Symbol) = ds_show(_signal_ref(signal))
 
 """
     ds_text(expr::AbstractString) -> Attribute
+    ds_text(signal::Symbol) -> Attribute
 
 Set this element's text content from the JS expression `expr`. Renders
 as `data-text="expr"`. Use this instead of templating a value into a
@@ -459,10 +592,11 @@ string when the value is a Datastar signal that may change client-side.
 
 # Examples
 ```julia
-span(ds_text("count"))    # text content tracks the signal "count"
+span(ds_text(:count))    # text content tracks the signal "count"
 ```
 """
 ds_text(expr::AbstractString) = Attribute(Symbol("data-text"), expr)
+ds_text(signal::Symbol) = ds_text(_signal_ref(signal))
 
 """
     ds_json_signals() -> Attribute
@@ -512,6 +646,7 @@ ds_ref(name::AbstractString) = Attribute(Symbol("data-ref"), String(name))
 
 """
     ds_attr(name::AbstractString, expr::AbstractString) -> Attribute
+    ds_attr(name::AbstractString, signal::Symbol) -> Attribute
 
 Reactively bind a DOM attribute to a Datastar expression: as `expr`
 changes (because a signal it reads changes), the attribute updates.
@@ -521,17 +656,19 @@ attribute removed.
 # Examples
 ```julia
 # Open/close a <dialog> from a signal
-dialog(ds_attr("open", "\$dialogOpen"), …)
+dialog(ds_attr("open", :dialogOpen), …)
 
 # Disable a button while a request is in flight
-button(ds_attr("disabled", "\$saving"), "Save")
+button(ds_attr("disabled", :saving), "Save")
 ```
 """
 ds_attr(name::AbstractString, expr::AbstractString) =
     Attribute(Symbol("data-attr:", name), String(expr))
+ds_attr(name::AbstractString, signal::Symbol) = ds_attr(name, _signal_ref(signal))
 
 """
     ds_class(name::AbstractString, expr::AbstractString) -> Attribute
+    ds_class(name::AbstractString, signal::Symbol) -> Attribute
 
 Toggle a CSS class reactively. Renders as `data-class:NAME="expr"` — when
 `expr` evaluates truthy Datastar adds the class, when falsy it removes
@@ -542,14 +679,16 @@ attribute.
 # Examples
 ```julia
 # Drop the `.outline` class from the active view-toggle button
-button(class="grid-toggle", ds_class("outline", "\$view !== 'grid'"), "Grid")
+button(class="grid-toggle", ds_class("outline", ds"\$view !== 'grid'"), "Grid")
 ```
 """
 ds_class(name::AbstractString, expr::AbstractString) =
     Attribute(Symbol("data-class:", name), String(expr))
+ds_class(name::AbstractString, signal::Symbol) = ds_class(name, _signal_ref(signal))
 
 """
     ds_computed(name::AbstractString, expr::AbstractString) -> Attribute
+    ds_computed(name::AbstractString, signal::Symbol) -> Attribute
 
 Declare a read-only derived signal computed from a Datastar expression.
 The computed signal `name` re-evaluates whenever any signal `expr` reads
@@ -563,15 +702,17 @@ is read as `\$fullName`; prefer camelCase names to avoid surprise.
 # Examples
 ```julia
 # A line-item total that tracks its inputs; read elsewhere as \$total
-div(ds_computed("total", "\$price * \$qty"),
-    span(ds_text("\$total")))
+div(ds_computed("total", ds"\$price * \$qty"),
+    span(ds_text(:total)))
 ```
 """
 ds_computed(name::AbstractString, expr::AbstractString) =
     Attribute(Symbol("data-computed:", name), String(expr))
+ds_computed(name::AbstractString, signal::Symbol) = ds_computed(name, _signal_ref(signal))
 
 """
     ds_style(name::AbstractString, expr::AbstractString) -> Attribute
+    ds_style(name::AbstractString, signal::Symbol) -> Attribute
 
 Set an inline CSS style property reactively. Renders as
 `data-style:NAME="expr"` — Datastar evaluates `expr` and writes the result
@@ -584,14 +725,15 @@ class.
 # Examples
 ```julia
 # Drive a progress bar's width from a signal (0–100)
-div(class="bar", ds_style("width", "\$pct + '%'"))
+div(class="bar", ds_style("width", ds"\$pct + '%'"))
 
 # Hide via inline display rather than a class
-div(ds_style("display", "\$hiding && 'none'"))
+div(ds_style("display", ds"\$hiding && 'none'"))
 ```
 """
 ds_style(name::AbstractString, expr::AbstractString) =
     Attribute(Symbol("data-style:", name), String(expr))
+ds_style(name::AbstractString, signal::Symbol) = ds_style(name, _signal_ref(signal))
 
 """
     ds_effect(expr::AbstractString) -> Attribute

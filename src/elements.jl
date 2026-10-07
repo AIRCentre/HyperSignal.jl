@@ -284,7 +284,8 @@ end
 function form(args...; kwargs...)
     el = _make_element(:form, args, kwargs)
     has_submit = any(p -> startswith(String(p.first), "data-on:submit"), el.attrs)
-    has_submit || pushfirst!(el.attrs, Symbol("data-on:submit__prevent") => true)
+    # `void 0`, not a bare attribute: Datastar requires a value on data-on:*.
+    has_submit || pushfirst!(el.attrs, Symbol("data-on:submit__prevent") => "void 0")
     el
 end
 

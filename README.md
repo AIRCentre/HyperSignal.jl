@@ -195,8 +195,9 @@ Full write-up: [Security page of the docs site][docs-security].
   Datastar is that the server owns state and ships HTML. This lib stays in
   that lane.
 - No CSS-in-Julia. Use a stylesheet.
-- No macro DSL. Function calls compose better and play nicely with multiple
-  dispatch and IDE tooling.
+- No macro DSL: function calls compose better and play nicely with multiple
+  dispatch and IDE tooling. The one string macro, `ds"…"`, writes Datastar
+  expressions, not markup.
 
 ## Component helpers
 
@@ -318,7 +319,7 @@ without `contentType: 'form'` (a JSON object the server reads).
 # Encode: seed several signals from a NamedTuple — the lib JSON-encodes it
 # once and lets the renderer's attribute escape handle the `"` round-trip.
 div(ds_signals((showDetails=false, count=0)),
-    span(ds_show("\$showDetails"), "Details…"))
+    span(ds_show(:showDetails), "Details…"))
 # → <div data-signals="{&quot;showDetails&quot;:false,&quot;count&quot;:0}">…</div>
 #   (the attribute is double-quoted and the JSON's " is escaped to &quot;;
 #    Datastar decodes the entities back to " before reading the JSON)

@@ -47,7 +47,11 @@ fragment_response(page, "#card")      # Datastar morph with selector header
   [`ds_show`](@ref), [`ds_text`](@ref), [`ds_json_signals`](@ref),
   [`ds_ref`](@ref), [`ds_attr`](@ref), [`ds_class`](@ref),
   [`ds_computed`](@ref), [`ds_style`](@ref), [`ds_effect`](@ref),
-  [`ds_init`](@ref).
+  [`ds_init`](@ref). Expression arguments take a `Symbol` for a single
+  signal (`ds_show(:open)`).
+- Datastar expressions: [`@ds_str`](@ref) (`ds"\$count = \$(n)"`) writes
+  `\$signal` without escaping and splices Julia values as JSON literals;
+  it returns a [`DSExpr`](@ref).
 - Datastar signal decoding: [`parse_signals`](@ref) (read the JSON body
   of a non-form Datastar action into a `Dict{String, Any}`).
 - Form helpers: [`cls`](@ref), [`radio_field`](@ref),
@@ -99,7 +103,7 @@ export audio, video, picture, source, track, iframe, embed, object, param, area
 
 # Datastar
 export DATASTAR_SUPPORTED_VERSION
-export DSAction, ds_get, ds_post, ds_put, ds_delete
+export DSAction, DSExpr, ds_get, ds_post, ds_put, ds_delete
 export ds_indicator, ds_ignore_morph, ds_bind, ds_signal, ds_signals, ds_show, ds_text, ds_json_signals
 export ds_ref, ds_attr, ds_class, ds_computed, ds_style, ds_effect, ds_init
 export on, on_click, on_submit, on_change_debounced, on_interval
@@ -122,7 +126,7 @@ export sse_response, sse_stream, patch_elements, patch_signals
 export patch_svg, inline_svg
 
 # Macros
-export @using_tags
+export @using_tags, @ds_str
 
 # Drive precompilation of the render hot path so the first call in a
 # user's session doesn't pay JIT cost for the most common shapes.

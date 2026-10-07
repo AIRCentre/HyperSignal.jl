@@ -38,6 +38,9 @@ formatted by the renderer; the JS string inside is escaped against
 single quote, backslash, `</` (which an HTML parser treats as the start
 of an end-tag, closing an enclosing `<script>` regardless of JS
 quoting), and the four JS line terminators (LF, CR, U+2028, U+2029).
+A `$(value)` spliced into [`ds"…"`](@ref @ds_str) is written as a JSON
+literal, so a string can't close its quotes and run as code; the
+attribute escape then handles the `"` that JSON emits.
 
 ## Attribute and tag *names*
 
