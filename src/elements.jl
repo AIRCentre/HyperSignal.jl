@@ -201,24 +201,10 @@ function _make_element(tag::Symbol, args::Tuple, kwargs)
             # get unpacked into individual UInt8 Number children, each
             # emitting its decimal value.
             push!(children, a)
-        elseif a isa Vector
+        elseif a isa Vector || a isa Tuple || a isa Base.Generator
+            # Generators are consumed here so the element can render more
+            # than once.
             append!(children, a)
-        elseif a isa Tuple
-            # Tuple-of-children mirrors the Vector unpacking: a caller
-            # who has children in a tuple (destructure, comprehension
-            # result via collect-to-tuple, splat receiver) gets the
-            # same flatten behavior as if they'd passed a vector.
-            for c in a
-                push!(children, c)
-            end
-        elseif a isa Base.Generator
-            # `div(p(i) for i in 1:n)` is the natural comprehension
-            # form. Consume the generator into children eagerly so
-            # the element stays renderable multiple times (generators
-            # are single-pass).
-            for c in a
-                push!(children, c)
-            end
         else
             push!(children, a)
         end
