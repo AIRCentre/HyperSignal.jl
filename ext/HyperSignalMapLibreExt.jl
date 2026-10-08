@@ -28,8 +28,7 @@ JSON.lower(e::MapLibreExpr) = e.value
 # a Symbol or a String so feature property paths with dots/spaces work.
 # Named `prop_get` (not `get`) to avoid shadowing `Base.get` inside the
 # extension module if it ever needs to dispatch on it.
-prop_get(name::Symbol) = MapLibreExpr(Any["get", String(name)])
-prop_get(name::AbstractString) = MapLibreExpr(Any["get", String(name)])
+prop_get(name::Union{Symbol, AbstractString}) = MapLibreExpr(Any["get", String(name)])
 
 # Literal: forces a value to be interpreted as data, not as a nested
 # expression — the escape hatch for paint constants that look like arrays.
@@ -38,26 +37,22 @@ literal(x) = MapLibreExpr(Any["literal", x])
 # Interpolation kind markers (zero-arg).
 linear() = MapLibreExpr(Any["linear"])
 
+_push_stops!(out, stops) = (for (k, v) in stops; push!(out, k, v); end; out)
+
 # Interpolate a numeric input across stop pairs.
 function interpolate(kind::MapLibreExpr, input::MapLibreExpr,
                      stops::Pair...)
     isempty(stops) &&
         throw(ArgumentError("interpolate requires at least one stop pair"))
     out = Any["interpolate", kind, input]
-    for (k, v) in stops
-        push!(out, k); push!(out, v)
-    end
-    MapLibreExpr(out)
+    MapLibreExpr(_push_stops!(out, stops))
 end
 
 # Step function: leading default, then (threshold => value) pairs.
 # Named `expr_step` to avoid shadowing `Base.step` inside the module.
 function expr_step(input::MapLibreExpr, default, stops::Pair...)
     out = Any["step", input, default]
-    for (k, v) in stops
-        push!(out, k); push!(out, v)
-    end
-    MapLibreExpr(out)
+    MapLibreExpr(_push_stops!(out, stops))
 end
 
 # Match expression: required keyword `default` lands as the trailing
@@ -69,9 +64,7 @@ function expr_match(input::MapLibreExpr, cases::Pair...; default=nothing)
         throw(ArgumentError(
             "match requires a `default` kwarg — missing default silently paints features transparent"))
     out = Any["match", input]
-    for (k, v) in cases
-        push!(out, k); push!(out, v)
-    end
+    _push_stops!(out, cases)
     push!(out, default)
     MapLibreExpr(out)
 end
@@ -251,6 +244,12 @@ function _js_squote(s::AbstractString)
 end
 
 _handle(prefix) = "window.__hs_maps['$(_js_squote(prefix))']"
+_event_name(id_prefix, name) = "hs-$(id_prefix)$name"
+
+function map_call(method::Symbol, args...; id_prefix::AbstractString)
+    encoded = join((JSON.json(a) for a in args), ",")
+    HyperSignal.Raw("$(_handle(id_prefix)).$method($encoded)")
+end
 
 function fly_to(; id_prefix::AbstractString, center,
                 zoom::Union{Nothing, Real}=nothing,
@@ -260,19 +259,17 @@ function fly_to(; id_prefix::AbstractString, center,
         "duration" => duration_ms,
     )
     zoom === nothing || (args["zoom"] = zoom)
-    HyperSignal.Raw("$(_handle(id_prefix)).flyTo($(JSON.json(args)))")
+    map_call(:flyTo, args; id_prefix)
 end
 
-add_source(; id_prefix::AbstractString, id::AbstractString,
-           spec::Source) =
-    HyperSignal.Raw(
-        "$(_handle(id_prefix)).addSource($(JSON.json(id)),$(JSON.json(spec)))")
+add_source(; id_prefix::AbstractString, id::AbstractString, spec::Source) =
+    map_call(:addSource, id, spec; id_prefix)
 
 remove_source(; id_prefix::AbstractString, id::AbstractString) =
-    HyperSignal.Raw("$(_handle(id_prefix)).removeSource($(JSON.json(id)))")
+    map_call(:removeSource, id; id_prefix)
 
 remove_layer(; id_prefix::AbstractString, id::AbstractString) =
-    HyperSignal.Raw("$(_handle(id_prefix)).removeLayer($(JSON.json(id)))")
+    map_call(:removeLayer, id; id_prefix)
 
 # Guard: a runtime data swap can fire before the map's `load` event —
 # e.g. a slider dragged while the first tiles are still in flight — and
@@ -288,19 +285,12 @@ set_source_data(; id_prefix::AbstractString,
         "m.getSource($(JSON.json(source)))?f():m.once('load',f)})()")
 
 add_layer(; id_prefix::AbstractString, spec::Layer) =
-    HyperSignal.Raw(
-        "$(_handle(id_prefix)).addLayer($(JSON.json(spec)))")
+    map_call(:addLayer, spec; id_prefix)
 
 set_paint_property(; id_prefix::AbstractString,
                    layer::AbstractString,
                    prop::AbstractString, value) =
-    HyperSignal.Raw(
-        "$(_handle(id_prefix)).setPaintProperty($(JSON.json(layer)),$(JSON.json(prop)),$(JSON.json(value)))")
-
-function map_call(method::Symbol, args...; id_prefix::AbstractString)
-    encoded = join((JSON.json(a) for a in args), ",")
-    HyperSignal.Raw("$(_handle(id_prefix)).$method($encoded)")
-end
+    map_call(:setPaintProperty, layer, prop, value; id_prefix)
 
 # ----------------------------------------------------------------------
 # map_view + marker
@@ -340,9 +330,8 @@ function _init_js(; id_prefix, center, zoom, style,
     # `__window` lives on `window`, and an event dispatched on `document`
     # only reaches `window` by bubbling up the propagation chain. Without
     # it every channel (cursor/viewport/click/bbox) silently no-ops.
-    ev(name) = "hs-$(id_prefix)$name"
     _dispatch(io, name, value_js) =
-        print(io, "document.dispatchEvent(new CustomEvent($(JSON.json(ev(name))),{detail:$value_js,bubbles:true}));")
+        print(io, "document.dispatchEvent(new CustomEvent($(JSON.json(_event_name(id_prefix, name))),{detail:$value_js,bubbles:true}));")
 
     io = IOBuffer()
     print(io, "(function(){")
@@ -514,10 +503,9 @@ function map_view(; id_prefix::AbstractString="map_",
     # Datastar expressions. `__window` listens on document, matching
     # where the script dispatches. Each maps one channel → one signal
     # write (or signal-write + @post for the action channels).
-    ev(name) = "hs-$(id_prefix)$name"
     attrs = Pair[:id => "$(id_prefix)root"]
     _on(name, expr) = push!(attrs,
-        Symbol("data-on:$(ev(name))__window") => expr)
+        Symbol("data-on:$(_event_name(id_prefix, name))__window") => expr)
     center_signal === nothing || _on("center", "\$$center_signal = evt.detail")
     zoom_signal   === nothing || _on("zoom",   "\$$zoom_signal = evt.detail")
     bounds_signal === nothing || _on("bounds", "\$$bounds_signal = evt.detail")
