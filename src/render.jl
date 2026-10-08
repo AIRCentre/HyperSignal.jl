@@ -191,7 +191,7 @@ function render(io::IO, e::Element)
     nothing
 end
 
-render(io::IO, f::Frag) = (for c in f.children; render(io, c); end; nothing)
+render(io::IO, f::Frag) = render(io, f.children)
 render(io::IO, r::Raw) = (print(io, r.html); nothing)
 
 # Notebook / REPL display hooks. Pluto, IJulia, and VS Code's plot pane
@@ -257,19 +257,9 @@ render(io::IO, ::Attribute) = throw(ArgumentError(
 # from a model field without wanting to `string()` first. The escape
 # walks the Symbol's bytes the same as a String.
 render(io::IO, sym::Symbol) = escape_html(io, String(sym))
-function render(io::IO, xs::AbstractVector)
-    for x in xs
-        render(io, x)
-    end
-    nothing
-end
-
-# A Generator can reach render time when nested inside a Vector or
-# another container that doesn't get expanded at element construction
-# (the construction-time generator-unpack only handles top-level
-# positional args). Iterating here is a single pass — the same single
-# pass `for c in e.children; render(io, c)` would do.
-function render(io::IO, xs::Base.Generator)
+# A Generator reaches render when nested inside a Vector: the
+# construction-time unpack only handles top-level positional args.
+function render(io::IO, xs::Union{AbstractVector, Base.Generator})
     for x in xs
         render(io, x)
     end
@@ -437,15 +427,9 @@ function _render_attr_vector(io::IO, v)
     first = true
     for x in v
         (x === nothing || x === missing || x === false || x === true) && continue
-        if x isa AbstractString
-            isempty(x) && continue
-            first || print(io, ' ')
-            escape_html(io, x)
-            first = false
-        else
-            first || print(io, ' ')
-            escape_html(io, string(x))
-            first = false
-        end
+        x isa AbstractString && isempty(x) && continue
+        first || print(io, ' ')
+        escape_html(io, x isa AbstractString ? x : string(x))
+        first = false
     end
 end
