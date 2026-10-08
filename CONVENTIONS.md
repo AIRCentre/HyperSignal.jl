@@ -31,21 +31,34 @@ How HyperSignal.jl code reads. Each convention: **Why** → **Convention** → �
 Applies to every `.md` in the repo (this file, `README.md`, `CHANGELOG.md`,
 `docs/`) _and_ every code comment / docstring in `src/`, `ext/`, `test/`.
 
-- **Telegraphic style. Sacrifice grammar for concision.** `[style]`
+- **Plain, tight prose.** `[style]`
 
-  **Why:** full sentences with articles + linking verbs add token weight without
-  adding signal; readers scan, they don't read.
+  **Why:** padding costs every reader time; dropped articles and fragments cost
+  newcomers comprehension, and they read README and `docs/` start to finish.
 
-  **Convention:** drop articles ("the", "a") and linking verbs ("is", "are")
-  where meaning survives. Fragments OK. `→` and `=` over "leads to" / "means".
-  One idea per bullet. If a sentence reads fine with words removed, remove them.
+  **Convention:** full sentences, one claim each. Cut words that add no meaning
+  and sentences that repeat a heading, table or code block. Code comments may be
+  fragments.
 
-  - ✅ "render once, at IO boundary".
-  - ✅ "macros = parse-time dialect, fight tooling".
-  - ✅ "`Raw` wraps trusted HTML you audited".
+  - ✅ "Render once, at the IO boundary."
+  - ✅ "`Raw` wraps trusted HTML you audited."
   - 🚫 "We should make sure that the render function is called only one time at
     the IO boundary of the system" — verbose padding.
   - 🚫 narrative paragraphs in code comments — break into fragments or delete.
+
+- **Comments carry a why, nothing else. Prefer none.** `[taste]`
+
+  **Why:** code + names already say _what_; a what-comment drifts from the code
+  it restates and nobody notices.
+
+  **Convention:** comment only what code can't show — upstream bug, protocol
+  quirk, perf tradeoff, failure mode guarded. Rename or extract before
+  commenting. No section banners, no history ("added in", issue numbers,
+  review rounds).
+
+  - ✅ `# ReentrantLock, not an @atomic Set field: the latter segfaults on 1.10.`
+  - 🚫 `# loop over children and render each`.
+  - 🚫 `# ---- Sources ----`.
 
 ## Staleness-proof
 
@@ -161,13 +174,16 @@ Applies to every `.md` + every code comment / docstring.
   - ✅ `p(user.name)` — renderer handles `<`, `&`, quotes.
   - 🚫 pre-`replace` / pre-`escape_html` before passing in.
 
-- **`Raw(...)` is the only escape hatch.** `[sec]`
+- **Verbatim paths stay few, named, audited.** `[sec]`
 
   **Why:** every bypass = potential XSS hole. Surface must be small, named,
   grep-able.
 
-  **Convention:** `Raw` wraps trusted HTML you audited (SVG, vendored icons,
-  generator output). Never anything user-derived.
+  **Convention:** `Raw` is the HTML escape hatch: trusted HTML you audited (SVG,
+  vendored icons, generator output). Other verbatim paths (`Vector{UInt8}`
+  children, raw-string actions, `script_response`) follow the same trust
+  rule. Never anything user-derived. A new verbatim path → listed in
+  `docs/src/security.md`.
 
   - ✅ `Raw(read("logo.svg", String))` — vendored asset.
   - 🚫 `Raw(user_html)` / `Raw("<div>$untrusted</div>")`.
@@ -181,7 +197,7 @@ Applies to every `.md` + every code comment / docstring.
   helper rendered by `render`, or (b) `JSON.json(value)` into a `Raw`/script
   string. Julia `$x` into JS literal = forbidden, "safe-looking" or not.
 
-  - ✅ `on(:click, ds_post("/api/x", (id=user.id,)))`.
+  - ✅ `on(:click, ds_post("/api/x"; id=user.id))`.
   - ✅ `Raw("$(handle).setZoom($(JSON.json(zoom)))")` — value via JSON.json.
   - ✅ `Raw("$(handle).addSource($(JSON.json(id)), $(JSON.json(spec)))")` — id
     _and_ payload JSON-encoded.
@@ -205,13 +221,16 @@ Applies to every `.md` + every code comment / docstring.
   - ✅ `div(class="card", h1("Title"))`.
   - 🚫 `Div`, `make_div`, `tag(:div, ...)`.
 
-- **Datastar helpers carry `ds_` prefix.** `[style]`
+- **Datastar attribute/signal helpers carry `ds_` prefix.** `[style]`
 
   **Why:** prefix marks "Datastar action/attribute/signal binding" without
   scanning the implementation.
 
-  **Convention:** every Datastar helper exported from `src/datastar.jl` starts
-  `ds_`: `ds_post`, `ds_signal`, `ds_indicator`, `ds_bind`, …
+  **Convention:** every exported helper in `src/datastar.jl` that builds a
+  Datastar action, attribute, or signal binding starts `ds_`: `ds_post`,
+  `ds_signal`, `ds_indicator`, `ds_bind`, … Exempt by class: event binders
+  (`on`, `on_*`; see below), exported types and macros, and request decoders
+  (`parse_signals`).
 
   - ✅ `ds_signal("count", 0)`.
   - 🚫 `signal("count", 0)` — collides with Base + domain code.
@@ -234,23 +253,22 @@ Applies to every `.md` + every code comment / docstring.
   **Why:** library → consumers resolve their own deps; committed manifest pins
   their world to ours.
 
-  **Convention:** `.gitignore` excludes `/Manifest.toml` and every nested
-  `*/Manifest.toml` (`docs/`, `benchmark/`, `examples/`).
+  **Convention:** `.gitignore` excludes `/Manifest.toml` and the
+  `Manifest.toml` of every sub-environment.
 
   - ✅ commit `Project.toml` only.
   - 🚫 `git add -f Manifest.toml` to "make CI reproducible".
 
 - **Optional integrations = package extensions under `ext/`.** `[corr]`
 
-  **Why:** extensions gate heavy deps (Makie, GeoInterface) on `using`.
-  Importing HyperSignal stays light for consumers that don't need them.
+  **Why:** extensions gate heavy deps on `using`. Importing HyperSignal stays
+  light for consumers that don't need them.
 
   **Convention:** integration requiring a third-party package lives in
   `ext/HyperSignal<Name>Ext.jl` with trigger package in `[weakdeps]` +
   `[extensions]`.
 
-  - ✅ `HyperSignalMakieExt` (gated on `Makie`), `HyperSignalMapLibreExt` (gated
-    on `GeoInterface`).
+  - ✅ `ext/HyperSignalFooExt.jl` triggered by `Foo` in `[weakdeps]`.
   - 🚫 hard-import optional deps from `src/`.
 
 ## JS-emitting code (extensions, server-returned scripts)
@@ -287,20 +305,22 @@ Applies to every `.md` + every code comment / docstring.
   guide][ds-js], the only bridge = dispatch CustomEvents that
   `data-on:<event>__window` catches.
 
-  **Convention:** one CustomEvent per logical channel, dispatched on `document`,
-  name `hs-<id_prefix><channel>`, payload on `detail`. Component server-renders
-  matching `data-on:hs-…__window` on its container; that expression does the
-  signal write and/or `@post`.
+  **Convention:** one CustomEvent name per kind of event (`center`, `click`, …),
+  dispatched on `document`, name `hs-<id_prefix><event>`, payload on `detail`.
+  Component server-renders matching `data-on:hs-…__window` on its container;
+  that expression does the signal write and/or `@post`.
 
   - ✅ script: `document.dispatchEvent(new CustomEvent("hs-m_center", {detail:
     [lng, lat]}))`.
   - ✅ container: `data-on:hs-m_center__window="$map_center = evt.detail"`.
-  - ✅ action channels = signal + post: `data-on:hs-m_click__window="$_payload =
+  - ✅ action events = signal + post: `data-on:hs-m_click__window="$payload =
     evt.detail; @post('/api/click')"`.
+  - 🚫 `_`-prefixed payload signal (`$_payload`) — Datastar drops `_` signals
+    from request bodies, so the `@post` carries nothing.
   - ✅ omit the listener attr entirely when the kwarg is `nothing` — opt-out path
     doesn't leak a `@post` to an undefined URL.
   - 🚫 single shared `hs-signal` event with `detail.name` — expressions can't
-    switch on `evt.detail.name` cleanly; one-event-per-channel = grep-able
+    switch on `evt.detail.name` cleanly; one name per event = grep-able
     wiring.
   - 🚫 dispatch on container when listener uses `__window` (or vice versa) —
     event + modifier must agree.
@@ -404,14 +424,13 @@ Applies to every `.md` + every code comment / docstring.
     occursin("data-on:hs-click__window=", out)`.
   - 🚫 `success(pipeline(\`node --check $path\`))`inside`@test`.
 
-- **Every comment in a test body answers "why this test exists".** `[taste]`
+- **Test comments start with `Why:`.** `[taste]`
 
-  **Why:** the assertion already says _what_; only the rationale survives the
-  next refactor and tells the next reader whether the test is still
-  load-bearing.
+  **Why:** assertion already says _what_; the guarded failure tells the next
+  reader whether the test is still load-bearing.
 
-  **Convention:** if you comment in a test, start with `Why:` and name the
-  failure mode guarded.
+  **Convention:** same rule as code comments (why only, prefer none); in tests,
+  prefix `Why:` and name the failure mode guarded.
 
   - ✅ `# Why: an empty ramp is meaningless and silently renders nothing.`
   - 🚫 `# Test that interpolate works.`
@@ -446,8 +465,8 @@ Applies to every `.md` + every code comment / docstring.
   - ✅ `ds_signal("drawer_open", false)` — pure UI affordance.
   - ✅ `ds_signal("active_tab", "overview")` — view selection.
   - ✅ `ds_signal("map_center", [0, 0])` — derived from a live UI event.
-  - ✅ `ds_signal("_payload", nothing)` — short-lived buffer for the next
-    `@post`.
+  - ✅ `ds_signal("payload", nothing)` — short-lived buffer for the next
+    `@post`; no `_` prefix, or the body omits it.
   - 🚫 `ds_signal("cart", [...])` — business state; POST adds, server sends back
     the rendered cart.
   - 🚫 `ds_signal("user", {...})` — identity belongs in the session.
@@ -464,9 +483,8 @@ Applies to every `.md` + every code comment / docstring.
   can't silently rewrite our semantics.
 
   **Convention:** a method defined under `HyperSignal` (or any extension)
-  dispatches on at least one HyperSignal-owned type. Owned = `Element`, `Frag`,
-  `Raw`, `Attribute`, `DSAction` (extensions own structs they define:
-  `MapLibreExpr`, `Source`, `Layer`).
+  dispatches on at least one HyperSignal-owned type. Owned = any type defined
+  in HyperSignal; an extension also owns the structs it defines.
 
   - ✅ `Base.show(io::IO, ::MIME"text/html", el::Element) = …` — owned type in
     signature.

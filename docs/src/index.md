@@ -4,7 +4,8 @@ Datastar-flavored HTML for Julia, with front-row support for inlining
 CairoMakie figures and driving interactive MapLibre maps from your
 pages.
 
-Compatible with Datastar v1.0.4.
+Compatible with the Datastar build vendored at
+[`docs/src/notebooks/assets/datastar.js`](https://github.com/AIRCentre/HyperSignal.jl/blob/main/docs/src/notebooks/assets/datastar.js).
 
 ```julia
 using HyperSignal
@@ -48,10 +49,9 @@ Element tree (data) + `render(io, x)` (streaming): components return
 `Element` values you can compose, test, and inline; rendering streams
 to IO with auto-escape — no intermediate strings. Datastar actions
 are typed values; the element constructors lift `Attribute`-returning
-helpers (`on(:click, ds_post(…))`, `ds_indicator()`, …) out of the
-children list, so they drop in positionally without a splat ceremony.
-Auto-escape by default; `Raw("…")` is the only opt-out — never wrap
-user input.
+helpers (`on(:click, ds_post(…))`, `ds_indicator(:saving)`, …) out of the
+children list, so they drop in positionally without a splat.
+Auto-escape by default; `Raw("…")` opts out — never wrap user input.
 
 ## Where next
 
@@ -64,13 +64,13 @@ user input.
   (`ds_signals`, `ds_computed`, `ds_style`, `ds_bind`, `ds_show`, …).
 - [Security model](security.md) — every escape boundary in the lib:
   where input is auto-escaped, where attribute/tag names raise
-  `ArgumentError`, and the single `Raw` opt-out.
+  `ArgumentError`, and the verbatim paths such as `Raw`.
 - [Performance](performance.md) — the renderer is on the request-handler
   hot path; how to regenerate the benchmark numbers and what to watch
   when changing `elements.jl` / `render.jl` / `svg.jl`.
 - [API reference](api.md) — every exported name, with examples.
 - [`examples/counter_app.jl`](https://github.com/AIRCentre/HyperSignal.jl/blob/main/examples/counter_app.jl)
-  — a ~50-line Datastar counter you can run with
+  — a Datastar counter you can run with
   `julia --project=examples examples/counter_app.jl` on Julia 1.11+ (then open
   http://127.0.0.1:8080) to see `html_response` / `fragment_response`
   driving a live page.

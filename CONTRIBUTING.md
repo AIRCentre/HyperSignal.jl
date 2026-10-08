@@ -1,8 +1,7 @@
 # Contributing to HyperSignal.jl
 
-Issues and PRs welcome. The goal of this document is to save you a round
-trip — the project has a few specific conventions that aren't obvious
-from skimming the source.
+Issues and PRs welcome. This file lists the project conventions that
+aren't obvious from the source.
 
 ## Required reading before any non-trivial PR
 
@@ -18,9 +17,12 @@ cd HyperSignal.jl
 julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.test()'
 ```
 
-Tests run on Julia 1.10 (LTS) and the current stable; both are
-exercised in CI. The CairoMakie integration test pulls a real plotting
-stack — first-time precompile is several minutes.
+CI runs the tests on Julia 1.10 (LTS) and the current stable, each with
+HTTP.jl 1 and 2. The CairoMakie integration test pulls a real plotting
+stack, so first-time precompile is several minutes. On Julia 1.10 a cold
+depot can deadlock precompiling the Makie extensions in parallel
+([Pkg.jl#4822](https://github.com/JuliaLang/Pkg.jl/issues/4822)); set
+`JULIA_NUM_PRECOMPILE_TASKS=1`, as CI does.
 
 ## Benchmarks
 
@@ -51,9 +53,10 @@ julia --project=docs docs/make.jl   # Julia 1.11+
 The docs environment is separate (`docs/Project.toml`) and path-depends
 on the working tree via `[sources]`, so on Julia 1.11+ it builds against
 your local changes.
-Exported symbols should carry a docstring (`checkdocs = :exports`); a
-missing one is currently only a warning (`warnonly = [:missing_docs]`),
-but a doctest mismatch is a hard failure both locally and in CI.
+Exported symbols should carry a docstring (`checkdocs = :exports`).
+Missing docstrings and unresolved cross-references only warn
+(`warnonly = [:missing_docs, :cross_references]`); a doctest mismatch
+fails the build locally and in CI.
 
 ## What goes into `CHANGELOG.md`
 
@@ -64,9 +67,10 @@ process moves `Unreleased` to a dated heading.
 
 ## Commit messages
 
-The repo follows imperative-mood subject lines ("Fix X" not "Fixed X")
-under ~70 characters, with a blank line then a body that explains the
-*why* — not the *what*, which the diff already shows.
+One imperative line ("Fix X", not "Fixed X") under ~70 characters, with
+an optional type prefix (`fix:`, `docs:`, `tidy:`). No body: the PR
+description carries the *why*, and the squash-merge title is what lands
+on `main`.
 
 ## Submitting a PR
 
@@ -76,7 +80,8 @@ under ~70 characters, with a blank line then a body that explains the
    the PR description.
 4. Update `CHANGELOG.md` under `## Unreleased`.
 5. Push and open a PR. CI runs the test suite on Julia 1.10 (LTS) and
-   current stable, and builds the docs with doctests. For changes under
+   current stable, each with HTTP.jl 1 and 2, and builds the docs with
+   doctests. For changes under
    `src/`, `ext/`, `Project.toml`, or the smoke notebooks, a headless
    Pluto smoke job (`.github/scripts/pluto_smoke.jl`) also runs: it
    asserts the `text/html` MIME render of an `Element` and that the

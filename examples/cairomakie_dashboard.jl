@@ -10,21 +10,11 @@
 # This is the proof of the front-row CairoMakie claim: drop a Figure
 # straight into a page tree, no fork-and-rewrite step.
 
-using HTTP, HyperSignal, CairoMakie, Downloads
+using HTTP, HyperSignal, CairoMakie
 using HyperSignal: div
 
-const DATASTAR_VERSION = "v$(HyperSignal.DATASTAR_SUPPORTED_VERSION)"
-const DATASTAR_URL     = "https://cdn.jsdelivr.net/gh/starfederation/datastar@$(DATASTAR_VERSION)/bundles/datastar.js"
-const DATASTAR_PATH    = joinpath(@__DIR__, "datastar-$(DATASTAR_VERSION).js")
-
-function ensure_datastar()
-    isfile(DATASTAR_PATH) && return DATASTAR_PATH
-    @info "Downloading Datastar bundle" DATASTAR_URL DATASTAR_PATH
-    Downloads.download(DATASTAR_URL, DATASTAR_PATH)
-    DATASTAR_PATH
-end
-
-const DATASTAR_BODY = read(ensure_datastar())
+const DATASTAR_BODY = read(joinpath(pkgdir(HyperSignal),
+                                    "docs", "src", "notebooks", "assets", "datastar.js"))
 
 function make_line_figure()
     fig = Figure(size=(640, 320))

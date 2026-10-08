@@ -1,12 +1,6 @@
-# Response helpers — bundle the `datastar-selector` header so callers
-# don't keep retyping it (and don't keep forgetting it).
-
-# Prepend a library-owned default header, but only when the caller hasn't
-# already supplied that field (matched case-insensitively, per RFC 9110
-# §5.1). Without this guard a caller-provided Content-Type would put TWO
-# Content-Type lines on the wire — a malformed message whose interpretation
-# diverges across consumers (HTTP.header reads the first, Dict()/browser
-# fetch read the last). The caller wins, with exactly one header.
+# Default header, skipped when caller supplied it (case-insensitive, RFC 9110 §5.1).
+# Two Content-Type lines on the wire parse differently per consumer:
+# HTTP.header reads the first, Dict()/browser fetch the last.
 function _with_default(extra, name::String, val::String)
     lname = lowercase(name)
     any(lowercase(String(k)) == lname for (k, _) in extra) && return extra
@@ -18,9 +12,8 @@ end
 """
     html_response(body; status=200, headers=[]) -> HTTP.Response
 
-Render `body` (anything renderable) and wrap it in an `HTTP.Response`
-with `Content-Type: text/html; charset=utf-8`. Use this for full-page
-GETs.
+Render `body` (anything renderable) into an `HTTP.Response` with
+`Content-Type: text/html; charset=utf-8`. For full-page GETs.
 
 # Examples
 ```jldoctest
@@ -60,21 +53,18 @@ end
                       view_transition=false, status=200, headers=[]) -> HTTP.Response
     fragment_response(body, selector::AbstractString; kwargs...) -> HTTP.Response
 
-Like [`html_response`](@ref) but also surfaces the Datastar fragment
-control headers — `datastar-selector` (morph target), `datastar-mode`
-(swap mode), and `datastar-use-view-transition` — so a single helper
-covers any handler that swaps a fragment of an existing page.
+Like [`html_response`](@ref) plus the Datastar fragment control headers
+`datastar-selector` (morph target), `datastar-mode` (swap mode) and
+`datastar-use-view-transition`, for handlers that swap a fragment of an
+existing page.
 
 - `selector` — CSS selector for the morph target. Omit for whole-body morph.
 - `mode::Union{Nothing,Symbol}` — one of `:outer :inner :replace :prepend
-  :append :before :after :remove`. `nothing` (the default) omits the
-  header so the Datastar client uses its default (`outer`). An unknown
-  symbol throws `ArgumentError`.
-- `view_transition::Bool` — when `true`, adds
-  `datastar-use-view-transition: true` so the client wraps the swap in a
-  View Transition.
-
-The positional `fragment_response(body, selector)` form is preserved.
+  :append :before :after :remove`. `nothing` (default) omits the header, so
+  the Datastar client uses its default (`outer`). Unknown symbol throws
+  `ArgumentError`.
+- `view_transition::Bool` — `true` adds `datastar-use-view-transition: true`;
+  the client wraps the swap in a View Transition.
 
 # Examples
 ```jldoctest
@@ -102,7 +92,6 @@ function fragment_response(body; selector::Union{Nothing,AbstractString}=nothing
     mode === nothing || push!(h, "datastar-mode" => String(_validate_mode(mode)))
     view_transition && push!(h, "datastar-use-view-transition" => "true")
     append!(h, headers)
-    # Delegate to html_response so the Content-Type lives in one place.
     html_response(body; status, headers=h)
 end
 
@@ -112,18 +101,18 @@ fragment_response(body, selector::AbstractString; kwargs...) =
 """
     redirect_via_fragment(selector, location; cookies=String[], wrapper_tag=:div) -> HTTP.Response
 
-Datastar can't issue an HTTP 303 from a form submit it owns — the morph
-algorithm replaces the target instead. This helper wraps a tiny
+Datastar can't follow an HTTP 303 from a form submit it owns: the morph
+replaces the target instead. This helper puts a
 `<script>window.location='…'</script>` in the morph target so a Datastar
-form can navigate after success. Single quotes, backslashes, and `</`
-sequences in `location` are escaped (the last to keep the HTML parser
-from closing the surrounding `<script>` tag mid-string).
+form can navigate after success. `location` gets the same JS-string escape
+as [`DSAction`](@ref): quotes, backslashes, JS line terminators, and `</`
+and `<!--`, so the HTML parser closes the surrounding `<script>` where
+intended.
 
-Pass `cookies` as a vector of complete `Set-Cookie` header values to
-attach session cookies to the redirect — useful for the post-login flow
-where you need to set the cookie AND navigate in the same response.
-Use `wrapper_tag` when the morph target is something other than a `<div>`
-(e.g. `:li` for a `<li>` morph target).
+`selector` must be a single `#id`; anything else throws `ArgumentError`.
+`cookies` is a vector of complete `Set-Cookie` header values, e.g. to set a
+session cookie and navigate in one response. `wrapper_tag` sets the morph
+target's tag when it isn't a `<div>` (e.g. `:li`).
 
 For non-Datastar redirects (login form POST, plain navigation), use
 [`redirect_to`](@ref) instead.
@@ -138,18 +127,14 @@ return redirect_via_fragment("#login-form", "/dashboard";
 function redirect_via_fragment(selector::AbstractString, location::AbstractString;
                                cookies::AbstractVector=String[],
                                wrapper_tag::Symbol=:div)
-    # This helper renders the morph target itself, with `id` set to the
-    # selector minus its leading `#` — so it ONLY works for a single `#id`
-    # selector. A class/compound/whitespace selector (`.card`, `#a #b`) would
-    # produce an `id` the selector can't match (the redirect silently no-ops),
-    # and a CR/LF would be injected raw into the `datastar-selector` header.
-    # Reject anything that isn't `#` followed by non-whitespace, loudly.
+    # Morph target id = selector minus `#`, so only `#id` works: `.card` / `#a #b`
+    # never match (silent no-op); CR/LF would land raw in the `datastar-selector` header.
     (startswith(selector, "#") && !occursin(r"\s", selector) && length(selector) > 1) ||
         throw(ArgumentError("redirect_via_fragment: selector must be a single \"#id\" " *
               "(the morph target is rendered with that id), got $(repr(selector))"))
     el = Element(wrapper_tag,
-                 Pair{Symbol, Any}[:id => _strip_hash(selector)],
-                 Any[Raw("<script>window.location='$(_js_escape(location))'</script>")])
+                 Pair{Symbol, Any}[:id => chopprefix(selector, "#")],
+                 Any[Raw("<script>window.location='$(_js_str_escape(location))'</script>")])
     headers = Pair{String, String}["Set-Cookie" => String(c) for c in cookies]
     fragment_response(el, selector; headers=headers)
 end
@@ -157,11 +142,10 @@ end
 """
     signals_response(signals; only_if_missing=false, status=200, headers=[]) -> HTTP.Response
 
-Send a Datastar JSON-signals patch. Body is `JSON.json(signals)` — pass
-anything `JSON.jl` knows how to encode (NamedTuple, Dict, struct).
-`only_if_missing=true` adds the `datastar-only-if-missing: true` header,
-which tells the client to skip the merge for any signal already on the
-page.
+Send a Datastar JSON-signals patch. Body is `JSON.json(signals)`: any value
+`JSON.jl` encodes (NamedTuple, Dict, struct). `only_if_missing=true` adds the
+`datastar-only-if-missing: true` header; the client skips signals already on
+the page.
 
 # Examples
 ```jldoctest
@@ -187,10 +171,9 @@ end
     script_response(js::AbstractString; script_attributes=nothing,
                     status=200, headers=[]) -> HTTP.Response
 
-Send a Datastar `text/javascript` response — the client appends a
-`<script>` tag with `js` as its body and runs it. The body is written
-verbatim; the caller owns the escape. **Never** interpolate unsanitized
-user input.
+Send a Datastar `text/javascript` response; the client appends a `<script>`
+tag with `js` as its body and runs it. Body is written verbatim, caller owns
+escaping. **Never** interpolate unsanitized user input.
 
 `script_attributes` becomes the `datastar-script-attributes` header: an
 `AbstractString` passes through; anything else is JSON-encoded with
@@ -219,9 +202,3 @@ function script_response(js::AbstractString; script_attributes=nothing,
     h = _with_default(h, "Content-Type", "text/javascript; charset=utf-8")
     HTTP.Response(status, h, String(js))
 end
-
-_strip_hash(s::AbstractString) = chopprefix(s, "#")
-# The window.location='…' redirect string is a single-quoted JS literal in
-# an inline <script>, so it needs the exact same escaping as a Datastar
-# action's URL/extras — one source of truth in _js_str_escape (datastar.jl).
-const _js_escape = _js_str_escape

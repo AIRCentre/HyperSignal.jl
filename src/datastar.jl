@@ -1,10 +1,3 @@
-# Datastar action helpers. The user-visible win: instead of writing
-#     data-on:submit="@post('/path', {contentType: 'form'})"
-# they write
-#     on(:submit, ds_post("/path"; form=true))
-# and the lib emits the right attribute name + JS expression. Typos turn
-# into method errors at the right call site, not silent client behavior.
-
 """
     DATASTAR_SUPPORTED_VERSION
 
@@ -16,13 +9,10 @@ const DATASTAR_SUPPORTED_VERSION = v"1.0.4"
 """
     DSAction(verb, url, form, extras)
 
-A "Datastar request action" — verb + URL + options. Build via [`ds_get`](@ref),
-[`ds_post`](@ref), [`ds_put`](@ref), or [`ds_delete`](@ref); pass to
-[`on`](@ref) (or its `on_*` shorthands) to bind it to a DOM event. The
-renderer formats the JS expression at the attribute boundary so the
-verb/URL/options live in one place.
-
-You rarely construct one directly — use the verb constructors.
+A Datastar request action: verb + URL + options. Build via [`ds_get`](@ref),
+[`ds_post`](@ref), [`ds_put`](@ref) or [`ds_delete`](@ref); bind with
+[`on`](@ref) or its `on_*` shorthands. The renderer writes the JS
+expression at the attribute boundary.
 """
 struct DSAction
     verb::Symbol
@@ -87,26 +77,13 @@ Build a `@delete('url', {…})` Datastar action. See [`ds_post`](@ref).
 """
 ds_delete(url; kwargs...) = _action(:delete, url; kwargs...)
 
-# Render a DSAction as the JS expression that goes inside data-on:* /
-# data-action. Auto-escape on attribute values handles HTML-quoting; the
-# JS-quoting (single-quote escape) is handled here so the JS string stays
-# valid inside the attribute.
-# Stream a DSAction as the JS expression that goes inside data-on:* /
-# data-action. The JS-quoting (single-quote escape) is handled here so the
-# JS string stays valid; the caller's `escval` handles HTML-quoting for the
-# target medium. `escval(io, s)` writes `s` escaped for that medium — in the
-# render hot path it is `escape_html` (each chunk streams straight into the
-# response IO, with no intermediate String that escape_html would then have
-# to re-walk); for the plain `action_js` String contract it is `print`.
+# JS-quoting here; `escval` adds the medium's quoting: `escape_html` streams
+# each chunk into the response IO on the render path (no intermediate String
+# to re-walk), `print` for `action_js`.
 function _action_js(io::IO, a::DSAction, escval::F) where {F}
     print(io, "@", a.verb, "(")
     escval(io, "'")
-    # Escape the URL into its single-quoted JS string the same way extras
-    # values are (see _js_str_escape): a raw `'` in the URL — e.g. an
-    # unencoded query param like `?q=it's` — would otherwise close the JS
-    # string early and break the action, and a raw `</script>` could close
-    # an enclosing inline <script>. The escapes are transparent to the URL
-    # the browser fetches (`\'`→`'`, `<\/`→`</` after JS parsing).
+    # A raw `'` in the URL (`?q=it's`) would end the JS string early.
     escval(io, _js_str_escape(a.url))
     escval(io, "'")
     if a.form || !isempty(a.extras)
@@ -131,53 +108,32 @@ end
 
 _plain_chunk(io::IO, s) = print(io, s)
 
-# Public String form (Base.show, doctests, the response/test boundary):
-# byte-identical to the old buffered builder.
 function action_js(a::DSAction)
     io = IOBuffer()
     _action_js(io, a, _plain_chunk)
     String(take!(io))
 end
 
-# 1-arg show on a DSAction: `string(a)` and `"$(a)"` return the JS
-# expression that the renderer would emit. Symmetric with the
-# Element/Frag/Raw show methods — every HyperSignal value prints as
-# the thing the lib would actually put in the page, not a struct dump.
 Base.show(io::IO, a::DSAction) = print(io, action_js(a))
 
 _js_value(v::Bool)   = v ? "true" : "false"
-# Non-finite floats: `string(Inf)`/`string(-Inf)` give `Inf`/`-Inf`, which are
-# not JS literals (a bare `Inf` is a ReferenceError in the Datastar
-# expression). Emit the JS globals instead. `NaN` already round-trips. Finite
-# floats fall through to the generic `string(v)` and render identically.
+# Bare `Inf` is a ReferenceError in JS; `NaN` already matches.
 _js_value(v::AbstractFloat) =
     isnan(v) ? "NaN" : isinf(v) ? (v > 0 ? "Infinity" : "-Infinity") : string(v)
 _js_value(v::Number) = string(v)
-# Escape a string for embedding inside a single-quoted JS string literal.
-# Order matters: backslashes first (so we don't re-escape escapes we
-# ourselves introduce), then single-quote (the string delimiter), then
-# `</` (the HTML parser will close an enclosing <script> on `</script>`
-# regardless of JS quoting — break the sequence at the HTML level by
-# inserting a backslash, which the JS parser ignores). Finally the four JS
-# line terminators (LF, CR, U+2028 LINE SEPARATOR, U+2029 PARAGRAPH
-# SEPARATOR): a raw one of these inside a single-quoted JS string is a
-# SyntaxError, so a newline in a URL/extras value (a reflected query param,
-# a multi-line search box) would silently break the whole action — escape
-# them to their JS escapes, which round-trip to the same character after JS
-# parsing. Shared by the URL and every extras value in action_js, and by
-# response.jl's inline-<script> redirect.
+# For a '…' JS literal. `</` → `<\/`: the HTML parser closes an inline
+# <script> on `</script>` whatever the JS quoting; after `<!--<script` it
+# skips the real `</script>`, hence `<!--` → `<\!--`. Raw LF, CR, U+2028 and
+# U+2029 inside a JS string are SyntaxErrors.
 _js_str_escape(s::AbstractString) =
-    replace(s, "\\" => "\\\\", "'" => "\\'", "</" => "<\\/",
+    replace(s, "\\" => "\\\\", "'" => "\\'", "</" => "<\\/", "<!--" => "<\\!--",
                "\n" => "\\n", "\r" => "\\r",
                "\u2028" => "\\u2028", "\u2029" => "\\u2029")
 _js_value(v::AbstractString) = "'$(_js_str_escape(v))'"
-# Structured option values (e.g. `headers=Dict(...)`,
-# `filterSignals=(include=...)`) serialize as a JSON object/array literal —
-# valid JS, which Julia's `repr` of a Dict/NamedTuple/Tuple/Vector is not.
-# These extras land only in HTML attributes (data-on:*/data-action), where
-# render's escape_html neutralizes `<`/`'`, so JSON's own quoting is enough.
+# `repr` of a Dict/NamedTuple is not JS; JSON is. Extras only land in HTML
+# attributes, where escape_html covers `<` and `'`.
 _js_value(v::Union{AbstractDict, NamedTuple, AbstractVector, Tuple}) = JSON.json(v)
-_js_value(v)         = string(v)  # fallback; caller's responsibility
+_js_value(v)         = string(v)  # not JS-escaped
 
 # A signal path as Datastar reads it after `$`: dot-separated identifiers.
 # Hyphens are rejected because Datastar camel-cases them at declaration, so
@@ -315,27 +271,23 @@ macro ds_str(s)
 end
 
 """
-    on(event::Symbol, action; debounce=nothing, window=false) -> Attribute
+    on(event::Symbol, action; debounce=nothing, window=false,
+       prevent=nothing, stop=false, outside=false) -> Attribute
 
-Bind a value to a DOM event. `action` is either a [`DSAction`](@ref) (the
-renderer formats it as `@verb('url', {…})`) or an `AbstractString` (a raw
-JS expression — useful for client-side toggles like
-`"\$open = !\$open"`). Returns an [`Attribute`](@ref) you drop into a tag's
-positional args.
+Bind `action` to a DOM event: a [`DSAction`](@ref) (rendered as
+`@verb('url', {…})`) or a raw JS expression string (`"\$open = !\$open"`).
+Returns an [`Attribute`](@ref) for a tag's positional args.
 
 Modifiers:
-- `debounce=N` (ms) — appends `__debounce.Nms`. Use for change events on
-  inputs that should ignore mid-word typing.
-- `window=true` — appends `__window`. Routes the listener to `window`
-  instead of the element, so global hotkeys reach it without focus.
-- `prevent=true` — appends `__prevent`. Calls `event.preventDefault()`
-  before running `action`. Defaults to `true` for `:submit` so a form
-  bound to a Datastar action doesn't also trigger the native
-  navigation; pass `prevent=false` to opt out.
+- `debounce=N` (ms) — appends `__debounce.Nms`.
+- `window=true` — appends `__window`: listener on `window`, so global
+  hotkeys fire without focus.
+- `prevent=true` — appends `__prevent` (`event.preventDefault()`).
+  Defaults to `true` for `:submit` so the native navigation doesn't also
+  run; `prevent=false` opts out.
 - `stop=true` — appends `__stop`. Calls `event.stopPropagation()`.
-- `outside=true` — appends `__outside`. Routes the listener to `document`
-  and only fires when the event target is NOT inside the bound element
-  (the click-outside-to-close pattern).
+- `outside=true` — appends `__outside`: fires only when the event target is
+  outside the element (click-outside-to-close).
 
 # Examples
 ```jldoctest
@@ -373,12 +325,8 @@ end
     on_interval(action; ms=5000) -> Attribute
 
 Run `action` (a [`DSAction`](@ref) or raw JS expression) on a recurring
-interval. Renders as `data-on-interval__duration.Nms="…"`. The default
-5-second cadence matches the dashboard-stats polling pattern in this
-codebase.
-
-`data-on-interval` is a Datastar plugin distinct from `data-on:event` —
-it doesn't take an event name, only a duration modifier.
+interval. Renders as `data-on-interval__duration.Nms="…"`.
+`data-on-interval` takes no event name, only a duration.
 
 # Examples
 ```julia
@@ -391,12 +339,11 @@ on_interval(action::Union{DSAction, AbstractString}; ms::Int=5000) =
     Attribute(Symbol("data-on-interval__duration.", ms, "ms"), action)
 
 """
-    on_click(action; debounce=nothing)
-    on_submit(action; debounce=nothing)
+    on_click(action; kwargs...)
+    on_submit(action; kwargs...)
 
-Single-event shorthands for [`on(:click, action)`](@ref on) /
-[`on(:submit, action)`](@ref on). Read better than `on(:click, …)` in
-component bodies that bind exactly one event.
+Shorthands for [`on(:click, action; kwargs...)`](@ref on) /
+[`on(:submit, action; kwargs...)`](@ref on); same keywords.
 
 # Examples
 ```julia
@@ -411,9 +358,8 @@ on_submit(action::Union{DSAction, AbstractString}; kwargs...) = on(:submit, acti
 """
     on_change_debounced(action; ms=300) -> Attribute
 
-Shorthand for `on(:change, action; debounce=ms)`. The default 300ms is
-the cadence used across this codebase for form-driven live updates —
-short enough to feel instant, long enough to ignore mid-word typing.
+Shorthand for `on(:change, action; debounce=ms)`. 300 ms ignores
+mid-word typing and still feels instant.
 
 # Examples
 ```julia
@@ -425,29 +371,19 @@ on_change_debounced(action::Union{DSAction, AbstractString}; ms::Int=300) =
     on(:change, action; debounce=ms)
 
 """
-    ds_indicator() -> Attribute
-
-Mark an element as a Datastar request indicator. The element becomes
-visible while a Datastar action initiated under it is in flight, and
-hides again on completion — Datastar adds/removes the visibility via
-the `data-indicator` attribute the renderer emits.
-
-# Examples
-```julia
-button("Save", on_click(ds_post("/api/save")),
-    span(class="spinner", ds_indicator(), "…"))
-```
-"""
-ds_indicator() = Attribute(Symbol("data-indicator"), true)
-
-"""
     ds_indicator(signal::AbstractString) -> Attribute
     ds_indicator(signal::Symbol) -> Attribute
 
-Mark an element as the indicator for a *named* in-flight signal. Datastar
-sets `signal` to true while requests under this scope are in flight, so
-sibling elements can `ds_show(:signal)` a spinner or grey out a panel
-without each having to track the request lifecycle themselves.
+Datastar sets the named signal to true while a request from this
+element is in flight, so any element can `ds_show` it as a spinner.
+Datastar rejects `data-indicator` without a signal, so there is no
+zero-argument form.
+
+# Examples
+```julia
+button("Save", on_click(ds_post("/api/save")), ds_indicator(:saving))
+span(class="spinner", ds_show(:saving), "…")
+```
 """
 ds_indicator(signal::AbstractString) =
     Attribute(Symbol("data-indicator"), String(signal))
@@ -456,9 +392,8 @@ ds_indicator(signal::Symbol) = ds_indicator(_signal_path(signal))
 """
     ds_ignore_morph() -> Attribute
 
-Tell Datastar's morph algorithm to leave this element's subtree alone
-across fragment swaps. Useful for inputs the user is currently typing in
-or focused elements you don't want re-rendered.
+Datastar's morph leaves this element's subtree alone across fragment swaps
+(inputs mid-edit, focused elements).
 
 # Examples
 ```julia
@@ -499,15 +434,11 @@ ds_signal(name::AbstractString, value) = Attribute(Symbol("data-signals:", name)
 """
     ds_signals(state) -> Attribute
 
-Initialize a whole Datastar signals object on this element. `state` is
-anything JSON-encodable — typically a `NamedTuple` or `Dict` of signal
-name → initial value. Renders as `data-signals='{...}'` after attribute
-escape (the JSON's `"` round-trip cleanly through `&quot;`).
-
-Use this in place of [`ds_signal`](@ref) when one element seeds several
-signals at once (e.g. a card with `showDetails` + `confirmDialogOpen` +
-…); the JSON encoding catches the kinds of typos that hand-written
-`{"x": false, "y": false}` strings drop into client-side silence.
+Initialize several signals on this element. `state` is anything
+JSON-encodable, typically a `NamedTuple` or `Dict` of name → initial value.
+Renders as `data-signals="{…}"`, JSON `"` escaped to `&quot;`. Use over
+[`ds_signal`](@ref) when one element seeds several signals: the encoder
+can't produce the malformed JSON a hand-written string can.
 
 # Examples
 ```jldoctest
@@ -543,8 +474,8 @@ ds_show(signal::Symbol) = ds_show(_signal_ref(signal))
     ds_text(signal::Symbol) -> Attribute
 
 Set this element's text content from the JS expression `expr`. Renders
-as `data-text="expr"`. Use this instead of templating a value into a
-string when the value is a Datastar signal that may change client-side.
+as `data-text="expr"`; Datastar re-evaluates it when the signals `expr`
+reads change.
 
 # Examples
 ```julia
@@ -558,11 +489,9 @@ ds_text(signal::Symbol) = ds_text(_signal_ref(signal))
     ds_json_signals() -> Attribute
     ds_json_signals(filter::AbstractString) -> Attribute
 
-Set this element's text content to a live, JSON-stringified view of the
-Datastar signal store — the standard in-page signal debugger. Drop a
-`pre(ds_json_signals())` onto a page during development and it tracks the
-store reactively as signals change. Renders as the bare `data-json-signals`
-attribute (no value).
+Set this element's text content to the live JSON of all signals — an
+in-page debugger (`pre(ds_json_signals())`). Renders as the bare
+`data-json-signals` attribute.
 
 Pass `filter` — a Datastar filter-object JS expression such as
 `"{include: /user/}"` or `"{exclude: /temp\$/}"` — to scope the output to
@@ -588,9 +517,8 @@ ds_json_signals(filter::AbstractString) =
 """
     ds_ref(name::AbstractString) -> Attribute
 
-Mark this element with a Datastar ref so other Datastar expressions can
-reach it as `\$<name>` (e.g. `\$btnNext.click()`). Renders as
-`data-ref="name"`.
+Expose this element to Datastar expressions as `\$<name>`
+(`\$btnNext.click()`). Renders as `data-ref="name"`.
 
 # Examples
 ```julia
@@ -604,10 +532,9 @@ ds_ref(name::AbstractString) = Attribute(Symbol("data-ref"), String(name))
     ds_attr(name::AbstractString, expr::AbstractString) -> Attribute
     ds_attr(name::AbstractString, signal::Symbol) -> Attribute
 
-Reactively bind a DOM attribute to a Datastar expression: as `expr`
-changes (because a signal it reads changes), the attribute updates.
-Renders as `data-attr:NAME="expr"`. Truthy → attribute set; falsy →
-attribute removed.
+Bind a DOM attribute to a Datastar expression; it updates as the signals
+`expr` reads change. Renders as `data-attr:NAME="expr"`. Truthy → set;
+falsy → removed.
 
 # Examples
 ```julia
@@ -626,11 +553,9 @@ ds_attr(name::AbstractString, signal::Symbol) = ds_attr(name, _signal_ref(signal
     ds_class(name::AbstractString, expr::AbstractString) -> Attribute
     ds_class(name::AbstractString, signal::Symbol) -> Attribute
 
-Toggle a CSS class reactively. Renders as `data-class:NAME="expr"` — when
-`expr` evaluates truthy Datastar adds the class, when falsy it removes
-it. Pair-style sibling of [`ds_attr`](@ref); use `ds_class` when the
-target is a class on `class=`, `ds_attr` when the target is any other
-attribute.
+Toggle a CSS class: added while `expr` is truthy, removed while falsy.
+Renders as `data-class:NAME="expr"`. For other attributes use
+[`ds_attr`](@ref).
 
 # Examples
 ```julia
@@ -646,14 +571,10 @@ ds_class(name::AbstractString, signal::Symbol) = ds_class(name, _signal_ref(sign
     ds_computed(name::AbstractString, expr::AbstractString) -> Attribute
     ds_computed(name::AbstractString, signal::Symbol) -> Attribute
 
-Declare a read-only derived signal computed from a Datastar expression.
-The computed signal `name` re-evaluates whenever any signal `expr` reads
-changes. Renders as `data-computed:NAME="expr"`. Reach it elsewhere as
-`\$NAME` (totals, validation flags, formatted strings). Use this instead
-of recomputing the same expression at every read site.
-
-Datastar camel-cases hyphenated signal names, so `ds_computed("full-name", …)`
-is read as `\$fullName`; prefer camelCase names to avoid surprise.
+Declare a read-only signal `name` derived from `expr`; it re-evaluates when
+any signal `expr` reads changes. Renders as `data-computed:NAME="expr"`;
+read it as `\$NAME`. Datastar camel-cases hyphens: `"full-name"` is read
+as `\$fullName`.
 
 # Examples
 ```julia
@@ -670,13 +591,9 @@ ds_computed(name::AbstractString, signal::Symbol) = ds_computed(name, _signal_re
     ds_style(name::AbstractString, expr::AbstractString) -> Attribute
     ds_style(name::AbstractString, signal::Symbol) -> Attribute
 
-Set an inline CSS style property reactively. Renders as
-`data-style:NAME="expr"` — Datastar evaluates `expr` and writes the result
-to `element.style.NAME`, keeping it in sync as the signals it reads change.
-The reactive-binding sibling of [`ds_class`](@ref) (toggle a class) and
-[`ds_attr`](@ref) (bind any attribute); reach for `ds_style` when the value
-is a dynamic dimension/color/transform that isn't expressible as a static
-class.
+Bind an inline style property: Datastar writes `expr`'s value to
+`element.style.NAME` as the signals it reads change. Renders as
+`data-style:NAME="expr"`. See also [`ds_class`](@ref), [`ds_attr`](@ref).
 
 # Examples
 ```julia
@@ -694,10 +611,9 @@ ds_style(name::AbstractString, signal::Symbol) = ds_style(name, _signal_ref(sign
 """
     ds_effect(expr::AbstractString) -> Attribute
 
-Run a Datastar JS effect: a side-effecting expression that re-evaluates
-whenever the signals it reads change. Useful for "imperative bridge"
-moments where you have to call a DOM method from signal state (e.g.
-`\$dialog.showModal()`). Renders as `data-effect="expr"`.
+Run a side-effecting JS expression whenever the signals it reads change,
+e.g. to call a DOM method from signal state. Renders as
+`data-effect="expr"`.
 
 # Examples
 ```julia
@@ -728,30 +644,21 @@ div(ds_signals((width=0,)), ds_init("\$width = window.innerWidth"))
 ds_init(action::Union{DSAction, AbstractString}) =
     Attribute(Symbol("data-init"), action)
 
-# Read the request body across HTTP major versions. HTTP 1.x: `req.body` is a
-# `Vector{UInt8}`. HTTP 2.x wraps it in an `HTTP.BytesBody` (and removed
-# `HTTP.payload`); its `.data` field is the underlying `Vector{UInt8}`. We reach
-# the bytes directly and hand them to the `Vector{UInt8}` method below — a
-# `String(::HTTP.BytesBody)` instead is O(n)-alloc (it iterates byte by byte),
-# which would make signal decoding scale badly with body size. A bodyless 2.x
-# request carries an `HTTP.EmptyBody`, which has no `.data`.
+# HTTP 1.x: `req.body` is bytes. HTTP 2.x: `BytesBody` (bytes in `.data`;
+# `String(::BytesBody)` iterates byte by byte) or `EmptyBody` (no `.data`).
 _request_body_bytes(b::AbstractVector{UInt8}) = b
 _request_body_bytes(b) = hasproperty(b, :data) ? b.data : UInt8[]
 
 """
     parse_signals(req_or_body) -> Dict{String, Any}
 
-Decode the Datastar signals payload from a request body. Datastar's
-default action mode (`@post('/x')` without `contentType: 'form'`) sends
-the active signals object as a JSON body. Pass either an
-`HTTP.Request`, a `Vector{UInt8}`, or an `AbstractString` — the helper
-normalizes the input and returns the parsed object as a
-`Dict{String, Any}`. Empty bodies map to an empty dict so a route can
-guard cleanly.
+Decode the JSON signals body that Datastar's default action mode sends
+(`@post('/x')` without `contentType: 'form'`). Accepts an `HTTP.Request`,
+bytes, an `IO` or an `AbstractString`. An empty body → empty `Dict`;
+invalid JSON or a non-object → `ArgumentError`.
 
-For form-encoded posts (`@post('/x', {contentType: 'form'})`), use the
-service's `parse_form_body` instead — Datastar treats form-mode and
-JSON-mode as distinct wire formats, and so does this lib.
+Form-encoded posts (`contentType: 'form'`) are a different wire format:
+use your HTTP framework's form parser.
 
 # Examples
 ```julia
@@ -771,10 +678,7 @@ function parse_signals(body::AbstractString)
     parsed = try
         JSON.parse(String(body))
     catch err
-        # JSON.jl raises ArgumentError with a position-tagged message;
-        # re-throw with the call site's name so a panicked handler log
-        # makes the source of the failure obvious. Truncate the body
-        # snippet so a giant malformed payload doesn't flood logs.
+        # Truncated: a huge malformed body would flood logs.
         snippet = SubString(body, 1, min(lastindex(body), 80))
         throw(ArgumentError("parse_signals: invalid JSON body (first 80 chars: $(repr(snippet))) — $(err)"))
     end

@@ -3,6 +3,20 @@
 All notable changes to this project are documented here. Format roughly
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.5.0 — 2026-10-08
+
+### Removed
+- `ds_indicator()` without a signal: Datastar 1.0.4 throws
+  `KeyOrValueRequired` on a bare `data-indicator`. Use
+  `ds_indicator(:saving)` and `ds_show(:saving)`.
+
+### Fixed
+- `map_view` (MapLibre extension): a `</script>` or `<!--<script` in
+  `id_prefix`, `style` or another string argument no longer ends the
+  inline `<script>` early or keeps it from ending.
+- String values in `DSAction` URLs and extras, `ds"…"` string splices and
+  `redirect_via_fragment` locations escape `<!--` as `<\!--`.
+
 ## 0.4.1 — 2026-10-07
 
 ### Added
@@ -117,6 +131,22 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   matches just before a trailing `\n`, so a preset name like `"foo\n"` slipped
   past the CSS-identifier check and landed a raw newline in the
   `querySelector` selector (silently breaking the handler in the browser).
+- **MapLibre `click_post` / `bbox_post` payloads now actually reach the
+  server.** The click and shift-drag-bbox handlers set `$_payload` before
+  `@post`ing it, but Datastar's default request filter excludes any
+  signal matching `/(^|\.)_/` from request bodies (underscore signals are
+  client-local), so the payload was set locally but never sent — the
+  handler saw no payload and silently fell back. The payload signal is
+  now a plain `$payload`, so both posts carry their `{lat, lon,
+  properties}` / `{w, s, e, n}` data.
+- **MapLibre shift-drag box-select no longer pans the map or collapses to
+  a zero-area bbox.** Disabling MapLibre's built-in `boxZoom` (to stop it
+  double-firing) also removed the `dragPan` suppression `boxZoom`
+  performs during a shift-drag, so the gesture panned the map and
+  start/end unprojected to the same coordinate. The handler now disables
+  `dragPan` itself on shift-mousedown and re-enables it on mouseup
+  (before any early return), and draws a live selection rectangle to
+  restore the visual feedback `boxZoom` used to provide.
 
 ### Changed
 - **An `Attribute` that reaches `render` as a child now raises an actionable
@@ -179,25 +209,6 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   completeness fixes; and CONTRIBUTING + the `.github` templates now cover the
   doctest build and Pluto smoke job. README/docs examples were verified to run
   against the current API.
-### Fixed
-- **MapLibre `click_post` / `bbox_post` payloads now actually reach the
-  server.** The click and shift-drag-bbox handlers set `$_payload` before
-  `@post`ing it, but Datastar's default request filter excludes any
-  signal matching `/(^|\.)_/` from request bodies (underscore signals are
-  client-local), so the payload was set locally but never sent — the
-  handler saw no payload and silently fell back. The payload signal is
-  now a plain `$payload`, so both posts carry their `{lat, lon,
-  properties}` / `{w, s, e, n}` data.
-- **MapLibre shift-drag box-select no longer pans the map or collapses to
-  a zero-area bbox.** Disabling MapLibre's built-in `boxZoom` (to stop it
-  double-firing) also removed the `dragPan` suppression `boxZoom`
-  performs during a shift-drag, so the gesture panned the map and
-  start/end unprojected to the same coordinate. The handler now disables
-  `dragPan` itself on shift-mousedown and re-enables it on mouseup
-  (before any early return), and draws a live selection rectangle to
-  restore the visual feedback `boxZoom` used to provide.
-
-### Docs
 - The MapLibre example notebook (`docs/src/notebooks/example.jl`) stacks
   the map over a full-width time-series chart (single column), makes the
   date sliders recolor the map *and* shade the selected year window on

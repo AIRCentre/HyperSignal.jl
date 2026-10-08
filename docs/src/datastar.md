@@ -1,14 +1,13 @@
 # Datastar
 
 HyperSignal targets the [Datastar](https://data-star.dev) protocol
-pinned by [`DATASTAR_SUPPORTED_VERSION`](@ref) (`v"1.0.4"`). A Datastar
+pinned by [`DATASTAR_SUPPORTED_VERSION`](@ref). A Datastar
 app has two halves: attributes and actions you put *into* the page to
 wire up reactivity, and the response shapes a handler sends *back*. This
 page covers both — actions/signals first, then the HTML / JSON / JS /
 SSE responses.
 
-The client reads one of four response `Content-Type`s coming back from a
-handler:
+The client acts on the response `Content-Type`:
 
 | Content-Type | HyperSignal helper | Purpose |
 | --- | --- | --- |
@@ -17,16 +16,11 @@ handler:
 | `text/javascript; charset=utf-8` | [`script_response`](@ref) | Append a `<script>` tag and run it |
 | `text/event-stream` | [`sse_response`](@ref) / [`sse_stream`](@ref) | Buffered or streaming SSE |
 
-The response section documents all four shapes: the non-streaming HTML /
-JSON / JS responses first, then the buffered and streaming SSE forms.
-
-Every response helper on this page sets its `Content-Type` (and
-`sse_response`/`sse_stream` also set `Cache-Control: no-cache` and
-`Connection: keep-alive`) as a *default*. If you pass a header in
-`headers=…` whose name matches one of these (case-insensitively), your
-value wins and the library default is dropped — you always get exactly
-one `Content-Type` / `Cache-Control` / `Connection` line on the wire,
-never a duplicate.
+Every body-bearing response helper on this page sets `Content-Type` as a
+*default* (`sse_response` / `sse_stream` also set `Cache-Control: no-cache`
+and `Connection: keep-alive`). A header in `headers=…` whose name matches
+(case-insensitively) replaces the default, so the wire carries one
+`Content-Type` / `Cache-Control` / `Connection` line, never a duplicate.
 
 ## Actions and events
 
@@ -103,15 +97,15 @@ The reactive attribute helpers (all return an [`Attribute`](@ref)):
 | [`ds_effect(expr)`](@ref ds_effect) | `data-effect` | Run a side-effecting expression on signal change |
 | [`ds_init(action_or_expr)`](@ref ds_init) | `data-init` | Run an action/expression on element insert |
 | [`ds_ref(name)`](@ref ds_ref) | `data-ref` | Name an element so `\$name` reaches it |
-| [`ds_indicator()` / `ds_indicator(signal)`](@ref ds_indicator) | `data-indicator` | Mark an in-flight request indicator |
+| [`ds_indicator(signal)`](@ref ds_indicator) | `data-indicator` | Mark an in-flight request indicator |
 | [`ds_ignore_morph()`](@ref ds_ignore_morph) | `data-ignore-morph` | Leave a subtree untouched across morphs |
-| [`ds_json_signals()` / `ds_json_signals(filter)`](@ref ds_json_signals) | `data-json-signals` | In-page signal-store debugger |
+| [`ds_json_signals()` / `ds_json_signals(filter)`](@ref ds_json_signals) | `data-json-signals` | In-page signals debugger |
 
 ```julia
 julia> render(div(class="bar", ds_style("width", ds"$pct + '%'")))
 "<div class=\"bar\" data-style:width=\"\$pct + &#39;%&#39;\"></div>"
 
-julia> render(pre(ds_json_signals()))   # drop on a page to watch the store live
+julia> render(pre(ds_json_signals()))   # drop on a page to watch signals live
 "<pre data-json-signals></pre>"
 ```
 
@@ -177,8 +171,8 @@ end
 ```
 
 For form-mode posts (`ds_post("/x"; form=true)`), Datastar sends
-URL-encoded fields, not JSON — use your service's `parse_form_body` for
-those.
+URL-encoded fields, not JSON — use your HTTP framework's form parser
+for those.
 
 ## `html_response` — full page
 
@@ -207,7 +201,7 @@ fragment_response(body; selector=nothing, mode=nothing,
 Sends `text/html` with the Datastar fragment-control headers. Use it
 for any handler that swaps a fragment of an existing page (the common
 case for `@get`/`@post` actions). The positional
-`fragment_response(body, "#sel")` form is preserved.
+`fragment_response(body, "#sel")` form also works.
 
 ### `mode` — swap mode
 
@@ -260,7 +254,7 @@ so a Datastar `@post` form can navigate after success (e.g. login →
 dashboard). The helper *renders the morph target itself* with `id` set
 to the selector, so `selector` **must** be a single `"#id"` — a class,
 compound, or whitespace selector throws `ArgumentError`. Single quotes,
-backslashes, and `</` in `location` are escaped.
+backslashes, `</` and `<!--` in `location` are escaped.
 
 Pass `cookies` as a vector of complete `Set-Cookie` header values to set
 the session cookie *and* navigate in one response (the post-login flow).
@@ -345,8 +339,8 @@ When one HTTP response needs to ship more than one Datastar event —
 typically an HTML patch *and* a signal patch in the same round trip —
 emit a `text/event-stream` body via `sse_response`. This helper is
 **buffered**: it builds the whole body in memory and sends it as one
-response. Long-lived streaming (progress bars, server push) is a
-separate concern handled by a different helper.
+response. For long-lived streaming (progress bars, server push) use
+[`sse_stream`](@ref).
 
 ```julia
 sse_response([

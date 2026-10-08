@@ -1,14 +1,6 @@
-# Streaming renderer. render(io, x) is the only public dispatch — every
-# child type lands here. Auto-escapes text, leaves Raw untouched, walks
-# Element/Frag recursively, and emits a JS string for DSAction values that
-# end up as attribute values via `on(...)`.
-
-# Hot path. Branching on the five HTML metacharacters is meaningfully
-# faster than a `Dict` lookup per character — and for plain `String`
-# input we walk codeunits, write runs of safe bytes with a single
-# `unsafe_write`, and only fall into the escape branches at the rare
-# metacharacters. Continuation bytes of multi-byte UTF-8 are >=0x80 and
-# skip the branches entirely.
+# Hot path: branching on the five metacharacters beats a Dict lookup; String
+# input writes safe runs with one `unsafe_write`. UTF-8 continuation bytes
+# (>= 0x80) skip every branch.
 @inline function escape_html(io::IO, c::Char)
     if c === '&'
         print(io, "&amp;")
@@ -26,16 +18,10 @@
     nothing
 end
 
-# Split by concrete type so the dynamic dispatch from the Vector{Any}
-# children loop lands directly on the right implementation — no per-child
-# runtime `isa` ladder on the hot path. (precompile hints in HyperSignal.jl
-# already cover String and SubString{String}.)
+# One method per concrete type: dispatch from the Vector{Any} children loop
+# lands on the fast path with no per-child `isa` ladder.
 escape_html(io::IO, s::String) = _escape_html_string(io, s)
-# SubString of a String can use the same codeunit fast path by walking the
-# parent buffer between the view's bounds.
 escape_html(io::IO, s::SubString{String}) = _escape_html_substring(io, s)
-# Generic fallback for other AbstractString types (a SubString of a
-# non-String, or a custom string type): walk chars one at a time.
 function escape_html(io::IO, s::AbstractString)
     for c in s
         escape_html(io, c)
@@ -50,13 +36,9 @@ end
 
 function _escape_html_substring(io::IO, s::SubString{String})
     data = codeunits(s.string)
-    offset = s.offset                  # 0-based byte offset into parent
-    n = sizeof(s)                      # SubString length in bytes
-    _escape_html_codeunits(io, data, offset + 1, offset + n)
+    _escape_html_codeunits(io, data, s.offset + 1, s.offset + sizeof(s))
 end
 
-# Walk codeunits in [first_idx, last_idx], writing safe runs via one
-# `unsafe_write` and emitting the entity for each metacharacter.
 @inline function _escape_html_codeunits(io::IO, data,
                                         first_idx::Int, last_idx::Int)
     i = first_idx
@@ -91,12 +73,8 @@ end
 """
     render(x) -> String
 
-Render `x` (any renderable: [`Element`](@ref), [`Frag`](@ref),
-[`Raw`](@ref), strings, numbers, vectors, `nothing`/`missing`) into a
-String. Sibling of the streaming [`render(io, x)`](@ref) — same dispatch,
-just returns the bytes instead of writing them. Use this when you need a
-String for an HTTP body or a test assertion; reach for `render(io, x)`
-when you already hold an `IO`.
+Render `x` to a String. Same dispatch as [`render(io, x)`](@ref render),
+which streams to an `IO` you already hold.
 
 # Examples
 ```jldoctest
@@ -114,22 +92,26 @@ julia> render(nothing)
 """
 render(x) = (io = IOBuffer(); render(io, x); String(take!(io)))
 
+# Bool/nothing/missing render nothing (`cond && extra` idiom), so they are
+# not content in a void element.
+_is_content_child(c) = !(c isa Bool || c === nothing || c === missing)
+
 """
     render(io::IO, x)
 
-Stream the HTML for `x` to `io`. The single dispatch surface for the
-library — every renderable type lands here. Standard methods cover:
+Stream the HTML for `x` to `io`. Every renderable type dispatches here:
 
-- [`Element`](@ref): writes `<tag …attrs…>children</tag>` (or `<tag …>`
-  for void elements like `br`, `input`, `meta`).
-- [`Frag`](@ref): walks children with no wrapper tag.
-- [`Raw`](@ref): writes the wrapped string verbatim.
-- `AbstractString`: writes auto-escaped (`&`, `<`, `>`, `"`, `'`).
-- `Number`: writes as-is.
-- `nothing` / `missing` / `Bool`: writes nothing — so
-  `cond && extra` (which evaluates to bare `false` when `cond` is
-  false) drops out of the children list cleanly.
-- `AbstractVector`: walks elements in order.
+- [`Element`](@ref): `<tag …attrs…>children</tag>`; void elements (`br`,
+  `input`, …) write `<tag …>` and throw `ArgumentError` on content children.
+- [`Frag`](@ref): children, no wrapper tag.
+- [`Raw`](@ref): verbatim.
+- `AbstractString`, `Char`, `Symbol`: escaped (`&`, `<`, `>`, `"`, `'`).
+- `Number`: as-is.
+- `nothing` / `missing` / `Bool`: nothing, so `cond && extra` drops out.
+- `AbstractVector`, `Base.Generator`: each element in order.
+- `AbstractVector{UInt8}`: verbatim bytes (pre-rendered HTML).
+- [`Attribute`](@ref): throws `ArgumentError`; splat collections holding
+  attributes so each is a top-level argument.
 
 To make a custom type renderable, add a method:
 
@@ -146,29 +128,11 @@ render(io, h1("Hello, world"))
 String(take!(io))   # "<h1>Hello, world</h1>"
 ```
 """
-# A child "produces content" unless it's one of the no-output skip types
-# (`Bool`/`Nothing`/`Missing`) that `render` deliberately emits nothing for
-# — the residue of the `cond && extra` conditional idiom. Used to decide
-# whether a void element was handed real content (a mistake) vs. a harmless
-# skip value.
-_is_content_child(c) = !(c isa Bool || c === nothing || c === missing)
-
 function render(io::IO, e::Element)
     _check_tag_name(e.tag)
-    # A void element (br, img, input, …) has no content model: a closing
-    # tag is invalid HTML5, and a browser reparents any "children" as
-    # SIBLING nodes — so `<input>x</input>` round-trips to `<input>` plus a
-    # stray text node, diverging the server HTML from the client DOM and
-    # breaking Datastar's idempotent morph. Real content is always a caller
-    # mistake; fail loud (before writing any bytes) rather than emit
-    # silently-broken markup.
-    #
-    # But no-output children must pass: `Bool`/`nothing`/`missing` all
-    # render to nothing (see the methods below), and the documented
-    # conditional idiom `tag(cond && extra)` collapses to bare `false` (a
-    # Bool, NOT `nothing`) when `cond` is false. So `br(cond && extra)` must
-    # still render `<br>`, not throw — only a child that would emit bytes
-    # counts as content here.
+    # Browsers reparent void-element children as siblings, so server HTML
+    # and client DOM diverge and Datastar's morph breaks. Throw before
+    # writing bytes.
     void = is_void(e.tag)
     if void && any(_is_content_child, e.children)
         throw(ArgumentError(
@@ -179,11 +143,8 @@ function render(io::IO, e::Element)
     for (k, v) in e.attrs
         _render_attr(io, k, v)
     end
-    if void
-        print(io, ">")
-        return nothing
-    end
     print(io, ">")
+    void && return nothing
     for c in e.children
         render(io, c)
     end
@@ -191,20 +152,40 @@ function render(io::IO, e::Element)
     nothing
 end
 
-render(io::IO, f::Frag) = (for c in f.children; render(io, c); end; nothing)
+render(io::IO, f::Frag) = render(io, f.children)
 render(io::IO, r::Raw) = (print(io, r.html); nothing)
+render(io::IO, s::AbstractString) = escape_html(io, s)
+render(io::IO, c::Char) = escape_html(io, c)
+render(io::IO, n::Number) = print(io, n)
+# Bool <: Number would print "false" for `cond && extra`.
+render(io::IO, ::Bool) = nothing
+render(io::IO, ::Nothing) = nothing
+render(io::IO, ::Missing) = nothing
+# Attributes nested in a collection arg become children; name the fix
+# instead of an opaque MethodError.
+render(io::IO, ::Attribute) = throw(ArgumentError(
+    "HyperSignal: an Attribute (from on(...)/ds_*(...)) reached render as a child. " *
+    "Attributes are only lifted into attrs when passed as a top-level positional arg, " *
+    "not when nested inside a Vector/Tuple/Generator. " *
+    "Splat the collection — tag(attrs..., children...) — so each Attribute is top-level."))
+render(io::IO, sym::Symbol) = escape_html(io, String(sym))
+# A Generator reaches render when nested inside a Vector: the
+# construction-time unpack only handles top-level positional args.
+function render(io::IO, xs::Union{AbstractVector, Base.Generator})
+    for x in xs
+        render(io, x)
+    end
+    nothing
+end
 
-# Notebook / REPL display hooks. Pluto, IJulia, and VS Code's plot pane
-# all pick up `text/html`, so this is the single line that turns an
-# Element value into an interactive preview without the caller writing
-# `render(...)` in every cell.
+# Bytes = pre-rendered HTML; the generic vector path would print each byte
+# as a number.
+render(io::IO, v::AbstractVector{UInt8}) = (write(io, v); nothing)
+
 Base.show(io::IO, ::MIME"text/html", e::Element) = render(io, e)
 Base.show(io::IO, ::MIME"text/html", f::Frag)    = render(io, f)
 Base.show(io::IO, ::MIME"text/html", r::Raw)     = render(io, r)
 
-# Plain-text REPL display: render the HTML but tag it as such so a user
-# typing `div("hi")` at the prompt sees the markup instead of the struct
-# dump. Element trees are data, but the markup is what people read.
 function Base.show(io::IO, ::MIME"text/plain", e::Element)
     print(io, "HyperSignal.Element: ")
     render(io, e)
@@ -218,125 +199,43 @@ function Base.show(io::IO, ::MIME"text/plain", r::Raw)
     print(io, r.html)
 end
 
-# 1-arg `show` is what `string(el)`, `print(io, el)`, and `"$(el)"`
-# interpolation all dispatch to. Without this method, those paths fall
-# back to a struct dump. Making `string(::Element)` mean the rendered
-# HTML matches what every other side of the API already returns and
-# makes a vector of elements print as readable markup instead of
-# Element(:div, ..., ...).
+# `string(el)` and `"$(el)"` go through 1-arg show: give markup, not a
+# struct dump.
 Base.show(io::IO, e::Element) = render(io, e)
 Base.show(io::IO, f::Frag)    = render(io, f)
 Base.show(io::IO, r::Raw)     = render(io, r)
-render(io::IO, s::AbstractString) = escape_html(io, s)
-render(io::IO, c::Char) = escape_html(io, c)
-render(io::IO, n::Number) = print(io, n)
-# Bool children render as nothing — symmetric with the attr-vector
-# fix and matches the natural Julia idiom `div(header, cond && extra,
-# footer)`, where `cond && extra` evaluates to bare `false` when cond
-# is false. Without this method Bool routed through the Number dispatch
-# and emitted the literal text "false" / "true" — never what the user
-# wants in a conditional-render context. Pass `string(b)` if you
-# genuinely want to print the word.
-render(io::IO, ::Bool) = nothing
-render(io::IO, ::Nothing) = nothing
-render(io::IO, ::Missing) = nothing
-# An Attribute reached render as a child. _make_element only lifts an
-# Attribute into attrs when it's a TOP-LEVEL positional arg; an Attribute
-# nested inside a Vector/Tuple/Generator positional arg is appended as a
-# child instead, then has no renderable representation here. Without this
-# method the failure is an opaque `MethodError: render(::IO, ::Attribute)`
-# from deep in the renderer; name the real fix (splat the collection) so
-# the diagnostic points at the call site. Valid code never reaches here.
-render(io::IO, ::Attribute) = throw(ArgumentError(
-    "HyperSignal: an Attribute (from on(...)/ds_*(...)) reached render as a child. " *
-    "Attributes are only lifted into attrs when passed as a top-level positional arg, " *
-    "not when nested inside a Vector/Tuple/Generator. " *
-    "Splat the collection — tag(attrs..., children...) — so each Attribute is top-level."))
-# Symbol children render as their text. The common case is a status
-# enum (`span(:Pending)`) where the caller pulled the value straight
-# from a model field without wanting to `string()` first. The escape
-# walks the Symbol's bytes the same as a String.
-render(io::IO, sym::Symbol) = escape_html(io, String(sym))
-function render(io::IO, xs::AbstractVector)
-    for x in xs
-        render(io, x)
-    end
-    nothing
-end
 
-# A Generator can reach render time when nested inside a Vector or
-# another container that doesn't get expanded at element construction
-# (the construction-time generator-unpack only handles top-level
-# positional args). Iterating here is a single pass — the same single
-# pass `for c in e.children; render(io, c)` would do.
-function render(io::IO, xs::Base.Generator)
-    for x in xs
-        render(io, x)
-    end
-    nothing
-end
-
-# A byte buffer is almost always a pre-rendered HTML response cached
-# upstream — write it verbatim instead of falling through the generic
-# AbstractVector path, which would emit each byte as a decimal Number.
-# If a caller really wants the per-byte interpretation, they can wrap
-# the bytes in `Any[b for b in v]` to opt back in.
-render(io::IO, v::AbstractVector{UInt8}) = (write(io, v); nothing)
-
-# Tag names are written verbatim into the open/close tags. A hostile
-# Symbol("…") passed to the bare Element(...) constructor (the one
-# documented for runtime-chosen tag names) could otherwise emit raw
-# HTML. Tag-name grammar is stricter than attribute names — only
-# letters, digits, and a few markers — but we only reject the
-# parser-breaking subset for parity and to keep the rule learnable.
-
-# Single source of truth for the parser-breaking byte set shared by both
-# the tag-name and attribute-name validators below: whitespace (space, tab,
-# LF, FF, CR), the two quote chars, '<', '>', '/', '=', and NUL. Tag and
-# attribute grammars differ in what they *allow*, but reject the same
-# parser-breaking subset, so keep that subset in one place to prevent drift.
-# `@inline` keeps the codeunit walk branch-fast at each call site.
+# Tag and attr names are written verbatim, so a hostile Symbol would emit raw
+# HTML. Both reject the same parser-breaking bytes: whitespace, quotes,
+# `<`, `>`, `/`, `=`, NUL. Tag grammar is stricter, but one shared subset
+# keeps the rule learnable.
 @inline _is_invalid_name_byte(b::UInt8) =
     b == 0x20 || b == 0x09 || b == 0x0a || b == 0x0c || b == 0x0d ||
     b == 0x22 || b == 0x27 || b == 0x3e || b == 0x3c ||
     b == 0x2f || b == 0x3d || b == 0x00
 
-# Lock-guarded validator cache. The valid-name vocabulary is small and
-# bounded, so caching by interned-Symbol identity skips the codeunit walk
-# after the first check. `render` runs on many threads at once under a
-# multithreaded HTTP server, and the cache is shared mutable state, so every
-# access is guarded by a lock: a bare concurrent `push!` would let one task's
-# `rehash!` swap the Set's backing arrays non-atomically while another task's
-# `in` indexes them — corrupting the cache or segfaulting the process. The
-# lock is uncontended after warm-up: the cache only grows during the first
-# traffic burst, then every call is a read hit. (We guard with a
-# `ReentrantLock` rather than an `@atomic` Set field — the latter segfaults on
-# the julia 1.10 compat floor. The name is validated OUTSIDE the lock so a
-# rejected name throws without holding it.)
+# Name cache: valid names form a small vocabulary and Symbols are interned,
+# so a Set hit skips the codeunit walk. `render` runs on many threads; an
+# unguarded `push!` can rehash under a concurrent `in` and segfault.
+# ReentrantLock, not an @atomic Set field: the latter segfaults on 1.10.
+# Validation runs outside the lock so a rejected name throws without it.
 struct _NameCache
     names::Set{Symbol}
     lk::ReentrantLock
 end
 
 const _VALID_TAG_NAMES = _NameCache(Set{Symbol}(), ReentrantLock())
+const _VALID_ATTR_NAMES = _NameCache(Set{Symbol}(), ReentrantLock())
 
-@inline function _check_tag_name(t::Symbol)
-    lk = _VALID_TAG_NAMES.lk
-    lock(lk)
-    try
-        t in _VALID_TAG_NAMES.names && return nothing
-    finally
-        unlock(lk)
-    end
-    _check_tag_name_uncached(t)
-    lock(lk)
-    try
-        push!(_VALID_TAG_NAMES.names, t)
-    finally
-        unlock(lk)
-    end
+@inline function _cached_check(c::_NameCache, k::Symbol, check::F) where {F}
+    (@lock c.lk k in c.names) && return nothing
+    check(k)
+    @lock c.lk push!(c.names, k)
     nothing
 end
+
+_check_tag_name(t::Symbol) = _cached_check(_VALID_TAG_NAMES, t, _check_tag_name_uncached)
+_check_attr_name(k::Symbol) = _cached_check(_VALID_ATTR_NAMES, k, _check_attr_name_uncached)
 
 @noinline function _check_tag_name_uncached(t::Symbol)
     s = String(t)
@@ -348,41 +247,8 @@ end
     nothing
 end
 
-# HTML5's attribute-name grammar is permissive but bans the chars that
-# would break the parser: whitespace (incl. tab/LF/FF/CR/space), '"',
-# '\'', '<', '>', '/', '=', '\0'. We reject the parser-breaking subset
-# loudly — escaping wouldn't help (the spec doesn't define entity
-# decoding inside attribute names) and silent acceptance would mean a
-# hostile Symbol key like `Symbol("x onerror=...")` introduces a real
-# attribute. The lib's own Datastar helpers stay well within the
-# allowed set (`data-on:click__prevent` etc.) so this only fires on
-# adversarial input.
-#
-# Cache validated symbols: HTML attribute names form a small, bounded
-# vocabulary, and Symbols are interned, so identity-keyed Set lookup
-# is constant-time and skips the codeunit walk after the first check.
-# See `_NameCache` above for why the cache is guarded by a lock rather
-# than a bare concurrently-mutated Set.
-const _VALID_ATTR_NAMES = _NameCache(Set{Symbol}(), ReentrantLock())
-
-@inline function _check_attr_name(k::Symbol)
-    lk = _VALID_ATTR_NAMES.lk
-    lock(lk)
-    try
-        k in _VALID_ATTR_NAMES.names && return nothing
-    finally
-        unlock(lk)
-    end
-    _check_attr_name_uncached(k)
-    lock(lk)
-    try
-        push!(_VALID_ATTR_NAMES.names, k)
-    finally
-        unlock(lk)
-    end
-    nothing
-end
-
+# Rejected, not escaped: HTML defines no entity decoding inside attribute
+# names, so `Symbol("x onerror=...")` would otherwise add a real attribute.
 @noinline function _check_attr_name_uncached(k::Symbol)
     @inbounds for b in codeunits(String(k))
         _is_invalid_name_byte(b) &&
@@ -391,11 +257,6 @@ end
     nothing
 end
 
-# Attribute writer. Boolean true → bare attr. false / nothing / missing
-# → omit (symmetric with HyperSignal.render's nothing/missing handling
-# for children, so `value = optional_string()` can return `missing`
-# without changing the call site). DSAction → render its JS expression.
-# Everything else → quoted, escaped.
 function _render_attr(io::IO, k::Symbol, v)
     v === false && return nothing
     v === nothing && return nothing
@@ -405,19 +266,13 @@ function _render_attr(io::IO, k::Symbol, v)
     v === true && return nothing
     print(io, "=\"")
     if v isa DSAction
-        _action_js(io, v, escape_html)   # HTML-escape each chunk straight into io; no throwaway String
+        _action_js(io, v, escape_html)
     elseif v isa AbstractString
         escape_html(io, v)
     elseif v isa Number
         print(io, v)
     elseif v isa AbstractVector || v isa Tuple
-        # Vector/Tuple attribute values almost always mean "join these"
-        # — most commonly a class list (`class=["btn", "primary"]` or
-        # `class=("btn", "primary")`), but the same intuition holds for
-        # `aria-describedby` (multiple ids separated by space) and
-        # Datastar's space-separated lists. The alternative (dumping
-        # the container repr) emits hostile output like
-        # `class="[&quot;btn&quot;, &quot;primary&quot;]"`.
+        # Space-joined, not the repr.
         _render_attr_vector(io, v)
     else
         escape_html(io, string(v))
@@ -426,26 +281,14 @@ function _render_attr(io::IO, k::Symbol, v)
     nothing
 end
 
-# Join a Vector value with spaces, skipping nothing/missing/false/
-# empty entries so a conditional class list survives optional pieces.
-# `false` is dropped (not stringified) so the natural Julia idiom
-# `cond && "active"` works: when cond is false the entry evaluates
-# to `false`, and we want that to mean "skip", not "include the
-# literal text 'false'". `true` is dropped too for symmetry — a bare
-# `true` in a class list never means anything useful.
+# Skips nothing/missing/Bool/"" so `cond && "active"` drops out.
 function _render_attr_vector(io::IO, v)
     first = true
     for x in v
         (x === nothing || x === missing || x === false || x === true) && continue
-        if x isa AbstractString
-            isempty(x) && continue
-            first || print(io, ' ')
-            escape_html(io, x)
-            first = false
-        else
-            first || print(io, ' ')
-            escape_html(io, string(x))
-            first = false
-        end
+        x isa AbstractString && isempty(x) && continue
+        first || print(io, ' ')
+        escape_html(io, x isa AbstractString ? x : string(x))
+        first = false
     end
 end

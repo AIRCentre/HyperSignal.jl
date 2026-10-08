@@ -9,9 +9,9 @@ hand-typing `data-on:click="@post('/x', {…})"` or escaping HTML by hand.
 
 ```julia
 using HyperSignal
-HyperSignal.@using_tags                 # brings div / select / summary
+using HyperSignal.Helpers: radio_field
+HyperSignal.@using_tags                 # unexported tags: div, select, …
 
-# Build with tag constructors. Children go positional, attributes go kw.
 page = Frag(
     DOCTYPE,
     html(lang="en",
@@ -29,19 +29,18 @@ html_response(page)                   # full-page Response
 fragment_response(page, "#card")      # Datastar morph with selector header
 ```
 
-# What's exported
+# Exports
 
-- AST primitives: [`Element`](@ref), [`Raw`](@ref), [`Frag`](@ref),
+- AST: [`Element`](@ref), [`Raw`](@ref), [`Frag`](@ref),
   [`Attribute`](@ref), [`DOCTYPE`](@ref).
-- Tag constructors: every common HTML element (`div`, `h1`, `form`, …).
-  Names that overlap with Base (`div`, `select`, `summary`) are
-  brought into scope with the [`@using_tags`](@ref) macro.
+- Tag constructors: common HTML elements (`h1`, [`form`](@ref), …).
+  `div`, `select`, `summary`, `mark`, `time` are not exported; bring them in
+  with [`@using_tags`](@ref).
 - Datastar actions: [`ds_get`](@ref), [`ds_post`](@ref), [`ds_put`](@ref),
-  [`ds_delete`](@ref), bound via [`on`](@ref) /
-  [`on_click`](@ref) / [`on_submit`](@ref) /
-  [`on_change_debounced`](@ref) / [`on_interval`](@ref). `on(...)` accepts
-  raw JS expressions alongside `DSAction` and a `window=true` modifier
-  for global listeners.
+  [`ds_delete`](@ref), bound via [`on`](@ref) / [`on_click`](@ref) /
+  [`on_submit`](@ref) / [`on_change_debounced`](@ref) /
+  [`on_interval`](@ref). `on(...)` also takes raw JS expressions and
+  `window=true` for global listeners.
 - Datastar attributes: [`ds_indicator`](@ref), [`ds_ignore_morph`](@ref),
   [`ds_bind`](@ref), [`ds_signal`](@ref), [`ds_signals`](@ref),
   [`ds_show`](@ref), [`ds_text`](@ref), [`ds_json_signals`](@ref),
@@ -54,17 +53,26 @@ fragment_response(page, "#card")      # Datastar morph with selector header
 - Datastar expressions: [`@ds_str`](@ref) (`ds"\$count = \$(n)"`) writes
   `\$signal` without escaping and splices Julia values as escaped JS literals;
   it returns a [`DSExpr`](@ref).
-- Datastar signal decoding: [`parse_signals`](@ref) (read the JSON body
-  of a non-form Datastar action into a `Dict{String, Any}`).
-- Form helpers: [`cls`](@ref), [`radio_field`](@ref),
-  [`checkbox_field`](@ref), [`form_legend`](@ref), [`form_section`](@ref),
-  [`help_tooltip`](@ref), [`preset_button`](@ref).
-- Dialog helper: [`signal_dialog`](@ref) (native `<dialog>` driven by a
-  Datastar expression).
-- Rendering: [`render(io, x)`](@ref render) for streaming, [`render(x)`](@ref)
-  for the String you usually want at the response boundary.
+- Request decoding: [`parse_signals`](@ref).
+- Rendering: [`render(io, x)`](@ref render) streams; [`render(x)`](@ref)
+  returns a String.
 - Responses: [`html_response`](@ref), [`fragment_response`](@ref),
+  [`signals_response`](@ref), [`script_response`](@ref),
   [`redirect_via_fragment`](@ref), [`redirect_to`](@ref).
+- SSE: [`sse_response`](@ref), [`sse_stream`](@ref),
+  [`patch_elements`](@ref), [`patch_signals`](@ref).
+- SVG: [`patch_svg`](@ref), [`inline_svg`](@ref).
+- [`cls`](@ref) class-list builder; [`DATASTAR_SUPPORTED_VERSION`](@ref).
+
+`HyperSignal.Helpers` (not re-exported) holds form and dialog helpers:
+[`radio_field`](@ref HyperSignal.Helpers.radio_field),
+[`checkbox_field`](@ref HyperSignal.Helpers.checkbox_field),
+[`text_field`](@ref HyperSignal.Helpers.text_field),
+[`form_legend`](@ref HyperSignal.Helpers.form_legend),
+[`form_section`](@ref HyperSignal.Helpers.form_section),
+[`help_tooltip`](@ref HyperSignal.Helpers.help_tooltip),
+[`preset_button`](@ref HyperSignal.Helpers.preset_button),
+[`signal_dialog`](@ref HyperSignal.Helpers.signal_dialog).
 
 # Safety model
 
@@ -87,10 +95,8 @@ include("sse.jl")
 include("helpers.jl")
 include("svg.jl")
 
-# Element tree
 export Element, Raw, Frag, Attribute, DOCTYPE
 
-# Tag constructors (the common HTML5 set — extend as needed)
 export html, head, body, title, meta, link, script, style, noscript
 export span, p, a, h1, h2, h3, h4, h5, h6, hr, br, wbr
 export ul, ol, li, dl, dt, dd
@@ -103,7 +109,6 @@ export sub, sup, blockquote
 export progress, details, dialog, meter, output, data
 export audio, video, picture, source, track, iframe, embed, object, param, area
 
-# Datastar
 export DATASTAR_SUPPORTED_VERSION
 export DSAction, DSExpr, ds_get, ds_post, ds_put, ds_delete
 export ds_indicator, ds_ignore_morph, ds_bind, ds_signal, ds_signals, ds_show, ds_text, ds_json_signals
@@ -111,32 +116,19 @@ export ds_ref, ds_attr, ds_class, ds_computed, ds_style, ds_effect, ds_init
 export on, on_click, on_submit, on_change_debounced, on_interval
 export parse_signals
 
-# Component helpers (top-level)
 export cls, redirect_to
 
-# App-grade helpers live in HyperSignal.Helpers. No top-level shim:
-# the package is pre-1.0 with no external users, so an outright move
-# is cheaper than maintaining a deprecation cycle.
-
-# Rendering + responses
 export render
 export fragment_response, html_response, redirect_via_fragment
 export signals_response, script_response
 export sse_response, sse_stream, patch_elements, patch_signals
 
-# SVG inlining (CairoMakie etc.)
 export patch_svg, inline_svg
 
-# Macros
 export @using_tags, @ds_str
 
-# Drive precompilation of the render hot path so the first call in a
-# user's session doesn't pay JIT cost for the most common shapes.
-# `precompile` pins method specializations without executing them, so it
-# stays runtime-cheap and adds no dep — for richer workload-driven
-# precompilation, a downstream project can layer PrecompileTools on top.
+# Plain `precompile`, not PrecompileTools: no extra dep, nothing executed.
 let
-    # Render hot path
     precompile(Tuple{typeof(render), IOBuffer, Element})
     precompile(Tuple{typeof(render), IOBuffer, Frag})
     precompile(Tuple{typeof(render), IOBuffer, Raw})
@@ -152,23 +144,17 @@ let
     precompile(Tuple{typeof(render), Frag})
     precompile(Tuple{typeof(render), Raw})
     precompile(Tuple{typeof(render), String})
-    # Escape paths (String + SubString fast paths)
     precompile(Tuple{typeof(escape_html), IOBuffer, String})
     precompile(Tuple{typeof(escape_html), IOBuffer, SubString{String}})
     precompile(Tuple{typeof(escape_html), IOBuffer, Char})
-    # Name validation cache hits
     precompile(Tuple{typeof(_check_attr_name), Symbol})
     precompile(Tuple{typeof(_check_tag_name), Symbol})
-    # Datastar serialization
     precompile(Tuple{typeof(action_js), DSAction})
-    # Response wrappers
     precompile(Tuple{typeof(html_response), Element})
     precompile(Tuple{typeof(html_response), Frag})
     precompile(Tuple{typeof(fragment_response), Element, String})
-    # SVG patching for the CairoMakie story
     precompile(Tuple{typeof(patch_svg), String})
     precompile(Tuple{typeof(inline_svg), String})
-    # Signal decoding
     precompile(Tuple{typeof(parse_signals), Vector{UInt8}})
     precompile(Tuple{typeof(parse_signals), String})
 end
