@@ -132,7 +132,7 @@ _js_value(v::AbstractString) = "'$(_js_str_escape(v))'"
 # `repr` of a Dict/NamedTuple is not JS; JSON is. Extras only land in HTML
 # attributes, where escape_html covers `<` and `'`.
 _js_value(v::Union{AbstractDict, NamedTuple, AbstractVector, Tuple}) = JSON.json(v)
-_js_value(v)         = string(v)
+_js_value(v)         = string(v)  # not JS-escaped
 
 # A signal path as Datastar reads it after `$`: dot-separated identifiers.
 # Hyphens are rejected because Datastar camel-cases them at declaration, so

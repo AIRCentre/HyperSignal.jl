@@ -178,7 +178,7 @@ function _js_squote(s::AbstractString)
 end
 
 # per-prefix handle keeps multiple maps on one page apart
-_handle(prefix) ="window.__hs_maps['$(_js_squote(prefix))']"
+_handle(prefix) = "window.__hs_maps['$(_js_squote(prefix))']"
 _event_name(id_prefix, name) = "hs-$(id_prefix)$name"
 
 function map_call(method::Symbol, args...; id_prefix::AbstractString)

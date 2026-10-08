@@ -9,10 +9,11 @@ every escape boundary the lib draws, in the order they get crossed.
 !!! warning "Verbatim paths skip escaping"
     [`Raw`](@ref) is the escape hatch for HTML: SVG icons, audited HTML
     generators, the output of [`patch_svg`](@ref) / [`inline_svg`](@ref).
-    **Never wrap user input.** Three other paths carry the same trust
-    model, each covered below: a `Vector{UInt8}` child (HTML bytes), a raw
-    JS string passed to `on(...)` (the HTML attribute escape still
-    applies), and the body of [`script_response`](@ref). There is no
+    **Never wrap user input.** Other paths carry the same trust model,
+    each covered below: a `Vector{UInt8}` child (HTML bytes), a raw JS
+    expression string passed to `on(...)` or a `ds_*` attribute helper
+    (the HTML attribute escape still applies), and the body of
+    [`script_response`](@ref). There is no
     `SafeHTML`, no `unsafe=true` kwarg, no sanitizer.
 
 ```julia

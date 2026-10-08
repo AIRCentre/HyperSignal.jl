@@ -228,7 +228,7 @@ function form(args...; kwargs...)
 end
 
 # Defined but not exported: `div`, `summary`, `mark`, `time` clash with Base
-# exports; `select` is withheld alike.
+# exports. `select` has no Base clash but is withheld with them.
 const _BASE_SHADOWED = (:div, :select, :summary, :mark, :time)
 
 """
