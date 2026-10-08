@@ -36,9 +36,7 @@ end
 
 function _escape_html_substring(io::IO, s::SubString{String})
     data = codeunits(s.string)
-    offset = s.offset                  # 0-based byte offset into parent
-    n = sizeof(s)                      # SubString length in bytes
-    _escape_html_codeunits(io, data, offset + 1, offset + n)
+    _escape_html_codeunits(io, data, s.offset + 1, s.offset + sizeof(s))
 end
 
 @inline function _escape_html_codeunits(io::IO, data,
@@ -145,11 +143,8 @@ function render(io::IO, e::Element)
     for (k, v) in e.attrs
         _render_attr(io, k, v)
     end
-    if void
-        print(io, ">")
-        return nothing
-    end
     print(io, ">")
+    void && return nothing
     for c in e.children
         render(io, c)
     end
