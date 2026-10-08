@@ -95,10 +95,8 @@ include("sse.jl")
 include("helpers.jl")
 include("svg.jl")
 
-# Element tree
 export Element, Raw, Frag, Attribute, DOCTYPE
 
-# Tag constructors (the common HTML5 set — extend as needed)
 export html, head, body, title, meta, link, script, style, noscript
 export span, p, a, h1, h2, h3, h4, h5, h6, hr, br, wbr
 export ul, ol, li, dl, dt, dd
@@ -111,7 +109,6 @@ export sub, sup, blockquote
 export progress, details, dialog, meter, output, data
 export audio, video, picture, source, track, iframe, embed, object, param, area
 
-# Datastar
 export DATASTAR_SUPPORTED_VERSION
 export DSAction, DSExpr, ds_get, ds_post, ds_put, ds_delete
 export ds_indicator, ds_ignore_morph, ds_bind, ds_signal, ds_signals, ds_show, ds_text, ds_json_signals
@@ -119,24 +116,19 @@ export ds_ref, ds_attr, ds_class, ds_computed, ds_style, ds_effect, ds_init
 export on, on_click, on_submit, on_change_debounced, on_interval
 export parse_signals
 
-# Component helpers (top-level)
 export cls, redirect_to
 
-# Rendering + responses
 export render
 export fragment_response, html_response, redirect_via_fragment
 export signals_response, script_response
 export sse_response, sse_stream, patch_elements, patch_signals
 
-# SVG inlining (CairoMakie etc.)
 export patch_svg, inline_svg
 
-# Macros
 export @using_tags, @ds_str
 
 # Plain `precompile`, not PrecompileTools: no extra dep, nothing executed.
 let
-    # Render hot path
     precompile(Tuple{typeof(render), IOBuffer, Element})
     precompile(Tuple{typeof(render), IOBuffer, Frag})
     precompile(Tuple{typeof(render), IOBuffer, Raw})
@@ -152,23 +144,17 @@ let
     precompile(Tuple{typeof(render), Frag})
     precompile(Tuple{typeof(render), Raw})
     precompile(Tuple{typeof(render), String})
-    # Escape paths (String + SubString fast paths)
     precompile(Tuple{typeof(escape_html), IOBuffer, String})
     precompile(Tuple{typeof(escape_html), IOBuffer, SubString{String}})
     precompile(Tuple{typeof(escape_html), IOBuffer, Char})
-    # Name validation cache hits
     precompile(Tuple{typeof(_check_attr_name), Symbol})
     precompile(Tuple{typeof(_check_tag_name), Symbol})
-    # Datastar serialization
     precompile(Tuple{typeof(action_js), DSAction})
-    # Response wrappers
     precompile(Tuple{typeof(html_response), Element})
     precompile(Tuple{typeof(html_response), Frag})
     precompile(Tuple{typeof(fragment_response), Element, String})
-    # SVG patching for the CairoMakie story
     precompile(Tuple{typeof(patch_svg), String})
     precompile(Tuple{typeof(inline_svg), String})
-    # Signal decoding
     precompile(Tuple{typeof(parse_signals), Vector{UInt8}})
     precompile(Tuple{typeof(parse_signals), String})
 end
