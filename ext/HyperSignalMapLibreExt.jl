@@ -2,8 +2,7 @@ module HyperSignalMapLibreExt
 
 # Nothing exported: reach in via `Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)`.
 
-# Expressions are plain JSON arrays; the wrapper routes encoding through `JSON.lower`.
-# https://maplibre.org/maplibre-style-spec/expressions/
+# Expression spec: https://maplibre.org/maplibre-style-spec/expressions/
 
 import HyperSignal
 import GeoInterface
@@ -55,7 +54,11 @@ end
 
 JSON.lower(s::Source) = s.spec
 
-# `data`: inline GeoJSON (Dict) or a URL string MapLibre fetches.
+"""
+    geojson_source(data; cluster=false, cluster_radius=50)
+
+`data` is inline GeoJSON (a `Dict`) or a URL string MapLibre fetches.
+"""
 function geojson_source(data; cluster::Bool=false, cluster_radius::Int=50)
     spec = Dict{String, Any}("type" => "geojson", "data" => data)
     if cluster
@@ -151,7 +154,12 @@ _geojson(trait, geom) = throw(ArgumentError(
 # must not crash the whole collection.
 _feature_geometry(g) = (g === nothing || g === missing) ? nothing : geojson(g)
 
-# `rows`: iterable of NamedTuples, or any objects with `getproperty` on the named cols.
+"""
+    feature_collection(rows; geometry_col, properties_cols)
+
+`rows` is an iterable of NamedTuples, or of any objects with `getproperty` on
+the named columns.
+"""
 function feature_collection(rows; geometry_col::Symbol,
                             properties_cols)
     features = [Dict{String, Any}(
@@ -399,4 +407,4 @@ function marker(content; lat::Real, lon::Real,
     HyperSignal.div(content, attrs...)
 end
 
-end # module
+end

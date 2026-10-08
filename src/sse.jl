@@ -1,5 +1,3 @@
-# Datastar SSE event constructors, buffered `sse_response`, streaming `sse_stream`.
-
 struct PatchElementsEvent
     html::String
     selector::Union{Nothing,String}
@@ -130,7 +128,7 @@ handlers, so a stream handler mounted there answers 500.
 interleave chunks. Serialize calls (or guard `writer` with a `ReentrantLock`)
 if `f` fans out work.
 
-# Example
+# Examples
 ```julia
 HTTP.listen(sse_stream() do writer
     for i in 1:5

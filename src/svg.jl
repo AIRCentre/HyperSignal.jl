@@ -104,7 +104,6 @@ function _namespace_ids(s::AbstractString, prefix::AbstractString)
         elseif m.captures[2] !== nothing
             write(io, "url(#", prefix, m.captures[2], ")")
         else
-            # Keep the xlink: distinction by inspecting the matched text.
             token = m.match
             ref = m.captures[3]
             if startswith(token, "xlink:")

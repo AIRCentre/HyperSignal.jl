@@ -402,4 +402,4 @@ function signal_dialog(open_expr::AbstractString, body...;
     dialog(attrs..., body...)
 end
 
-end # module Helpers
+end

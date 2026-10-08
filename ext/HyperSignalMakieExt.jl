@@ -13,4 +13,4 @@ function HyperSignal.inline_svg(fig::_MAKIE_TYPES; kwargs...)
     Raw(patch_svg(String(take!(io)); kwargs...))
 end
 
-end # module
+end

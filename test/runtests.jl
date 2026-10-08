@@ -4,7 +4,6 @@ include("maplibre.jl")
 # Why: Base-shadowed tags need explicit override (`using` skips them); manual here so
 # `@using_tags` is tested in isolation below.
 using HyperSignal: div, select, summary
-# Why: Helpers names are not exported at top level; import explicitly.
 using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
                             form_legend, form_section, help_tooltip,
                             preset_button, signal_dialog
@@ -605,8 +604,8 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "a form with multiple Datastar bindings reads top-to-bottom" begin
-        # Why: new-session form has two attribute bindings (submit, change-debounced)
-        # plus nested fieldsets; clutter here = API not pulling its weight.
+        # Why: two bindings plus nested fieldsets is the densest real form; if it
+        # reads badly, the API is missing something.
         out = render(
             form(
                 on(:submit, ds_post("/session/new"; form=true)),
@@ -734,8 +733,7 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "form_section emits a muted section label and a card-grid container" begin
-        # Why: every validation_studio session-form section repeats this two-element
-        # pattern; helper saves 4 lines per section.
+        # Why: real session forms repeat this label + card-grid pair per section.
         out = render(form_section("Image Batch",
             article(p("a")),
             article(p("b")),
@@ -822,9 +820,8 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "a full page composes from primitives without a layout helper" begin
-        # Why: validation_studio page_layout/wrap_with_nav are project-specific (footer,
-        # CDN, favicons); lib ships AST primitives + Frag(DOCTYPE, …), not a page_layout
-        # helper. Build equivalent layout from primitives only.
+        # Why: the lib ships AST primitives + Frag(DOCTYPE, …), not a page_layout
+        # helper, so a full page must compose from primitives alone.
         nav_html = nav(
             ul(li(class="secondary", strong(class="nav-title", "Validation Studio"))),
             ul(
@@ -860,8 +857,8 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "a realistic session-form section composes from the helpers without ad-hoc strings" begin
-        # Why: load-bearing test for helper suite; raw <small>/<div>/<button> strings
-        # needed here = helpers haven't bought enough leverage.
+        # Why: if this section needs raw <small>/<div>/<button> strings, the helpers
+        # miss a case.
         section = form_section("Image Batch",
             article(
                 fieldset(
@@ -1723,8 +1720,8 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "patch_svg with CairoMakie figure renders + namespaces collision-safely" begin
-        # Why: end-to-end CairoMakie story: real figures through inline_svg, two in one
-        # tree, id prefixes keep them disjoint.
+        # Why: real figures through inline_svg, two in one tree; id prefixes must
+        # keep them disjoint.
         using CairoMakie
         fig1 = CairoMakie.Figure()
         CairoMakie.lines(fig1[1, 1], 1:5, [1, 3, 2, 4, 3])
@@ -1772,8 +1769,8 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
                     endswith(f, ".jl") || continue
                     path = joinpath(dir, f)
                     for (lineno, line) in enumerate(eachline(path))
-                        # Why: strip line comments so CONVENTIONS reference in
-                        # elements.jl doesn't self-flag.
+                        # Why: drop `#` comments so prose naming `@generated`
+                        # or `hasmethod` doesn't flag.
                         code = first(split(line, '#'; limit=2))
                         if occursin(r"\b(@generated|hasmethod)\b", code)
                             push!(offenders_generated, "$path:$lineno: $line")

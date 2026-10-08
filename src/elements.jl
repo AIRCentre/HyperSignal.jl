@@ -153,7 +153,6 @@ function _dedup_attrs(attrs::Vector{Pair{Symbol, Any}})
     length(out) == length(attrs) ? attrs : out
 end
 
-# Attrs: kwargs first, then positional Attributes / Symbol- or String-keyed Pairs.
 function _make_element(tag::Symbol, args::Tuple, kwargs)
     children = Any[]
     attrs = Pair{Symbol, Any}[k => v for (k, v) in pairs(kwargs)]

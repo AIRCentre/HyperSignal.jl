@@ -257,7 +257,6 @@ end
     nothing
 end
 
-# true → bare attr; false/nothing/missing → omitted, like children.
 function _render_attr(io::IO, k::Symbol, v)
     v === false && return nothing
     v === nothing && return nothing
@@ -273,7 +272,7 @@ function _render_attr(io::IO, k::Symbol, v)
     elseif v isa Number
         print(io, v)
     elseif v isa AbstractVector || v isa Tuple
-        # class lists, aria-describedby: space-joined, never the repr.
+        # Space-joined, not the repr.
         _render_attr_vector(io, v)
     else
         escape_html(io, string(v))

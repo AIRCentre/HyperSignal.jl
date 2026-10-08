@@ -176,8 +176,6 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
 
     @testset "Layer constructors" begin
         @testset "fill_layer emits {id, type, source, paint}" begin
-            # Why: SST demo polygon ramp depends on this wire shape; `paint` carries
-            # paint-DSL array expression.
             paint = Dict("fill-color" => MapLibre.prop_get(:mean_sst),
                          "fill-opacity" => 0.7)
             lyr = MapLibre.fill_layer("cells"; source="grid", paint=paint)
@@ -353,8 +351,6 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
 
 
         @testset "feature_collection composes with geojson_source" begin
-            # Why: demo polygon ramp wires via
-            # `geojson_source(feature_collection(rows; …))`.
             rows = [(geom=Pt((0.0, 0.0)), v=1)]
             fc = MapLibre.feature_collection(rows;
                                              geometry_col=:geom,
@@ -538,8 +534,6 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
         end
 
         @testset "map_view bbox_post wires a shift+drag rectangle handler" begin
-            # Why: demo's main interaction; JS must detect shiftKey and post
-            # {w, s, e, n}.
             out = HyperSignal.render(MapLibre.map_view(;
                 id_prefix="m_",
                 center=(0.0, 0.0), zoom=2,
@@ -573,10 +567,8 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
         end
 
         @testset "init JS scans for [data-hs-marker] divs and creates real Markers" begin
-            # Why: marker() emitted data-attribute divs no JS consumed; silent no-op API
-            # is worse than none. Init JS must query DOM for prefix-matching markers,
-            # parse lat/lon, pass to `new maplibregl.Marker({element})`. `_m.on('load')`
-            # guarantees canvas mounted before attach.
+            # Why: without this scan, marker() divs are a silent no-op. `_m.on('load')`
+            # guarantees the canvas is mounted before markers attach.
             body = match(r"<script[^>]*>(.*?)</script>"s,
                          HyperSignal.render(MapLibre.map_view(;
                              id_prefix="m_", center=(0.0, 0.0),
