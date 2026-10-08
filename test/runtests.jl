@@ -1,13 +1,10 @@
 using Test, HTTP, JSON, Sockets, HyperSignal
 
 include("maplibre.jl")
-# Tags whose names overlap with Base (Base.div, Base.map, etc.) need an
-# explicit override at the use site — `using` skips them by design.
-# `@using_tags` is the one-liner; here we do it manually so the macro itself
-# can be tested in isolation below.
+# Why: Base-shadowed tags need explicit override (`using` skips them); manual here so
+# `@using_tags` is tested in isolation below.
 using HyperSignal: div, select, summary
-# App-grade helpers moved to HyperSignal.Helpers (issue #1). No
-# top-level shim, so the bare names are not in scope here.
+# Why: Helpers names are not exported at top level; import explicitly.
 using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
                             form_legend, form_section, help_tooltip,
                             preset_button, signal_dialog
@@ -29,48 +26,38 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "void element with children fails loud instead of emitting invalid HTML" begin
-        # Why: a void element has no content model. The old fall-through
-        # emitted `<br>x</br>` — invalid HTML5 whose closing tag a browser
-        # discards while reparenting the "children" as SIBLING nodes, so
-        # the server HTML and the client DOM diverge and Datastar's morph
-        # stops being idempotent. Passing children to a void tag is always
-        # a caller mistake; surface it.
+        # Why: void element has no content model. `<br>x</br>`: browser discards closing
+        # tag and reparents "children" as SIBLING nodes, so server HTML and client DOM
+        # diverge and Datastar morph stops being idempotent. Children on a void tag are
+        # always a caller mistake; surface it.
         @test_throws ArgumentError render(br("x"))
         @test_throws ArgumentError render(input(type="text", "oops"))
         @test_throws ArgumentError render(hr(span("a")))
         @test_throws ArgumentError render(img(src="x.png", "alt-as-child"))
         @test_throws ArgumentError render(Element(:wbr, Pair{Symbol,Any}[], Any["c"]))
-        # A numeric/empty-string child is still content → still rejected.
         @test_throws ArgumentError render(br(0))
         @test_throws ArgumentError render(br(""))
-        # No-output children must NOT throw: `nothing` is dropped at
-        # construction, and `Bool`/`missing` render to nothing — so the
-        # conditional idiom `br(cond && extra)` (which collapses to bare
-        # `false`, a Bool, when cond is false) still renders `<br>`.
+        # Why: `nothing` dropped at construction, `Bool`/`missing` render to nothing;
+        # `br(cond && extra)` (bare `false` when cond false) must still render `<br>`.
         @test render(br(nothing)) == "<br>"
         @test render(input(type="text", nothing)) == "<input type=\"text\">"
         @test render(br(false)) == "<br>"
         @test render(br(true)) == "<br>"
         @test render(br(missing)) == "<br>"
         let show_extra = false
-            @test render(br(show_extra && "x")) == "<br>"   # cond && extra → false
+            @test render(br(show_extra && "x")) == "<br>"
         end
-        # Mixed skip-only children also pass.
         @test render(img(src="x.png", nothing, false, missing)) == "<img src=\"x.png\">"
-        # No partial bytes are written before the error (check precedes
-        # the open-tag write), so a failed render leaves the IO clean.
         io = IOBuffer()
         @test_throws ArgumentError render(io, img(src="x", "alt"))
         @test String(take!(io)) == ""
     end
 
     @testset "Attribute nested in a container child → actionable error" begin
-        # An Attribute is lifted into attrs only as a TOP-LEVEL positional
-        # arg. Nested inside a Vector/Tuple/Generator it becomes a child and
-        # has no renderable form — surface a message that names the fix
-        # (splat) instead of an opaque internal MethodError. Covers the
-        # realistic mistake of collecting attrs into a vector (as
-        # signal_dialog does) but forgetting to splat.
+        # Why: Attribute lifts into attrs only as TOP-LEVEL positional arg; nested in
+        # Vector/Tuple/Generator it is a child with no renderable form. Message must
+        # name the fix (splat), not opaque MethodError. Common mistake: collecting attrs
+        # in a vector (as signal_dialog does) and forgetting to splat.
         @test_throws ArgumentError render(div([on(:click, ds_get("/x"))], "child"))
         @test_throws ArgumentError render(div((on(:click, ds_get("/x")),), "child"))
         @test_throws ArgumentError render(div(on(:click, ds_get("/x")) for _ in 1:1))
@@ -81,7 +68,6 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         end
         @test err isa ArgumentError
         @test occursin("Splat", err.msg)
-        # Splatting the same collection is the correct form and still works.
         @test occursin("data-on:click",
                        render(div([on(:click, ds_get("/x"))]..., "child")))
     end
@@ -104,8 +90,7 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "DATASTAR_SUPPORTED_VERSION pins the targeted Datastar release" begin
-        # Why: bumps should land as one visible diff; this test fails on
-        # an unintentional change to the supported protocol/client version.
+        # Why: version bumps land as one visible diff.
         @test DATASTAR_SUPPORTED_VERSION == v"1.0.4"
     end
 
@@ -119,42 +104,35 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "<form> auto-injects data-on:submit__prevent when no submit binding is given" begin
-        # Why: a bare <form> used only for change-driven Datastar fetches
-        # (or pure layout) still receives a native submit when the user
-        # presses Enter in any input — that reload drops client signals
-        # and is almost never what the page wants. The tag constructor
-        # forces preventDefault unless the caller wired a submit handler.
+        # Why: bare <form> still gets native submit on Enter; reload drops client
+        # signals. Tag constructor forces preventDefault unless caller wired a submit
+        # handler.
         out = render(form(input(type="text", name="q")))
-        # Datastar throws `ValueRequired` on a valueless data-on:*, which
-        # also stops every other attribute on the page from initialising.
+        # Why: Datastar throws `ValueRequired` on valueless data-on:*, which also stops
+        # every other attribute on the page initialising.
         @test occursin("data-on:submit__prevent=\"void 0\"", out)
     end
 
     @testset "<form> with an explicit submit handler keeps just that one" begin
-        # Why: the auto-prevent injection must not duplicate or shadow an
-        # explicit user binding (the duplicate HTML attribute would be
-        # silently dropped by the browser, breaking the user's handler).
+        # Why: auto-prevent must not duplicate or shadow explicit user binding; browser
+        # drops duplicate attribute, breaking user's handler.
         out = render(form(on_submit(ds_post("/api/x"; form=true))))
-        # Exactly one `data-on:submit` occurrence (the explicit one with
-        # the @post body) — no second bare attribute.
         @test count(==("data-on:submit__prevent"),
                     eachmatch(r"data-on:submit__prevent", out) .|> m -> m.match) == 1
         @test occursin("@post(", out)
     end
 
     @testset "<form> with on(:submit, …; prevent=false) skips the auto-prevent" begin
-        # Why: prevent=false is the documented opt-out for callers who
-        # *want* native submission. The form override must defer to any
-        # data-on:submit* attribute, not just __prevent-flavored ones.
+        # Why: prevent=false is documented opt-out for native submission; form override
+        # must defer to any data-on:submit* attribute, not just __prevent ones.
         out = render(form(on(:submit, "x"; prevent=false)))
         @test occursin("data-on:submit=\"x\"", out)
         @test !occursin("__prevent", out)
     end
 
     @testset "on(:submit, action) renders with the auto __prevent modifier" begin
-        # Why: a form bound to a Datastar action must call preventDefault on
-        # submit, otherwise the browser also performs the native form
-        # navigation in parallel with the @post fetch.
+        # Why: form bound to Datastar action must preventDefault, else browser also
+        # navigates natively in parallel with @post fetch.
         out = render(form(on(:submit, ds_post("/api/x"; form=true)), "body"))
         @test occursin("data-on:submit__prevent=\"@post(&#39;/api/x&#39;, {contentType: &#39;form&#39;})\"", out)
     end
@@ -181,9 +159,8 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "MIME round-trip: text/html, text/plain, and html_response agree byte-for-byte" begin
-        # Why: prior-art (Hyperscript#22, HypertextLiteral#10/#11) shows MIME
-        # drift across sinks is a real failure mode. One fixture through three
-        # paths is cheap insurance.
+        # Why: MIME drift across sinks is a real failure mode; one fixture through three
+        # paths.
         fixture = div(class="card", h2("Hi"), p("a < b"))
 
         html_buf = IOBuffer()
@@ -212,8 +189,7 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "fragment_response kwarg form works without a selector" begin
-        # Why: the new API exposes mode/view_transition; a caller that wants
-        # `mode=:inner` but no selector should be able to skip it entirely.
+        # Why: `mode=:inner` without selector must work.
         resp = fragment_response(div("ok"))
         h = Dict(lowercase(String(k)) => String(v) for (k, v) in resp.headers)
         @test !haskey(h, "datastar-selector")
@@ -229,16 +205,15 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "fragment_response mode=nothing omits the datastar-mode header" begin
-        # Why: the Datastar default is `outer`; emitting nothing avoids a
-        # redundant header on the wire.
+        # Why: Datastar default is `outer`; omit redundant header.
         resp = fragment_response(div("x"))
         h = Dict(lowercase(String(k)) => String(v) for (k, v) in resp.headers)
         @test !haskey(h, "datastar-mode")
     end
 
     @testset "fragment_response rejects unknown mode symbols loud" begin
-        # Why: a typo like `:innner` would silently send a header the
-        # Datastar client ignores. Fail at call time, not at the browser.
+        # Why: typo like `:innner` would silently send header Datastar ignores; fail at
+        # call time.
         @test_throws ArgumentError fragment_response(div("x"); mode=:bogus)
     end
 
@@ -271,15 +246,14 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "redirect_via_fragment escapes single quotes in the location" begin
-        # Why: a stray ' in the URL would close the JS string and inject code.
+        # Why: stray ' in URL would close JS string and inject code.
         resp = redirect_via_fragment("#x", "/a'b")
         @test occursin("window.location='/a\\'b'", String(resp.body))
     end
 
     @testset "redirect_via_fragment defends against </script> in the location" begin
-        # Why: the HTML parser closes <script> on </script> regardless of JS
-        # quoting. Inserting a backslash splits the tag at the HTML layer; JS
-        # ignores the backslash inside a string literal.
+        # Why: HTML parser closes <script> on </script> regardless of JS quoting;
+        # backslash splits tag at HTML layer, JS ignores it inside string literal.
         resp = redirect_via_fragment("#x", "/x</script><script>alert(1)</script>")
         body = String(resp.body)
         @test !occursin("</script><script>", body)
@@ -288,43 +262,39 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "redirect_via_fragment escapes backslashes in the location" begin
-        # Why: a trailing '\' in the URL would escape the closing JS quote.
+        # Why: trailing '\' in URL would escape closing JS quote.
         resp = redirect_via_fragment("#x", "/a\\b")
         @test occursin("window.location='/a\\\\b'", String(resp.body))
     end
 
     @testset "redirect_via_fragment attaches Set-Cookie headers and honors wrapper_tag" begin
-        # Why: the documented post-login flow sets a session cookie AND
-        # navigates in one response. A regression dropping/misattaching the
-        # Set-Cookie header would silently leave the user logged out.
+        # Why: post-login flow sets session cookie AND navigates in one response;
+        # dropped/misattached Set-Cookie silently leaves user logged out.
         resp = redirect_via_fragment("#login-form", "/dashboard";
             cookies=["sid=abc; HttpOnly; Path=/; SameSite=Lax"],
             wrapper_tag=:li)
         body = String(resp.body)
-        @test occursin("<li id=\"login-form\">", body)   # wrapper_tag overrides <div>
+        @test occursin("<li id=\"login-form\">", body)
         @test occursin("<script>window.location='/dashboard'</script>", body)
         cookies = [String(v) for (k, v) in resp.headers if lowercase(String(k)) == "set-cookie"]
         @test cookies == ["sid=abc; HttpOnly; Path=/; SameSite=Lax"]
         h = Dict(lowercase(String(k)) => String(v) for (k, v) in resp.headers)
-        @test h["datastar-selector"] == "#login-form"   # fragment delegation intact
-        # Multiple cookies each get their own Set-Cookie header.
+        @test h["datastar-selector"] == "#login-form"
         resp2 = redirect_via_fragment("#x", "/home"; cookies=["a=1", "b=2"])
         c2 = [String(v) for (k, v) in resp2.headers if lowercase(String(k)) == "set-cookie"]
         @test c2 == ["a=1", "b=2"]
     end
 
     @testset "redirect_via_fragment rejects a selector that isn't a single #id" begin
-        # Why: the helper renders the morph target itself with `id` = selector
-        # minus its leading `#`, so it only works for a single `#id`. A class,
-        # compound, or whitespace selector produces an `id` the selector can't
-        # match (the redirect silently no-ops), and a CR/LF would inject into
-        # the datastar-selector header. Fail loud at the call site instead.
+        # Why: helper renders morph target with `id` = selector minus leading `#`, so
+        # only single `#id` works. Class/compound/whitespace selector yields `id`
+        # selector can't match (redirect silently no-ops); CR/LF would inject into
+        # datastar-selector header. Fail loud at call site.
         @test_throws ArgumentError redirect_via_fragment(".card", "/x")
-        @test_throws ArgumentError redirect_via_fragment("#a #b", "/x")   # compound
-        @test_throws ArgumentError redirect_via_fragment("#a\nb", "/x")   # header injection
-        @test_throws ArgumentError redirect_via_fragment("login", "/x")   # no leading #
-        @test_throws ArgumentError redirect_via_fragment("#", "/x")       # empty id
-        # The supported single #id form still works.
+        @test_throws ArgumentError redirect_via_fragment("#a #b", "/x")
+        @test_throws ArgumentError redirect_via_fragment("#a\nb", "/x")
+        @test_throws ArgumentError redirect_via_fragment("login", "/x")
+        @test_throws ArgumentError redirect_via_fragment("#", "/x")
         @test occursin("id=\"ok\"", String(redirect_via_fragment("#ok", "/x").body))
     end
 
@@ -334,7 +304,6 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test resp.status == 200
         @test h["content-type"] == "application/json; charset=utf-8"
         @test !haskey(h, "datastar-only-if-missing")
-        # JSON.json on a NamedTuple yields a JSON object; assert by parse.
         parsed = JSON.parse(String(resp.body))
         @test parsed == Dict("count" => 3, "label" => "hi")
     end
@@ -426,39 +395,31 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "sse_response rejects a selector containing a newline" begin
-        # Why: a literal newline in selector would terminate the SSE line
-        # early and silently corrupt the rest of the event.
+        # Why: literal newline in selector ends SSE line early, corrupts rest of event.
         @test_throws ArgumentError sse_response([patch_elements(div("x");
                                                                 selector="#a\n#b")])
     end
 
     @testset "sse_response rejects a selector containing a carriage return" begin
-        # Why: EventSource treats CR (and CRLF) as line terminators just
-        # like LF, so a bare '\r' in the selector would end the SSE line
-        # early and corrupt the rest of the event — same failure mode as
-        # '\n', so it must be rejected the same way.
+        # Why: EventSource treats bare CR (and CRLF) as line terminator like LF; same
+        # failure mode as '\n', reject same way.
         @test_throws ArgumentError sse_response([patch_elements(div("x");
                                                                 selector="#a\r#b")])
     end
 
     @testset "patch_elements validates the selector at build time, not just at encode time" begin
-        # Why: the CR/LF selector check now fires in patch_elements (alongside
-        # the mode check), so the mistake surfaces at the call site with a
-        # stacktrace pointing there — not deep inside sse_response/sse_stream's
-        # encode loop. No sse_response wrapper needed to trigger it.
+        # Why: CR/LF selector check fires in patch_elements, so stacktrace points at
+        # call site, not deep in sse_response/sse_stream encode loop.
         @test_throws ArgumentError patch_elements(div("x"); selector="#a\nb")
         @test_throws ArgumentError patch_elements(div("x"); selector="#a\rb")
-        # A clean selector still builds fine.
         @test patch_elements(div("x"); selector="#card") isa
               HyperSignal.PatchElementsEvent
     end
 
     @testset "patch_elements splits payload on lone CR and CRLF, not just LF" begin
-        # Why: HTML authored on Windows (or an embedded SVG with CRLF
-        # endings) carries '\r'. Splitting on '\n' alone leaves a lone
-        # '\r' inside a `data: elements` line, which the client reads as
-        # an early line terminator and silently drops the remainder.
-        # Each source line must become its own clean data line.
+        # Why: HTML authored on Windows (or SVG with CRLF endings) carries '\r';
+        # splitting on '\n' alone leaves lone '\r' in a `data: elements` line, which
+        # client reads as early terminator and drops remainder.
         crlf = String(sse_response([patch_elements(Raw("<div>\r\n  <p>x</p>\r\n</div>"))]).body)
         @test crlf == string(
             "event: datastar-patch-elements\n",
@@ -467,19 +428,15 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
             "data: elements </div>\n",
             "\n",
         )
-        # A lone CR (no following LF) is also a terminator.
         cr = String(sse_response([patch_elements(Raw("a\rb"))]).body)
         @test cr == "event: datastar-patch-elements\ndata: elements a\ndata: elements b\n\n"
-        # A trailing CRLF is stripped like a trailing LF — no stray empty
-        # `data: elements ` line.
         trailing = String(sse_response([patch_elements(Raw("<div>x</div>\r\n"))]).body)
         @test trailing == "event: datastar-patch-elements\ndata: elements <div>x</div>\n\n"
     end
 
     @testset "patch_elements drops a single trailing newline from rendered HTML" begin
-        # Why: render() output that ends in '\n' would otherwise emit a
-        # stray empty `data: elements ` line, which an SSE client
-        # reassembles as a phantom trailing newline in the payload.
+        # Why: render() output ending in '\n' would emit stray empty `data: elements `
+        # line; client reassembles it as phantom trailing newline.
         body = String(sse_response([patch_elements(Raw("<div>x</div>\n"))]).body)
         @test body == "event: datastar-patch-elements\ndata: elements <div>x</div>\n\n"
     end
@@ -525,8 +482,8 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "a single sse event round-trips through a naive SSE parser" begin
-        # Why: catch terminator/encoding regressions by parsing what we emit
-        # the same way a client would (split on blank line, split data lines).
+        # Why: parse emitted bytes as a client would (split on blank line, then data
+        # lines) to catch terminator/encoding regressions.
         ev = patch_elements(div("ok"); selector="#card", mode=:inner)
         body = String(sse_response([ev]).body)
         chunks = split(body, "\n\n"; keepempty=false)
@@ -538,11 +495,9 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "sse_stream" begin
-        # Helper: spin up a server with the given sse_stream handler, GET /,
-        # return (status, headers Dict, body String).
         function _hit_stream(handler)
-            # `listen!` takes a `::HTTP.Stream` handler on both majors (2.x `serve!`
-            # only calls `handler(::Request)`); only the bound-port lookup differs.
+            # Why: `listen!` takes `::HTTP.Stream` handler on both majors (2.x `serve!`
+            # only calls `handler(::Request)`); only bound-port lookup differs.
             srv = HTTP.listen!(handler, "127.0.0.1", 0)
             port = pkgversion(HTTP) >= v"2" ? srv.bound_port :
                 Sockets.getsockname(srv.listener.server)[2]
@@ -584,8 +539,8 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         end
 
         @testset "per-event body bytes match the buffered encoder" begin
-            # Why: streaming must encode each event identically to sse_response
-            # so a client cannot tell them apart by output bytes.
+            # Why: streaming must encode each event identically to sse_response; client
+            # can't tell them apart.
             ev1 = patch_elements(div("ok"); selector="#card", mode=:inner)
             ev2 = patch_signals((; n=3))
             handler = sse_stream() do writer
@@ -608,21 +563,19 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
 
         @testset "handler with zero writes still completes with SSE headers" begin
             handler = sse_stream() do writer
-                # no-op
             end
             status, h, body = _hit_stream(handler)
             @test status == 200
             @test h["content-type"] == "text/event-stream; charset=utf-8"
-            # Why: chunked transfer must be in effect even for a zero-write
-            # handler, so a trivial Response stub would not satisfy this.
+            # Why: chunked transfer must apply even to zero-write handler; trivial
+            # Response stub would not satisfy this.
             @test get(h, "transfer-encoding", "") == "chunked"
             @test body == ""
         end
 
         @testset "events written before f throws still reach the client" begin
-            # Why: streaming handlers may fail mid-task; the partial output
-            # already flushed must remain visible so a client sees progress
-            # up to the failure point rather than nothing at all.
+            # Why: handlers may fail mid-task; already-flushed output must stay visible
+            # so client sees progress up to failure.
             handler = sse_stream() do writer
                 writer(patch_elements(div("progress 1"); selector="#p", mode=:inner))
                 writer(patch_elements(div("progress 2"); selector="#p", mode=:inner))
@@ -635,19 +588,15 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "the count_estimate_fragment migration produces equivalent HTML" begin
-        # Why: this is the smallest real fragment in validation_studio
-        # (services/validation_studio/src/session_form.jl:105). The HyperSignal
-        # rewrite must produce the same bytes the existing route emits, so a
-        # drop-in migration is byte-stable for any clients caching fragments.
-        format_number(n::Int) = string(n)  # simplified for the test
+        # Why: drop-in migration of validation_studio's smallest real fragment must be
+        # byte-stable for clients caching fragments.
+        format_number(n::Int) = string(n)
         n = 122_000
-        # The existing implementation:
         legacy = string(
             "<div id=\"count-estimate\" class=\"count-estimate\">",
             "<small class=\"muted\">~", format_number(n), " images match</small>",
             "</div>",
         )
-        # The HyperSignal implementation:
         new = render(
             div(id="count-estimate", class="count-estimate",
                 small(class="muted", "~$(format_number(n)) images match"))
@@ -656,9 +605,8 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "a form with multiple Datastar bindings reads top-to-bottom" begin
-        # Why: the new-session form has two attribute bindings (submit and
-        # change-debounced) plus nested fieldsets. If composing this looks
-        # cluttered, the API isn't pulling its weight.
+        # Why: new-session form has two attribute bindings (submit, change-debounced)
+        # plus nested fieldsets; clutter here = API not pulling its weight.
         out = render(
             form(
                 on(:submit, ds_post("/session/new"; form=true)),
@@ -683,8 +631,8 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "cls includes Pair-conditional classes only when the flag is true" begin
-        # Why: this is the entire point of cls — let `class=cls(...)` replace
-        # ternary string interpolation in component bodies.
+        # Why: `class=cls(...)` replaces ternary string interpolation in component
+        # bodies.
         @test cls("card", "active" => true) == "card active"
         @test cls("card", "active" => false) == "card"
         @test cls("card", "active" => false, "loading" => true) == "card loading"
@@ -700,8 +648,8 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "cls rejects Pair values that aren't Bool — fail loud, not silent" begin
-        # Why: `"active" => some_string` would silently include the class
-        # if we coerced. A loud error catches the typo.
+        # Why: coercing `"active" => some_string` would silently include the class; loud
+        # error catches typo.
         @test_throws ArgumentError cls("btn", "active" => "yes")
     end
 
@@ -716,9 +664,7 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "redirect_to attaches Set-Cookie headers when given" begin
-        # Why: post-login flow needs to redirect AND set the session cookie
-        # in the same response — collapsing this to one call beats reaching
-        # for HTTP.Response by hand.
+        # Why: post-login flow must redirect AND set session cookie in one response.
         resp = redirect_to("/dashboard"; cookies=["sid=abc; HttpOnly; Path=/"])
         cookies = [String(v) for (k, v) in resp.headers if lowercase(String(k)) == "set-cookie"]
         @test cookies == ["sid=abc; HttpOnly; Path=/"]
@@ -730,8 +676,8 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "checkbox_field defaults value=\"on\" so form parsing matches" begin
-        # Why: Datastar's form-encoded submit sends `name=on` for checkboxes
-        # by default; deviating here would silently break parse_form_body.
+        # Why: Datastar form-encoded submit sends `name=on` for checkboxes by default;
+        # deviating silently breaks parse_form_body.
         out = render(checkbox_field("agree", "I agree"; checked=true))
         @test occursin("type=\"checkbox\"", out)
         @test occursin("name=\"agree\"", out)
@@ -746,9 +692,8 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "help_tooltip auto-escapes the tooltip text in the popup body" begin
-        # Why: tooltips often surface user-facing copy that may contain
-        # quotes/angle-brackets. The renderer auto-escapes element text,
-        # so the caller can't accidentally inject markup.
+        # Why: tooltips carry user-facing copy with quotes/angle-brackets; auto-escaped
+        # element text blocks markup injection.
         out = render(help_tooltip("a \"quoted\" thing"))
         @test occursin("a &quot;quoted&quot; thing</span>", out)
         @test occursin("class=\"help-trigger\"", out)
@@ -757,10 +702,9 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "help_tooltip wires the datastar signals/handlers that drive show-on-hover and toggle-on-click" begin
-        # Hover events open/close via $help_hover; the icon-wrap click
-        # toggles $help_open; data-on:click__outside on the trigger
-        # closes the click-pinned state without affecting other open
-        # tooltips' state on the same page.
+        # Why: hover events open/close via $help_hover; icon-wrap click toggles
+        # $help_open; data-on:click__outside on trigger closes click-pinned state
+        # without affecting other tooltips on the page.
         out = render(help_tooltip("hint"))
         @test occursin("data-signals=", out)
         @test occursin("data-on:mouseenter=", out)
@@ -771,8 +715,8 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "help_tooltip lets the caller override the icon" begin
-        # Why: project styling may want a different help glyph; the helper
-        # should take an Element override without forking the whole helper.
+        # Why: project styling may want a different help glyph; Element override avoids
+        # forking helper.
         out = render(help_tooltip("hint"; icon=Raw("<i>?</i>")))
         @test occursin("<i>?</i>", out)
         @test occursin("class=\"help-icon-wrap\"", out)
@@ -790,8 +734,8 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "form_section emits a muted section label and a card-grid container" begin
-        # Why: every session-form section in validation_studio repeats this
-        # exact two-element pattern; collapsing it removes 4 lines per section.
+        # Why: every validation_studio session-form section repeats this two-element
+        # pattern; helper saves 4 lines per section.
         out = render(form_section("Image Batch",
             article(p("a")),
             article(p("b")),
@@ -803,58 +747,52 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "preset_button rejects names that aren't [A-Za-z0-9_-]" begin
-        # Why: name lands in a CSS attribute selector unquoted; a stray
-        # character would break the selector or escape the surrounding JS.
-        # Fail loud at build time, not silently in the browser.
+        # Why: name lands unquoted in CSS attribute selector; stray character breaks
+        # selector or escapes surrounding JS. Fail loud at build time.
         @test_throws ArgumentError preset_button("Bad", ["bad name" => "v"])
         @test_throws ArgumentError preset_button("Bad", ["x'y" => "v"])
         @test_throws ArgumentError preset_button("Bad", ["" => "v"])
     end
 
     @testset "preset_button escapes \" and \\ inside value" begin
-        # Why: value lives inside a double-quoted JS string. Without escaping,
-        # `value=\"a\"b\"` would close the JS string mid-selector.
+        # Why: value sits in double-quoted JS string; unescaped `"` closes it
+        # mid-selector.
         out = render(preset_button("X", ["k" => "a\"b"]))
         @test occursin("[value=&quot;a\\&quot;b&quot;]", out)
     end
 
     @testset "preset_button escapes ' inside value" begin
-        # Why: the whole selector is the single-quoted argument to
-        # `querySelector('…')`, so a `'` in the value (e.g. `it's`) would close
-        # that outer JS string mid-call and make the handler a SyntaxError.
-        # The backslash-escape survives the HTML un-escape as `\'`, which the JS
-        # parser turns into a literal `'` that CSS receives unchanged.
+        # Why: selector is single-quoted arg to `querySelector('…')`; `'` in value
+        # (`it's`) closes outer JS string → SyntaxError. Backslash-escape survives HTML
+        # un-escape as `\'`, JS parser yields literal `'` that CSS receives unchanged.
         out = render(preset_button("X", ["mode" => "it's"]))
         @test occursin("[value=&quot;it\\&#39;s&quot;]", out)
     end
 
     @testset "preset_button rejects a digit-leading name (invalid unquoted CSS selector)" begin
-        # Why: the name lands UNQUOTED in `input[name=…]`; a CSS identifier
-        # can't start with a digit (nor a hyphen-then-digit), so `name=123`
-        # would make querySelector throw at click time. Fail loud at build.
+        # Why: name lands UNQUOTED in `input[name=…]`; CSS identifier can't start with
+        # digit (nor hyphen-then-digit), so `name=123` makes querySelector throw at
+        # click time. Fail loud at build.
         @test_throws ArgumentError preset_button("X", ["123" => "a"])
         @test_throws ArgumentError preset_button("X", ["-1" => "a"])
-        # A letter/underscore start (optionally one leading hyphen) is fine.
         @test render(preset_button("X", ["-data-x" => "a"])) isa AbstractString
         @test render(preset_button("X", ["_k" => "a"])) isa AbstractString
-        # A trailing newline must be rejected: anchored with `\z` not `$`, so
-        # PCRE's "`$` matches before a final \n" can't let `"foo\n"` through
-        # (it would land raw in the CSS selector, breaking it in the browser).
+        # Why: trailing newline must be rejected: anchor with `\z` not `$`, since PCRE
+        # `$` matches before final \n and `"foo\n"` would land raw in CSS selector.
         @test_throws ArgumentError preset_button("X", ["foo\n" => "v"])
         @test_throws ArgumentError preset_button("X", ["foo\nbar" => "v"])
     end
 
     @testset "preset_button generates the click-side JS to set named radios + fire change" begin
-        # Why: this JS is otherwise hand-typed at every preset, with the
-        # quote-escaping that breaks under one wrong character. Centralizing
-        # it means `preset_button("Easy", ["confidence" => "all"])` just works.
+        # Why: hand-typed JS at every preset breaks under one wrong quote-escape;
+        # centralized here.
         out = render(preset_button("Easy",
             ["confidence" => "all", "label_filter" => "both"]))
         @test occursin("type=\"button\"", out)
         @test occursin("class=\"secondary outline\"", out)
-        # Each radio gets its own `input` event: Datastar 1.0.2+ updates a
-        # `data-bind` input on `input`, and events bubble up, never down from
-        # the form. The form-level `change` keeps `data-on:change` handlers firing.
+        # Why: Datastar 1.0.2+ updates `data-bind` input on `input`, which bubbles up,
+        # never down from form; each radio gets own `input` event. Form-level `change`
+        # keeps `data-on:change` handlers firing.
         @test occursin(
             "{const e=document.querySelector(&#39;input[name=confidence][value=&quot;all&quot;]&#39;);" *
             "e.checked=true;e.dispatchEvent(new Event(&#39;input&#39;,{bubbles:true}));}",
@@ -868,9 +806,7 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "DOCTYPE prefixes a page when wrapped in a Frag with html()" begin
-        # Why: every server-rendered page starts with `<!DOCTYPE html>`
-        # followed by `<html>…</html>`. The constant lets a page builder
-        # drop it without introducing a stringly-typed prelude.
+        # Why: DOCTYPE constant avoids stringly-typed prelude in page builders.
         page = Frag(
             DOCTYPE,
             html(lang="en",
@@ -886,11 +822,9 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "a full page composes from primitives without a layout helper" begin
-        # Why: page_layout/wrap_with_nav in validation_studio are heavily
-        # project-specific (AIRCentre footer, picocss CDN, favicons). The
-        # right level for the lib is *not* a page_layout helper — instead
-        # the AST primitives + Frag(DOCTYPE, …) must be enough. Verify by
-        # building the equivalent layout from primitives only.
+        # Why: validation_studio page_layout/wrap_with_nav are project-specific (footer,
+        # CDN, favicons); lib ships AST primitives + Frag(DOCTYPE, …), not a page_layout
+        # helper. Build equivalent layout from primitives only.
         nav_html = nav(
             ul(li(class="secondary", strong(class="nav-title", "Validation Studio"))),
             ul(
@@ -926,9 +860,8 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "a realistic session-form section composes from the helpers without ad-hoc strings" begin
-        # Why: this is the load-bearing test for the helper suite. If
-        # building a session-form section needs raw <small>/<div>/<button>
-        # strings, the helpers haven't bought enough leverage yet.
+        # Why: load-bearing test for helper suite; raw <small>/<div>/<button> strings
+        # needed here = helpers haven't bought enough leverage.
         section = form_section("Image Batch",
             article(
                 fieldset(
@@ -948,31 +881,24 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
             ),
         )
         out = render(section)
-        # Section structure
         @test occursin("<small class=\"muted form-section-label\">Image Batch</small>", out)
         @test occursin("<div class=\"form-card-grid\">", out)
-        # Tooltip rendered with the help icon
         @test occursin("class=\"help-trigger\"", out)
         @test occursin("Number of images to review.</span>", out)
-        # Default-checked radio survives the wrap
         @test occursin("value=\"25\" checked", out)
-        # Preset button JS is well-formed
         @test occursin("document.querySelector(", out)
     end
 
     @testset "on accepts a raw JS expression alongside a DSAction" begin
-        # Why: client-side toggles like `\$open = !\$open` aren't HTTP fetches —
-        # they're plain JS that doesn't fit the DSAction shape. Letting `on`
-        # accept an AbstractString keeps the same call site for both kinds of
-        # bindings instead of forcing callers back to Symbol("data-on:click")
-        # => string for the trivial cases.
+        # Why: client-side toggles like `$open = !$open` are plain JS, not HTTP fetches;
+        # `on` accepting AbstractString keeps one call site instead of
+        # `Symbol("data-on:click") => string`.
         out = render(button(on(:click, "\$open = !\$open"), "Toggle"))
         @test occursin("data-on:click=\"\$open = !\$open\"", out)
     end
 
     @testset "on adds the __window modifier when window=true" begin
-        # Why: window-level keydown listeners are common for keyboard hotkeys;
-        # the modifier routes the listener to `window` so global keys reach it
+        # Why: `window` modifier routes listener to `window`, so global hotkeys work
         # without focusing the element.
         out = render(div(on(:keydown, "x"; window=true)))
         @test occursin("data-on:keydown__window=", out)
@@ -984,24 +910,21 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "on_click and on_submit accept a raw JS expression" begin
-        # Why: the type signature used to require DSAction and rejected the
-        # client-side toggle case. Loosening it removes the per-callsite
-        # `on(:click, ...)` workaround.
+        # Why: client-side toggles need raw JS, not just DSAction.
         @test occursin("data-on:click=", render(button(on_click("\$open = true"))))
         @test occursin("data-on:submit__prevent=", render(form(on_submit("alert('hi')"))))
     end
 
     @testset "on_interval emits a duration modifier on data-on-interval" begin
-        # Why: dashboard-style polling fragments need a recurring fetch. The
-        # helper hides the `data-on-interval__duration.Nms` shape so callers
-        # reach for `on_interval(action; ms=...)` instead.
+        # Why: polling fragments need recurring fetch; helper hides
+        # `data-on-interval__duration.Nms` shape.
         out = render(section(on_interval(ds_get("/api/x"); ms=5000)))
         @test occursin("data-on-interval__duration.5000ms=\"@get(", out)
     end
 
     @testset "ds_ref / ds_attr / ds_class / ds_effect / ds_init render the expected attrs" begin
-        # Why: review.jl was riddled with `Symbol("data-ref") => ...` literals.
-        # These short helpers both centralise the prefix and read better.
+        # Why: helpers centralise `data-*` prefix; beats `Symbol("data-ref") => ...`
+        # literals.
         @test render(button(ds_ref("btnNext"))) ==
             "<button data-ref=\"btnNext\"></button>"
         @test render(div(ds_attr("open", "\$dialogOpen"))) ==
@@ -1010,30 +933,23 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
             "<button data-class:outline=\"\$view !== &#39;grid&#39;\"></button>"
         @test render(div(ds_effect("\$open ? \$dlg.showModal() : \$dlg.close()"))) ==
             "<div data-effect=\"\$open ? \$dlg.showModal() : \$dlg.close()\"></div>"
-        # ds_init accepts a DSAction (renders as @get(...))
         out_action = render(div(ds_init(ds_get("/api/x"))))
         @test occursin("data-init=\"@get(&#39;/api/x&#39;)\"", out_action)
-        # ...and a raw JS string
         out_expr = render(div(ds_init("\$x = 1")))
         @test occursin("data-init=\"\$x = 1\"", out_expr)
-        # ds_signal seeds a single signal via the KEYED data-signals:<name>
-        # form (colon). Why: Datastar's plugin is `data-signals` (plural);
-        # there is no `data-signal` (singular) attribute, so the old
-        # dash-singular form silently no-op'd — the signal was never created.
+        # Why: Datastar plugin is `data-signals` (plural); no `data-signal` attribute
+        # exists, so singular form silently no-ops. Keyed form is `data-signals:<name>`.
         @test render(div(ds_signal("count", 0))) ==
             "<div data-signals:count=\"0\"></div>"
-        # ds_computed declares a derived signal (data-computed:<name>).
         @test render(div(ds_computed("total", "\$price * \$qty"))) ==
             "<div data-computed:total=\"\$price * \$qty\"></div>"
-        # ds_style binds an inline style property reactively (data-style:<prop>).
-        # The `&&` in the expression HTML-escapes to `&amp;&amp;`.
         @test render(div(ds_style("display", "\$hiding && 'none'"))) ==
             "<div data-style:display=\"\$hiding &amp;&amp; &#39;none&#39;\"></div>"
     end
 
     @testset "a Symbol names one signal: \$name in expressions, bare in bind/indicator" begin
-        # Why: `"\$x"` needs a Julia escape, and forgetting the `\$` (`"count"`)
-        # makes Datastar read an undefined JS name instead of the signal.
+        # Why: `"$x"` needs Julia escape; forgetting `$` (`"count"`) makes Datastar read
+        # an undefined JS name instead of signal.
         @test render(span(ds_show(:open))) == "<span data-show=\"\$open\"></span>"
         @test render(span(ds_text(Symbol("form.email")))) ==
             "<span data-text=\"\$form.email\"></span>"
@@ -1046,7 +962,7 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
             "<div data-computed:copy=\"\$total\"></div>"
         @test render(div(ds_bind(:query))) == "<div data-bind=\"query\"></div>"
         @test render(div(ds_indicator(:saving))) == "<div data-indicator=\"saving\"></div>"
-        # Hyphens are camel-cased by Datastar, so `:my-signal` would name nothing.
+        # Why: Datastar camel-cases hyphens, so `:my-signal` would name nothing.
         for bad in (Symbol("my-signal"), Symbol("a..b"), Symbol("x y"), Symbol(""), Symbol("1a"))
             @test_throws ArgumentError ds_show(bad)
         end
@@ -1054,21 +970,19 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "ds\"…\" keeps \$signal literal and splices \$(julia) as a JS literal" begin
-        # Why: in a plain string `\$count` is Julia interpolation, so every
-        # Datastar expression needed `\\\$`; and `"\\\$x = \$(v)"` pasted v into
-        # JS unquoted. A wrong splice rule here is a JS injection.
+        # Why: plain string makes `$count` Julia interpolation, forcing `\\\$`
+        # everywhere; splicing v unquoted into JS = injection.
         @test ds"$open = !$open" == "\$open = !\$open"
         @test ds"$open" isa DSExpr
         n, s = 3, "a'b\"c"
         @test ds"$count = $(n)" == "\$count = 3"
-        # Strings go through the DSAction escaper, plus `"`, backtick and `$`.
         @test ds"$label = $(s)" == "\$label = 'a\\'b\\\"c'"
         t = "a</b"
         @test ds"$x = $(t)" == "\$x = 'a<\\/b'"
         @test ds"$x = $(Inf)" == "\$x = Infinity"
         @test ds"$x = $((a=1,))" == "\$x = {\"a\":1}"
         @test ds"$x = $(nothing)" == "\$x = null"
-        # A bare `"` ends a custom string literal, even inside `$(…)`.
+        # Why: bare `"` ends custom string literal, even inside `$(…)`.
         @test ds"""$(ds_get("/feed")); $ready = true""" == "@get('/feed'); \$ready = true"
         inner = ds"$a + 1"
         @test ds"$b = $(inner)" == "\$b = \$a + 1"
@@ -1076,9 +990,9 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test ds"$v = 'it\'s $w'" == "\$v = 'it\\'s \$w'"
         @test render(button(on(:click, ds"$x = $(s)"))) ==
             "<button data-on:click=\"\$x = &#39;a\\&#39;b\\&quot;c&#39;\"></button>"
-        # The quote inside each regex flips the parser's quote tracking, so
-        # these splices are accepted though they sit inside real JS strings.
-        # Escaping every delimiter keeps the value inert in any quote context.
+        # Why: quote inside each regex flips parser's quote tracking, so splices are
+        # accepted though inside real JS strings; escaping every delimiter keeps value
+        # inert in any quote context.
         dq, bt, sq = "\"+alert(1)+\"", "\${alert(1)}", (a="'+alert(1)+'",)
         @test ds"$ok = /\"/.test($a) ? \"$(dq)\" : /\"/" ==
             "\$ok = /\"/.test(\$a) ? \"'\\\"+alert(1)+\\\"'\" : /\"/"
@@ -1086,7 +1000,7 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
             "\$ok = /`/.test(\$a) ? `'\\\${alert(1)}'` : /`/"
         @test ds"$ok = /'/.test($a) ? '$(sq)' : /'/" ==
             "\$ok = /'/.test(\$a) ? '{\"a\":\"\\'+alert(1)+\\'\"}' : /'/"
-        # Errors are raised at macro expansion; test the parser directly.
+        # Why: errors raise at macro expansion; call parser directly.
         @test_throws ArgumentError HyperSignal._ds_parse("\\\$x")
         @test_throws ArgumentError HyperSignal._ds_parse("'hi \$(name)'")
         @test_throws ArgumentError HyperSignal._ds_parse("\$(a")
@@ -1094,10 +1008,8 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "ds_json_signals renders the bare debug attribute (and an optional filter)" begin
-        # Why: data-json-signals sets an element's text to a live JSON dump of
-        # the signal store — the in-page debugger. Bare form takes no value
-        # (renders as a valueless attribute, like ds_indicator()); the filter
-        # overload scopes it to matching signal names.
+        # Why: in-page debugger; bare form is valueless attribute like ds_indicator(),
+        # filter overload scopes to matching signal names.
         @test render(pre(ds_json_signals())) == "<pre data-json-signals></pre>"
         a = ds_json_signals()
         @test (a.key, a.value) == (Symbol("data-json-signals"), true)
@@ -1106,12 +1018,10 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "ds_signals JSON-encodes a NamedTuple into data-signals" begin
-        # Why: hand-written {"k": v, ...} JSON inside attribute strings is the
-        # most accident-prone bit of Datastar wiring. ds_signals takes a
-        # NamedTuple, JSON-encodes it once, and lets the renderer's attribute
-        # escape handle the HTML side. The double quotes round-trip through
-        # &quot; cleanly because Datastar's parser unescapes attribute values
-        # before reading them as JSON.
+        # Why: hand-written JSON in attribute strings is most accident-prone Datastar
+        # wiring. ds_signals JSON-encodes once; renderer's attribute escape handles HTML
+        # side. `&quot;` round-trips because Datastar unescapes attribute values before
+        # reading JSON.
         out = render(
             div(ds_signals((showDetails=false, count=0)), "x"))
         @test occursin("data-signals=\"", out)
@@ -1126,11 +1036,9 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "parse_signals decodes a JSON body into a Dict{String, Any}" begin
-        # Why: signals come back from Datastar's default @post('/x') action
-        # as a JSON object. parse_signals is the inverse of ds_signals on the
-        # request side — accepts a Request, a Vector{UInt8}, or a String, and
-        # returns a uniformly-typed Dict so a route can read fields without
-        # caring how it got the body.
+        # Why: signals arrive as JSON object from Datastar's default @post('/x');
+        # parse_signals inverts ds_signals on request side, returns uniform Dict whether
+        # given Request, Vector{UInt8}, or String.
         body = "{\"count\": 7, \"label\": \"hi\"}"
         d = parse_signals(body)
         @test d isa Dict{String, Any}
@@ -1146,29 +1054,25 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "parse_signals returns an empty Dict for an empty body" begin
-        # Why: a request with no body shouldn't crash the route — the typical
-        # guard `get(sig, "x", default)` then handles "no signals sent" cleanly.
+        # Why: bodyless request must not crash route; `get(sig, "x", default)` handles
+        # "no signals sent".
         @test parse_signals("") == Dict{String, Any}()
         @test parse_signals(UInt8[]) == Dict{String, Any}()
-        # HTTP 2.x gives a bodyless request an `HTTP.EmptyBody`, not a Vector.
+        # Why: HTTP 2.x gives bodyless request `HTTP.EmptyBody`, not a Vector.
         @test parse_signals(HTTP.Request("GET", "/")) == Dict{String, Any}()
     end
 
     @testset "parse_signals rejects a top-level non-object payload loud" begin
-        # Why: Datastar wraps signals in a JSON object. A bare array or a
-        # number would silently become a Vector{Any} or Int — surprising at
-        # the call site. Fail loud and steer toward the right shape. The error
-        # is an ArgumentError, matching the malformed-JSON path below (both
-        # "bad request body" cases now throw one consistent type).
+        # Why: Datastar wraps signals in JSON object; bare array/number would silently
+        # become Vector{Any}/Int. Fail loud with ArgumentError, matching malformed-JSON
+        # path.
         @test_throws ArgumentError parse_signals("[1, 2, 3]")
         @test_throws ArgumentError parse_signals("42")
     end
 
     @testset "Symbol-keyed Pairs lift into attrs alongside kwargs and Attributes" begin
-        # Why: HTML attribute names like `for`, `aria-label`, `data-foo:bar` are
-        # not valid Julia kwarg identifiers. Accepting `:for => "x"` /
-        # `Symbol("aria-label") => "x"` positionally avoids forcing every
-        # caller to construct an `Attribute` by hand for those.
+        # Why: `for`, `aria-label`, `data-foo:bar` aren't valid Julia kwarg identifiers;
+        # Pair form avoids hand-building `Attribute`.
         out = render(label(:for => "user", "Username"))
         @test out == "<label for=\"user\">Username</label>"
         out2 = render(a(href="#x", Symbol("aria-label") => "Scroll", "x"))
@@ -1177,26 +1081,19 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "signal_dialog wires open/close to a Datastar expression" begin
-        # Why: every modal in validation_studio re-rolls the same three
-        # bindings — data-effect for showModal/close, a close-event sync,
-        # and a backdrop-click dismiss. signal_dialog bakes them in so a
-        # caller writes the signal name once.
+        # Why: every validation_studio modal re-rolls same three bindings (data-effect
+        # for showModal/close, close-event sync, backdrop-click dismiss); signal_dialog
+        # bakes them in.
         out = render(signal_dialog("\$modal",
             div(class="inner", "body");
             close_action="\$modal = 0", id="x", class="m"))
-        # Top-level element is <dialog>, not a backdrop <div>
         @test startswith(out, "<dialog ")
         @test occursin("id=\"x\"", out)
         @test occursin("class=\"m\"", out)
-        # data-effect drives showModal/close from the expression — uses
-        # `el` because Datastar's expression context binds the host
-        # element as `el` (this is the signals proxy, not the DOM node).
+        # Why: Datastar expression context binds host element as `el`.
         @test occursin("data-effect=\"(\$modal) ? el.showModal() : el.close()\"", out)
-        # close event syncs the signal (ESC + programmatic close)
         @test occursin("data-on:close=\"\$modal = 0\"", out)
-        # backdrop click dismisses only when target is the dialog itself
         @test occursin("data-on:click=\"if(event.target===el){\$modal = 0}\"", out)
-        # body passes through
         @test occursin("<div class=\"inner\">body</div></dialog>", out)
     end
 
@@ -1208,38 +1105,33 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "signal_dialog click handler stays scoped to the dialog element" begin
-        # Why: backdrop-click-to-close must not eat clicks on inner content.
-        # The `event.target===el` guard is the whole point — verify it's
-        # there literally, not just any data-on:click. `el` is the
-        # Datastar-exposed reference to the host element.
+        # Why: backdrop-click-to-close must not eat clicks on inner content;
+        # `event.target===el` guard must be present literally, not just any
+        # data-on:click.
         out = render(signal_dialog("\$x", div("c"); close_action="\$x=0"))
         @test occursin("event.target===el", out)
     end
 
     @testset "@using_tags imports the Base-shadowed tag names in one line" begin
-        # Why: the manual `using HyperSignal: div, select, …` line is the
-        # most awkward part of the API. The macro removes that papercut for
-        # consumers — confirm the macro expansion is the right `using` form.
+        # Why: macro replaces manual `using HyperSignal: div, select, …`, the API's most
+        # awkward line; expansion must be same `using` form.
         ex = macroexpand(@__MODULE__, :(HyperSignal.@using_tags))
-        # Should produce: using HyperSignal: div, select, summary
         @test ex.head == :using
         inner = ex.args[1]
         @test inner.head == :(:)
-        # First arg names the module; the rest are the imported names.
         modref = inner.args[1]
         names = [a.args[1] for a in inner.args[2:end]]
         @test modref.args[1] == :HyperSignal
         @test :div in names
         @test :select in names
         @test :summary in names
-        # iter 33 added mark and time to the Base-shadowed set
         @test :mark in names
         @test :time in names
     end
 
     @testset "patch_svg strips XML prolog and DOCTYPE so HTML parsing isn't broken" begin
-        # Why: CairoMakie writes a full XML document, but those prologs
-        # are invalid inside an HTML page and will trip the parser.
+        # Why: CairoMakie writes full XML document; prologs are invalid inside HTML page
+        # and trip parser.
         src = """<?xml version="1.0" encoding="UTF-8"?>
                  <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "x.dtd">
                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><g/></svg>"""
@@ -1250,11 +1142,9 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "patch_svg strips HTML comments anywhere in the document" begin
-        # Why: CairoMakie (and other backends) emit generator-note comments
-        # that add bytes without affecting the figure. The prolog pass folds
-        # comment removal into the same walk, so comments mid-document — not
-        # just a leading one — are dropped. Pin it so the documented
-        # behavior can't silently regress to prolog-only.
+        # Why: backends emit generator-note comments that add bytes without affecting
+        # figure. Prolog pass folds comment removal into same walk; pin that
+        # mid-document comments drop, not just leading one.
         out = patch_svg("""<svg viewBox="0 0 1 1"><!-- gen note --><g><!-- inner --><rect/></g></svg>""")
         @test !occursin("<!--", out)
         @test occursin("<svg viewBox=\"0 0 1 1\"><g><rect/></g></svg>", out)
@@ -1276,21 +1166,21 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "patch_svg namespaces ids, url(#…), and href fragments" begin
-        # Why: two CairoMakie figures on one page collide on `clip0` /
-        # `glyph0`. The prefix scopes them so each figure is self-contained.
+        # Why: two CairoMakie figures on one page collide on `clip0`/`glyph0`; prefix
+        # scopes them.
         src = """<svg viewBox="0 0 1 1"><defs><clipPath id="clip0"><rect/></clipPath></defs><g clip-path="url(#clip0)"><use xlink:href="#glyph0"/><use href="#g1"/></g></svg>"""
         out = patch_svg(src; id_prefix="fig1_")
         @test occursin("id=\"fig1_clip0\"", out)
         @test occursin("url(#fig1_clip0)", out)
         @test occursin("xlink:href=\"#fig1_glyph0\"", out)
         @test occursin("href=\"#fig1_g1\"", out)
-        @test !occursin("xlink:href=\"#fig1_fig1_", out)  # idempotency guard
+        @test !occursin("xlink:href=\"#fig1_fig1_", out)
     end
 
     @testset "patch_svg id namespacing leaves *-id / xml:id attributes alone" begin
-        # Why: the id matcher anchors on a name-char boundary, not a bare \b
-        # word boundary — `data-id`/`xml:id`/`aria-id` are NOT the SVG `id`
-        # attribute and must keep their values verbatim under id_prefix.
+        # Why: id matcher anchors on name-char boundary, not bare \b;
+        # `data-id`/`xml:id`/`aria-id` are NOT SVG `id` and keep values verbatim under
+        # id_prefix.
         src = """<svg viewBox="0 0 1 1"><rect data-id="keep" xml:id="x" id="real"/></svg>"""
         out = patch_svg(src; id_prefix="p_")
         @test occursin("data-id=\"keep\"", out)
@@ -1299,11 +1189,9 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "patch_svg id_prefix containing \$ or \\ is treated literally, not as a backreference" begin
-        # Why: the renamespacing uses SubstitutionString, which would
-        # interpret `\1` / `$1` as backreferences if we let the caller's
-        # prefix through verbatim. Callers that derive prefix from a
-        # session id or hash easily land on a `$` — verify it lands as
-        # text, not as a regex capture.
+        # Why: renamespacing uses SubstitutionString, which reads `\1`/`$1` as
+        # backreferences if caller's prefix passes verbatim; prefixes derived from
+        # session id/hash easily contain `$`. Must land as text.
         src = """<svg><defs><clipPath id="c0"><rect/></clipPath></defs><g clip-path="url(#c0)"/></svg>"""
         out = patch_svg(src; id_prefix="\$ses1_")
         @test occursin("id=\"\$ses1_c0\"", out)
@@ -1342,42 +1230,31 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "patch_svg escapes add_class so it can't inject root-tag attributes" begin
-        # Why: add_class lands inside the quoted class attribute of the
-        # root <svg>. An unescaped `"` would close the attribute and let
-        # a crafted value inject new attributes (e.g. an onload handler)
-        # onto the root element — symmetric with the aria_label escape.
+        # Why: add_class lands inside quoted class attribute of root <svg>; unescaped
+        # `"` closes it and lets crafted value inject attributes (e.g. onload),
+        # symmetric with aria_label escape.
         out = patch_svg("""<svg viewBox="0 0 1 1"><g/></svg>""";
                         add_class="x\" onload=\"alert(1)")
-        # The dangerous form (a real quote opening an attribute) is gone;
-        # the value survives as inert escaped text inside the class attr.
         @test !occursin("onload=\"", out)
         @test occursin("class=\"x&quot; onload=&quot;alert(1)\"", out)
-        # `<` is neutralised too.
         @test occursin("class=\"a&lt;b\"",
                        patch_svg("""<svg viewBox="0 0 1 1"><g/></svg>"""; add_class="a<b"))
-        # The merge-with-existing-class branch escapes the new value too,
-        # leaving the (already-in-document) existing class untouched.
         @test occursin("class=\"base x&quot;y\"",
                        patch_svg("""<svg class="base" viewBox="0 0 1 1"><g/></svg>""";
                                  add_class="x\"y"))
     end
 
     @testset "patch_svg resumes correctly past a multi-byte char in the root tag" begin
-        # Why: _patch_root_svg rebuilds the opening <svg …> tag and then
-        # splices the rest of the document back on. The resume offset must
-        # be measured in BYTES (the string is byte-indexed) — using the
-        # character count instead lands short of the tag end whenever the
-        # root tag holds multi-byte UTF-8 (a pre-existing non-ASCII attr),
-        # re-emitting the trailing '>' and corrupting the markup.
+        # Why: _patch_root_svg rebuilds opening <svg …> tag and splices rest back.
+        # Resume offset must be in BYTES (string is byte-indexed); character count lands
+        # short of tag end when root tag holds multi-byte UTF-8, re-emitting trailing
+        # '>' and corrupting markup.
         src = """<svg data-title="Café résumé" viewBox="0 0 1 1"><g/></svg>"""
         out = patch_svg(src; add_class="figure")
         @test occursin("class=\"figure\"", out)
-        # Exactly one '>' closes the opening tag — no doubled '>>'.
         @test occursin("class=\"figure\"><g/>", out)
         @test !occursin(">>", out)
         @test occursin("data-title=\"Café résumé\"", out)
-        # And the body after the root tag survives intact under aria_label
-        # (another path through the same rebuild) with a multi-byte tag.
         out2 = patch_svg("""<svg título="Olá" viewBox="0 0 1 1"><rect/><g/></svg>""";
                          aria_label="Açaí")
         @test occursin("role=\"img\"", out2)
@@ -1395,10 +1272,8 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "Expanded HTML5 tag set renders correctly" begin
-        # Why: the tag-set expansion (iter 33) added ~35 new tag
-        # constructors. The Aqua-style sanity test confirms each
-        # exported name resolves, but a behavioral spot-check pins
-        # the actual emitted shape for the most user-facing additions.
+        # Why: Aqua-style export test only confirms names resolve; behavioral spot-check
+        # pins emitted shape for most user-facing new tags.
         @test render(blockquote(p("Quoted"))) == "<blockquote><p>Quoted</p></blockquote>"
         @test render(audio(src="x.mp3", controls=true)) == "<audio src=\"x.mp3\" controls></audio>"
         @test render(iframe(src="https://e.com", "fallback")) ==
@@ -1408,14 +1283,12 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test render(i("italic")) == "<i>italic</i>"
         @test render(sub("2")) == "<sub>2</sub>"
         @test render(sup("3")) == "<sup>3</sup>"
-        @test render(wbr()) == "<wbr>"           # void
+        @test render(wbr()) == "<wbr>"
         @test render(caption("Table")) == "<caption>Table</caption>"
         @test render(meter(value="0.7", "70%")) == "<meter value=\"0.7\">70%</meter>"
-        # Base-shadowed new tags: pull in via @using_tags or qualify.
         @test render(HyperSignal.mark("hi")) == "<mark>hi</mark>"
         @test render(HyperSignal.time(datetime="2026-05-23", "today")) ==
               "<time datetime=\"2026-05-23\">today</time>"
-        # SVG primitives compose with the existing svg() tag.
         out = render(svg(viewBox="0 0 10 10", rect(width="10", height="10"), circle(cx="5", cy="5", r="3")))
         @test occursin("<svg viewBox=\"0 0 10 10\">", out)
         @test occursin("<rect", out)
@@ -1423,66 +1296,48 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "Generators nested inside collections render via iteration" begin
-        # Why: the construction-time generator-unpack only handles
-        # top-level positional args. A Generator nested inside a
-        # Vector — `div([gen1, gen2])` — would otherwise MethodError
-        # at render. The render-side method walks them once.
+        # Why: construction-time generator-unpack handles only top-level positional
+        # args; Generator nested in Vector (`div([gen1, gen2])`) would MethodError at
+        # render. Render-side method walks them once.
         out = render(div([(p(i) for i in 1:2), (p(i) for i in 3:4)]))
         @test out == "<div><p>1</p><p>2</p><p>3</p><p>4</p></div>"
-        # A bare generator passed directly to render works the same.
         @test render(p(i) for i in 1:3) == "<p>1</p><p>2</p><p>3</p>"
     end
 
     @testset "Generator-of-children unpacks (and is re-renderable)" begin
-        # Why: `div(p(i) for i in 1:n)` is the natural Julia
-        # comprehension form for a list of children. Without
-        # generator-unpacking, the generator landed as a single
-        # child and MethodError'd at render time. Consume eagerly
-        # into the children vector so the element can be rendered
-        # multiple times — generators are single-pass.
+        # Why: `div(p(i) for i in 1:n)` is the natural form for a list of children;
+        # consume eagerly into children vector so element re-renders (generators are
+        # single-pass).
         el = div(p(i) for i in 1:3)
         @test render(el) == "<div><p>1</p><p>2</p><p>3</p></div>"
-        # Re-render must produce the same output (generator would
-        # be exhausted if we stored it instead of consuming).
         @test render(el) == "<div><p>1</p><p>2</p><p>3</p></div>"
-        # Empty generator collapses cleanly.
         @test render(div(p(i) for i in 1:0)) == "<div></div>"
-        # Generator yielding skip-types (nothing) drops them.
         @test render(div(i % 2 == 0 ? nothing : p(i) for i in 1:4)) ==
               "<div><p>1</p><p>3</p></div>"
     end
 
     @testset "Tuple-of-children unpacks like a Vector at construction" begin
-        # Why: callers occasionally have children in a tuple (a
-        # destructure target, a splat-receiver, a heterogeneously-typed
-        # comprehension). Without unpacking, render(::Tuple) MethodErrors.
-        # Mirror the existing Vector behavior so both shapes work.
+        # Why: children arrive in tuples (destructure target, splat-receiver,
+        # heterogeneously-typed comprehension); unpack like Vector, else render(::Tuple)
+        # MethodErrors.
         @test render(div((span("a"), span("b")))) == "<div><span>a</span><span>b</span></div>"
         @test render(div(("hello", " ", "world"))) == "<div>hello world</div>"
-        # Mixed types in the tuple flatten cleanly.
         @test render(div(("x", nothing, h2("y"), 7))) == "<div>x<h2>y</h2>7</div>"
-        # Empty tuple → no children added.
         @test render(div((), "a")) == "<div>a</div>"
     end
 
     @testset "Symbol children render as their text (auto-escaped)" begin
-        # Why: status enums (`span(:Pending)`) are the common case. The
-        # caller pulled the value from a model field; no reason to make
-        # them string() it themselves. The Symbol's bytes get the same
-        # escape treatment as a String.
+        # Why: status enums (`span(:Pending)`) are common; callers shouldn't string()
+        # model fields. Symbol bytes get same escaping as String.
         @test render(span(:Pending)) == "<span>Pending</span>"
         @test render(div(:foo, " ", :bar)) == "<div>foo bar</div>"
-        # Escape still fires on the bytes (paranoid case).
         @test render(div(Symbol("a<b"))) == "<div>a&lt;b</div>"
     end
 
     @testset "Bool children are skipped so cond && elem renders conditionally" begin
-        # Why: `div(header, cond && extra, footer)` is the natural Julia
-        # idiom for conditional rendering. Without a Bool-skip method,
-        # `cond && extra` evaluates to bare false on falsy and the
-        # Number dispatch emits the literal text 'false'. With the new
-        # method bool children land in the same skip bucket as
-        # nothing/missing.
+        # Why: `cond && extra` evaluates to bare false when falsy and Number dispatch
+        # would emit literal text 'false'; Bool children join nothing/missing skip
+        # bucket.
         @test render(div("a", false, "b")) == "<div>ab</div>"
         @test render(div("a", true, "b")) == "<div>ab</div>"
         show_extra = false
@@ -1490,38 +1345,28 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         show_extra = true
         @test render(div("a", show_extra && span("extra"), "b")) ==
               "<div>a<span>extra</span>b</div>"
-        # If the user really wants the literal text 'true'/'false',
-        # they can pass it via string() — no method override to undo.
         @test render(div(string(true))) == "<div>true</div>"
     end
 
     @testset "Vector attribute values are space-joined (class-list semantics)" begin
-        # Why: `class=["btn", "primary"]` is the natural way to build a
-        # class list, and aria-describedby / aria-labelledby take
-        # space-separated ids. The previous fallback dumped the Vector
-        # repr — `class="[&quot;btn&quot;, ...]"` — which is hostile.
+        # Why: `class=["btn", "primary"]` is natural class-list form; aria-describedby /
+        # aria-labelledby take space-separated ids.
         @test render(div(class=["btn", "primary"], "x")) == "<div class=\"btn primary\">x</div>"
         @test render(input(type="text", "aria-describedby" => ["hint1", "hint2"])) ==
               "<input type=\"text\" aria-describedby=\"hint1 hint2\">"
-        # Nothing/missing/empty entries drop, so an optional class
-        # survives without coalesce gymnastics.
         @test render(div(class=["btn", nothing, "active", missing, ""])) ==
               "<div class=\"btn active\"></div>"
-        # The Julia idiom `cond && "active"` evaluates to `false` when
-        # cond is false. Drop `false` and `true` so the idiom works
-        # without stringifying the literal bool.
+        # Why: `cond && "active"` evaluates to `false` when cond false; drop
+        # `false`/`true` so idiom works without stringifying bool.
         @test render(div(class=["btn", false, "primary", true])) ==
               "<div class=\"btn primary\"></div>"
         is_active = false
         @test render(div(class=["btn", is_active && "active", "default"])) ==
               "<div class=\"btn default\"></div>"
-        # Non-string entries get string()-converted.
         @test render(div(:rowspan => [2, 3])) == "<div rowspan=\"2 3\"></div>"
-        # Empty vector → empty attribute value (still emitted because
-        # the attr name was passed; user opted in).
+        # Why: empty vector still emits empty value; attr name was passed (user opted
+        # in).
         @test render(div(class=String[], "x")) == "<div class=\"\">x</div>"
-        # Tuples space-join the same way (ergonomic symmetry with
-        # vectors — both mean "join these" in attribute position).
         @test render(div(class=("btn", "primary"), "x")) ==
               "<div class=\"btn primary\">x</div>"
         @test render(div(class=("btn", nothing, false, "active"))) ==
@@ -1530,82 +1375,60 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "string(::DSAction) returns the JS expression, not a struct dump" begin
-        # Why: symmetric with Element/Frag/Raw — every HyperSignal
-        # value should `string()` to what the lib would put in the
-        # page, not the internal record. Useful for log lines, error
-        # messages, and a clean REPL.
+        # Why: symmetric with Element/Frag/Raw; `string()` gives what lib puts in page,
+        # not internal record (log lines, error messages, REPL).
         @test string(ds_post("/api/save")) == "@post('/api/save')"
         @test string(ds_get("/c"; form=true)) == "@get('/c', {contentType: 'form'})"
         @test "$(ds_post("/x"))" == "@post('/x')"
     end
 
     @testset "String-keyed Pair args are accepted as attributes (auto-symbolize)" begin
-        # Why: `div("id" => "foo", "x")` was a footgun — String keys
-        # silently fell into the children path and MethodError'd at
-        # render. String-keyed Pairs are unambiguous as attributes
-        # (nobody passes a Pair as text content) and reading
-        # `"data-foo" => v` beats `Symbol("data-foo") => v`.
+        # Why: String-keyed Pairs are unambiguous as attributes (nobody passes a Pair as
+        # text content); `"data-foo" => v` beats `Symbol("data-foo") => v`.
         @test render(div("id" => "card", "x")) == "<div id=\"card\">x</div>"
         @test render(span("data-x" => "v")) == "<span data-x=\"v\"></span>"
-        # The attribute-name validation still fires.
         @test_throws ArgumentError render(div("x onerror=1" => "v"))
-        # Symbol-keyed Pairs keep working alongside String-keyed.
         @test render(div(:id => "card", "data-x" => "v", "x")) ==
               "<div id=\"card\" data-x=\"v\">x</div>"
     end
 
     @testset "duplicate attribute names collapse with the last value winning" begin
-        # Why: the HTML5 parser keeps the FIRST of duplicate attributes and
-        # drops the rest (§13.2.5.33), so emitting `class="a" class="b"`
-        # would silently apply "a". A caller who sets an attribute twice
-        # means the later one to override (e.g. a base value then a
-        # computed override), so we collapse at construction — last value
-        # wins, each name emitted exactly once.
+        # Why: HTML5 parser keeps FIRST duplicate attribute (§13.2.5.33), so `class="a"
+        # class="b"` silently applies "a". Caller setting attribute twice means later
+        # overrides (base then computed); collapse at construction, last value wins,
+        # each name emitted once.
         @test render(div("class" => "later", class="earlier")) ==
               "<div class=\"later\"></div>"
-        # Two positional Attributes of the same key: the later overrides.
         @test render(button(on_click("x"), on_click("y"))) ==
               "<button data-on:click=\"y\"></button>"
-        # Order is stable: the duplicated name keeps its first-seen slot,
-        # only its value updates.
         @test render(div(:a => "1", :b => "2", :a => "3")) ==
               "<div a=\"3\" b=\"2\"></div>"
-        # A duplicate submit binding on <form> collapses too — exactly one
-        # data-on:submit* attribute survives, carrying the later value.
         @test render(form(on_submit("a"), on_submit("b"))) ==
               "<form data-on:submit__prevent=\"b\"></form>"
-        # Non-duplicate attrs are untouched (and the no-dup fast path keeps
-        # the original vector).
         @test render(div(class="a", id="b", "data-x" => "y")) ==
               "<div class=\"a\" id=\"b\" data-x=\"y\"></div>"
     end
 
     @testset "cls rejects non-collection scalars cleanly (no stack overflow)" begin
-        # Why: `_push_cls!` previously had an Any fallback that iterated
-        # its arg. Number is a 1-iterable in Julia (yields itself), so
-        # `cls("a", 1)` recursed forever and stack-overflowed. Now the
-        # iterator path is restricted to actual collection types, and
-        # everything else hits a clear error message.
+        # Why: Number is a 1-iterable (yields itself), so an Any iterator fallback made
+        # `cls("a", 1)` recurse forever; iterate real collections only, error otherwise.
         @test_throws ArgumentError cls("a", 1)
         @test_throws ArgumentError cls("a", 3.14)
         @test_throws ArgumentError cls("a", :symbol_input)
-        # Collections still flatten correctly.
         @test cls("a", ["b", "c"]) == "a b c"
         @test cls("a", ("b", "c")) == "a b c"
         @test cls("a", Set(["b"])) == "a b"
     end
 
     @testset "tag names that would break the HTML parser raise ArgumentError" begin
-        # Why: Element(Symbol(...), ...) is the documented escape hatch
-        # for runtime-chosen tags. Without validation, Symbol("<script>")
-        # would emit literal '<' and '>' bytes into the open tag and
-        # break HTML parsing (or worse, smuggle in markup). Reject the
-        # same parser-breaking subset we reject for attribute names.
+        # Why: Element(Symbol(...), ...) is the escape hatch for runtime-chosen tags;
+        # unvalidated `Symbol("<script>")` would emit literal '<' and '>' into open tag,
+        # breaking parsing or smuggling markup. Reject same parser-breaking subset as
+        # attribute names.
         for bad in ["<script>", "div onerror=x", "tag>injected",
                     "with space", "tag\"x", "tag\0x", ""]
             @test_throws ArgumentError render(Element(Symbol(bad), Pair{Symbol,Any}[], Any[]))
         end
-        # Custom but valid tag names (Web Components / SVG) pass through.
         for ok in ["my-element", "svg:circle", "x-tag123"]
             out = render(Element(Symbol(ok), Pair{Symbol,Any}[], Any["x"]))
             @test occursin("<$ok>x</$ok>", out)
@@ -1613,25 +1436,22 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "attribute names that would break the HTML parser raise ArgumentError" begin
-        # Why: every legal Datastar attr name fits in [A-Za-z0-9:_.-]+,
-        # which is well inside HTML5's attribute-name grammar. But the
-        # Symbol-keyed Pair API lets a caller pass *any* Symbol, so a
-        # hostile event name from user input could otherwise inject
-        # markup. Reject the parser-breaking chars loudly.
+        # Why: legal Datastar attr names fit [A-Za-z0-9:_.-]+, well inside HTML5
+        # grammar; Symbol-keyed Pair API accepts any Symbol, so hostile event name from
+        # user input could inject markup.
         for bad in [
-            "x onerror=alert(1)",   # space → injection vector
-            "x>injected",           # > closes the tag
-            "x=\"y\"",              # = + quote
-            "x'y",                  # single quote
-            "x\"y",                 # double quote
-            "x\ty",                 # tab
-            "x\ny",                 # newline
-            "x/y",                  # slash (HTML5 forbids in attr name)
-            "x\0y",                 # NUL
+            "x onerror=alert(1)",
+            "x>injected",
+            "x=\"y\"",
+            "x'y",
+            "x\"y",
+            "x\ty",
+            "x\ny",
+            "x/y",
+            "x\0y",
         ]
             @test_throws ArgumentError render(div(Symbol(bad) => "v"))
         end
-        # Legal Datastar-style names still pass through fine.
         for ok in ["data-on:click__prevent", "data-on-interval__duration.5000ms",
                    "aria-label", "xlink:href"]
             @test occursin(ok, render(span(Symbol(ok) => "v")))
@@ -1639,80 +1459,60 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "package sanity: no method ambiguities or unbound-arg generics" begin
-        # Why: ambiguities are easy to introduce silently when adding
-        # methods like Base.show on a struct that overlaps with an
-        # existing AbstractDisplay path, or when a new dispatch on
-        # Vector{T} crosses an existing Vector{S}. Without an Aqua dep,
-        # Base.detect_ambiguities is enough to catch the common case.
-        # Skip recursion into Base / loaded modules to keep noise down.
+        # Why: ambiguities creep in silently (Base.show on struct overlapping an
+        # AbstractDisplay path, Vector{T} dispatch crossing Vector{S}). Without Aqua
+        # dep, Base.detect_ambiguities catches common case; recursive=false skips
+        # Base/loaded modules to keep noise down.
         ambs = Test.detect_ambiguities(HyperSignal; recursive=false)
         @test isempty(ambs)
-        # Unbound type parameters in method signatures are the second
-        # most common silent bug. They surface as MethodErrors only on
-        # very specific call shapes, so static detection is cheaper.
+        # Why: unbound type parameters surface as MethodErrors only on specific call
+        # shapes; static detection is cheaper.
         unbounds = Test.detect_unbound_args(HyperSignal; recursive=false)
         @test isempty(unbounds)
     end
 
     @testset "package sanity: every export resolves to a defined binding" begin
-        # Why: a typo in the `export` lists at the bottom of
-        # HyperSignal.jl (or a renamed helper whose export wasn't
-        # updated) only fires at `using HyperSignal: <name>` time on a
-        # consumer machine — too late. Walk the exported names once
-        # and assert each is defined.
+        # Why: typo in `export` lists (or renamed helper with stale export) only fires
+        # at `using HyperSignal: <name>` on a consumer machine, too late. Assert each
+        # exported name is defined.
         for name in names(HyperSignal)
-            name === :HyperSignal && continue  # the module itself
+            name === :HyperSignal && continue
             @test isdefined(HyperSignal, name)
         end
     end
 
     @testset "Vector{UInt8} renders as a verbatim byte buffer, not per-byte numbers" begin
-        # Why: the generic AbstractVector path used to walk a byte
-        # buffer and emit each UInt8 as a decimal number, which is
-        # never what the caller wants. The common case is a
-        # pre-rendered, possibly cached HTML body — write it verbatim.
+        # Why: generic AbstractVector path would emit each UInt8 as decimal number;
+        # common case is pre-rendered, possibly cached HTML body, written verbatim.
         bytes = Vector{UInt8}("<b>hi</b>")
         @test render(bytes) == "<b>hi</b>"
-        # The bytes path even bypasses auto-escape — by design,
-        # mirroring `Raw`'s trust model: bytes are emitted as-is.
+        # Why: bytes bypass auto-escape by design, mirroring `Raw`'s trust model.
         @test render(Vector{UInt8}("<>&")) == "<>&"
-        # An empty byte vector renders to the empty string.
         @test render(Vector{UInt8}()) == ""
-        # A byte buffer as an element child is kept whole, not unpacked
-        # into per-byte Number children. The pre-rendered fragment
-        # caching use case: stick a cached buffer between two ordinary
-        # children and only the buffer is emitted verbatim.
+        # Why: byte buffer as element child stays whole, not unpacked into per-byte
+        # Number children; cached pre-rendered fragments sit between ordinary children.
         @test render(div(class="card", "x", Vector{UInt8}("<i>cached</i>"), "y")) ==
               "<div class=\"card\">x<i>cached</i>y</div>"
     end
 
     @testset "SubString of String escapes correctly via the codeunit fast path" begin
-        # Why: SubString{String} is the result of any slice/interpolation
-        # on a String. Ensure it walks the parent buffer correctly and
-        # produces the same output as the equivalent String value.
+        # Why: SubString{String} results from any slice/interpolation; must walk parent
+        # buffer correctly and match String output.
         base = "ab<c&d>ef\"gh'ij"
-        sub = SubString(base, 2, 14)  # "b<c&d>ef\"gh'i"
+        sub = SubString(base, 2, 14)
         @test render(sub) == "b&lt;c&amp;d&gt;ef&quot;gh&#39;i"
-        # An all-safe SubString uses a single unsafe_write run.
         @test render(SubString("hello world", 1, 5)) == "hello"
-        # An empty SubString writes nothing.
         @test render(SubString("xyz", 1, 0)) == ""
-        # SubString that starts and ends on metacharacters: the slice
-        # must respect the offset so we don't bleed into bytes of the
-        # parent that aren't part of the view.
+        # Why: slice must respect offset, not bleed into parent bytes outside the view.
         @test render(SubString("XX<&>YY", 3, 5)) == "&lt;&amp;&gt;"
-        # SubString past a multi-byte UTF-8 char: the parent's bytes
-        # for "é" are 0xc3 0xa9; the offset must land on a codepoint
-        # boundary (Julia's SubString constructor enforces this).
-        # `"a<é>b"` byte indices: a=1, <=2, é=3..4, >=5, b=6 — so 2..5
-        # is the slice we want.
+        # Why: "é" is 0xc3 0xa9 in parent; offset must land on codepoint boundary.
+        # `"a<é>b"` byte indices: a=1, <=2, é=3..4, >=5, b=6, so 2..5 is the slice.
         @test render(SubString("a<é>b", 2, 5)) == "&lt;é&gt;"
     end
 
     @testset "Base.show(MIME\"text/plain\", ::Raw) shows the raw HTML at the REPL" begin
-        # Why: without this method, REPL-displaying DOCTYPE or a Raw
-        # value falls back to the struct dump. Useful for inspection
-        # of an embedded SVG icon at the prompt.
+        # Why: without this method, REPL-displaying DOCTYPE or Raw falls back to struct
+        # dump.
         io = IOBuffer()
         show(io, MIME"text/plain"(), Raw("<svg/>"))
         @test occursin("HyperSignal.Raw:", String(take!(io)))
@@ -1722,13 +1522,12 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "parse_signals raises a labeled ArgumentError on malformed JSON" begin
-        # Why: JSON.jl's own message doesn't name parse_signals, so a
-        # service log shows just \"ArgumentError: Expected …\" with no
-        # hint that the request body was the culprit. The wrapper
-        # prefixes the error with parse_signals and a body snippet.
+        # Why: JSON.jl's message doesn't name parse_signals, so service log shows bare
+        # `ArgumentError: Expected …` with no hint that request body was the culprit.
+        # Wrapper prefixes parse_signals and body snippet.
         try
             parse_signals("{not json}")
-            @test false  # expected to throw
+            @test false
         catch err
             @test err isa ArgumentError
             @test occursin("parse_signals", err.msg)
@@ -1737,18 +1536,15 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "missing attribute value is omitted, mirroring nothing semantics" begin
-        # Why: lets `value = optional_string()` (a function that may
-        # return missing on DB nulls) flow into attr position without
-        # the caller juggling a coalesce — symmetric with how render
-        # already treats `missing` children as omitted.
+        # Why: `value = optional_string()` (may return missing on DB nulls) flows into
+        # attr position without coalesce; symmetric with `missing` children omitted.
         @test render(input(type="text", value=missing)) == "<input type=\"text\">"
         @test render(div(class=missing, "x")) == "<div>x</div>"
     end
 
     @testset "parse_signals reads JSON body from a plain IO too" begin
-        # Why: services that pipeline through an IO (e.g. a gzip-decoded
-        # buffer wrapped in IOBuffer) don't always have a Vector{UInt8}
-        # in hand. Round-trip the same JSON via three input shapes.
+        # Why: pipelined services (e.g. gzip-decoded IOBuffer) may not hold a
+        # Vector{UInt8}; same JSON via three input shapes.
         json = """{"count": 3, "name": "ok"}"""
         d_str   = parse_signals(json)
         d_bytes = parse_signals(Vector{UInt8}(json))
@@ -1758,63 +1554,51 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "ds_post extras: string values are JS-escaped against \\, ', </script>" begin
-        # Why: an `extras` value that contains a backslash or </script>
-        # would otherwise corrupt the JS string and either break parsing
-        # or — for </script> in an inline-script context — let an HTML
-        # parser close the wrapping <script>.
+        # Why: `extras` value with backslash or </script> would corrupt JS string;
+        # </script> in inline-script context lets HTML parser close wrapping <script>.
         a = ds_post("/x"; note="he said: 'hi' \\path </script>")
         out = render(button("Save", on_click(a)))
-        # Backslash doubled, single-quote escaped, </ broken with backslash:
         @test occursin("note: 'he said: \\&#39;hi\\&#39; \\\\path &lt;\\/script&gt;'", out) ||
-              occursin("note: 'he said: \\'hi\\' \\\\path <\\/script>'",            # pre-HTML-escape view
+              occursin("note: 'he said: \\'hi\\' \\\\path <\\/script>'",
                         HyperSignal.action_js(a))
-        # action_js view (pre HTML escape) for the precise contract:
         js = HyperSignal.action_js(a)
-        @test occursin("\\\\path", js)        # backslash doubled
-        @test occursin("\\'hi\\'", js)        # quotes escaped
-        @test occursin("<\\/script>", js)     # </ broken
+        @test occursin("\\\\path", js)
+        @test occursin("\\'hi\\'", js)
+        @test occursin("<\\/script>", js)
     end
 
     @testset "action_js: the URL is JS-escaped just like extras values" begin
-        # Why: the URL lands inside the same single-quoted JS string as the
-        # extras. A raw `'` (an unencoded query param like `?q=it's`) would
-        # close the JS string early and break the action — for a long time
-        # only extras were escaped, leaving the URL as an asymmetric footgun.
-        # The escape is transparent to the URL the browser fetches: `\'`
-        # parses back to `'` and `<\/` to `</`.
+        # Why: URL lands in same single-quoted JS string as extras; raw `'` (e.g.
+        # `?q=it's`) closes it early and breaks action. Escape is transparent to fetched
+        # URL: `\'` parses back to `'`, `<\/` to `</`.
         @test HyperSignal.action_js(ds_get("/search?q=it's")) ==
               "@get('/search?q=it\\'s')"
-        # </script> in the URL is broken the same way extras are, so the
-        # action survives an inline-<script> context (e.g. script_response).
+        # Why: </script> in URL is broken same way as extras, so action survives
+        # inline-<script> context (e.g. script_response).
         @test HyperSignal.action_js(ds_get("/a</script>")) == "@get('/a<\\/script>')"
-        # A backslash in the URL is doubled so it doesn't eat the next char.
         @test HyperSignal.action_js(ds_post("/a\\b")) == "@post('/a\\\\b')"
-        # The common clean URL is untouched (escaping is a no-op).
         @test HyperSignal.action_js(ds_get("/api/refresh")) == "@get('/api/refresh')"
         @test HyperSignal.action_js(ds_post("/session/new"; form=true)) ==
               "@post('/session/new', {contentType: 'form'})"
-        # End-to-end through an attribute: no bare `'` escapes the binding.
         out = render(button("Go", on_click(ds_get("/search?q=it's"))))
         @test occursin("@get(&#39;/search?q=it\\&#39;s&#39;)", out)
     end
 
     @testset "action_js: JS line terminators in URL/extras are escaped, not emitted raw" begin
-        # Why: a raw LF/CR (or U+2028/U+2029) inside the single-quoted JS
-        # string is an ECMAScript SyntaxError — the whole Datastar action
-        # silently fails to compile. They reach the URL via reflected query
-        # params / multi-line search boxes. Escape to JS escapes that
-        # round-trip to the same character after parsing, so the fetched URL
-        # is unchanged. Mirrors the SSE path's existing CR/LF defenses.
-        # (\u2028/\u2029 written as escapes here, not invisible literals.)
+        # Why: raw LF/CR (or U+2028/U+2029) in single-quoted JS string is ECMAScript
+        # SyntaxError; whole Datastar action silently fails to compile. They reach URL
+        # via reflected query params / multi-line search boxes. JS escapes round-trip to
+        # same character, so fetched URL is unchanged. \u2028/\u2029 written as escapes
+        # since literals are invisible.
         @test HyperSignal.action_js(ds_get("/s?q=a\nb")) == "@get('/s?q=a\\nb')"
         @test HyperSignal.action_js(ds_get("/s?q=a\rb")) == "@get('/s?q=a\\rb')"
         @test HyperSignal.action_js(ds_get("/s?q=a\u2028b")) == "@get('/s?q=a\\u2028b')"
         @test HyperSignal.action_js(ds_get("/s?q=a\u2029b")) == "@get('/s?q=a\\u2029b')"
-        # A literal backslash followed by a real newline must not double-decode:
-        # backslash doubles, then the LF escapes independently.
+        # Why: backslash then real newline must not double-decode; backslash doubles, LF
+        # escapes independently.
         @test HyperSignal.action_js(ds_get("/x\\\ny")) == "@get('/x\\\\\\ny')"
-        # The redirect path shares _js_str_escape (response.jl): a newline in
-        # the location must not land as a raw LF inside the inline <script>.
+        # Why: redirect path shares _js_str_escape (response.jl); newline in location
+        # must not land raw in inline <script>.
         let body = String(redirect_via_fragment("#x", "/a\nb").body)
             @test occursin("window.location='/a\\nb'", body)
             @test !occursin("'/a\nb'", body)
@@ -1822,31 +1606,27 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "ds_post extras: structured values serialize as JSON object/array literals" begin
-        # Why: options like `headers` / `filterSignals` are objects; Julia's
-        # `repr` of a Dict/NamedTuple is not valid JS (`Dict("a"=>"b")` →
-        # "Dict{...}(...)"). JSON makes them valid JS object literals. JSON's
-        # own double-quotes round-trip through the attribute escape as &quot;.
+        # Why: `headers`/`filterSignals` are objects; Julia `repr` of Dict/NamedTuple
+        # isn't valid JS (`Dict("a"=>"b")` → "Dict{...}(...)"), JSON gives valid object
+        # literals. JSON's double quotes round-trip through attribute escape as &quot;.
         @test HyperSignal.action_js(ds_post("/x"; headers=Dict("X-Csrf" => "abc"))) ==
               "@post('/x', {headers: {\"X-Csrf\":\"abc\"}})"
-        # NamedTuple preserves field order (deterministic, unlike a multi-key Dict):
+        # Why: NamedTuple keeps field order; multi-key Dict is not deterministic.
         @test HyperSignal.action_js(ds_post("/x"; filterSignals=(include="^foo",))) ==
               "@post('/x', {filterSignals: {\"include\":\"^foo\"}})"
-        # Array-valued option:
         @test HyperSignal.action_js(ds_get("/x"; ids=[1, 2, 3])) == "@get('/x', {ids: [1,2,3]})"
-        # Any AbstractString is quoted, not only String: a SubString (from
-        # split/match) used to fall through to `string(v)` and land unquoted.
+        # Why: any AbstractString quotes, not just String; SubString (from split/match)
+        # would fall through to `string(v)` unquoted.
         @test HyperSignal.action_js(ds_get("/x"; tag=SubString("a'b", 1, 3))) ==
               "@get('/x', {tag: 'a\\'b'})"
-        # Renders safely through the attribute boundary (JSON quotes → &quot;):
         out = render(button("Go", on_click(ds_post("/x"; headers=Dict("X-Csrf" => "abc")))))
         @test occursin("headers: {&quot;X-Csrf&quot;:&quot;abc&quot;}", out)
     end
 
     @testset "ds_post extras: non-finite floats render as JS globals, not Julia's Inf" begin
-        # Why: `string(Inf)`/`string(-Inf)` give `Inf`/`-Inf`, which are a JS
-        # ReferenceError; `Infinity`/`-Infinity`/`NaN` are valid JS. Numeric
-        # action options (retryMaxCount, retryMaxWait, …) make Infinity a
-        # natural value (unlimited retries). Finite floats are unchanged.
+        # Why: `string(Inf)`/`string(-Inf)` give `Inf`/`-Inf`, a JS ReferenceError;
+        # `Infinity`/`-Infinity`/`NaN` are valid JS. Options like retryMaxCount make
+        # Infinity natural (unlimited retries).
         @test HyperSignal.action_js(ds_post("/x"; retryMaxCount=Inf)) ==
               "@post('/x', {retryMaxCount: Infinity})"
         @test HyperSignal.action_js(ds_post("/x"; t=-Inf)) == "@post('/x', {t: -Infinity})"
@@ -1855,10 +1635,8 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "stress: 5000-deep nesting renders without stack overflow" begin
-        # Why: render() recurses on children. A pathological component
-        # that nests 5000 deep is unrealistic but proves the recursion
-        # bound is generous enough that real pages (~50 deep) never
-        # come close to the limit.
+        # Why: render() recurses on children; 5000-deep nesting proves recursion bound
+        # far exceeds real pages (~50 deep).
         node = "leaf"
         for _ in 1:5000
             node = div(node)
@@ -1870,9 +1648,8 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "stress: 2000-attribute element survives" begin
-        # Why: a programmatically generated form can drift into hundreds
-        # of attrs (e.g. one ds_attr per dynamic field). Make sure the
-        # render path stays linear in attr count.
+        # Why: generated forms can reach hundreds of attrs (one ds_attr per dynamic
+        # field); render must stay linear in attr count.
         kw = (; (Symbol("data-x-$i") => "v$i" for i in 1:2000)...)
         el = div(; kw...)
         out = render(el)
@@ -1881,9 +1658,8 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "stress: patch_svg on 1 MB synthetic input stays sub-second" begin
-        # Why: a CairoMakie figure with many marks can hit a few hundred
-        # KB. 1 MB is well past realistic but proves the regex passes
-        # don't blow up super-linearly.
+        # Why: CairoMakie figure with many marks hits a few hundred KB; 1 MB is past
+        # realistic, proves regex passes don't blow up super-linearly.
         io = IOBuffer()
         print(io, """<svg viewBox="0 0 1 1"><defs>""")
         for i in 0:5000
@@ -1895,20 +1671,19 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         end
         print(io, "</svg>")
         big = String(take!(io))
-        @test sizeof(big) > 400_000   # ~470 KB on this shape — way past realistic CairoMakie output
+        @test sizeof(big) > 400_000
         t = @elapsed out = patch_svg(big; id_prefix="p_")
-        @test t < 2.0                 # generous; on the bench host it's ~10ms
+        @test t < 2.0
         @test occursin("id=\"p_clip0\"", out)
         @test occursin("url(#p_clip5000)", out)
         @test !occursin("<?xml", out)
     end
 
     @testset "stress: 10k metacharacter escape round-trips byte-stable" begin
-        # Why: the codeunit fast path on escape_html is the place a
-        # regression in HTML safety would land silently. Pin the
-        # byte-stable output on a known-bad input so any future
-        # micro-optimization keeps escape semantics exact.
-        text = repeat("<&>\"' \xc3\xa9 ", 1000)   # 9000 bytes, includes UTF-8
+        # Why: codeunit fast path in escape_html is where an HTML-safety regression
+        # would land silently; pin byte-stable output on known-bad input so
+        # micro-optimizations keep escape semantics exact.
+        text = repeat("<&>\"' \xc3\xa9 ", 1000)
         out = render(text)
         @test count("&lt;", out) == 1000
         @test count("&amp;", out) == 1000
@@ -1921,23 +1696,20 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "string(::Element)/print(io, ::Element) returns the rendered HTML" begin
-        # Why: without a 1-arg Base.show method, `string(el)` and
-        # interpolation fall back to a struct dump. Make HyperSignal
-        # values consistently behave like HTML in every path.
+        # Why: without 1-arg Base.show, `string(el)` and interpolation fall back to
+        # struct dump.
         el = div(class="card", "hi")
         @test string(el) == "<div class=\"card\">hi</div>"
         @test "$(el)" == render(el)
         @test sprint(print, el) == render(el)
         @test sprint(print, Frag(p("a"), p("b"))) == "<p>a</p><p>b</p>"
         @test sprint(print, Raw("<b>x</b>")) == "<b>x</b>"
-        # Vector-of-elements prints as readable markup, not as a struct dump.
         @test sprint(show, [p("a"), p("b")]) == "Element[<p>a</p>, <p>b</p>]"
     end
 
     @testset "Base.show(MIME\"text/html\") returns the rendered HTML for notebooks" begin
-        # Why: Pluto / IJulia / VS Code use the text/html MIME to display
-        # interactive previews. Without this hook every cell would have
-        # to call `render(...)` explicitly.
+        # Why: Pluto / IJulia / VS Code display via text/html MIME; without this hook
+        # every cell must call `render(...)` explicitly.
         el = div(class="card", h2("Hi"), p("hello"))
         io = IOBuffer()
         show(io, MIME"text/html"(), el)
@@ -1951,9 +1723,8 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "patch_svg with CairoMakie figure renders + namespaces collision-safely" begin
-        # Why: prove the front-row CairoMakie story actually works end-to-end
-        # — produce a real figure, run it through inline_svg, drop two of
-        # them in one tree, and verify the id prefixes keep them disjoint.
+        # Why: end-to-end CairoMakie story: real figures through inline_svg, two in one
+        # tree, id prefixes keep them disjoint.
         using CairoMakie
         fig1 = CairoMakie.Figure()
         CairoMakie.lines(fig1[1, 1], 1:5, [1, 3, 2, 4, 3])
@@ -1966,19 +1737,14 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         out = render(div(n1, n2))
         @test occursin("aria-label=\"Lines\"", out)
         @test occursin("aria-label=\"Scatter\"", out)
-        # No bare unprefixed clip0/glyph0 ids should survive — every id
-        # in the output must carry either the a_ or b_ prefix.
         for m in eachmatch(r"id=\"([^\"]+)\"", out)
             @test startswith(m.captures[1], "a_") || startswith(m.captures[1], "b_")
         end
     end
 
     @testset "app-grade helpers are NOT exported at the top level" begin
-        # Why: the helpers moved to HyperSignal.Helpers (issue #1) and
-        # the deprecation shim was dropped before any external user
-        # could pin against it (issue #8). A future PR that adds a
-        # top-level shim or re-exports these would silently undo the
-        # move; this test fails loud instead.
+        # Why: a top-level shim or re-export of HyperSignal.Helpers names would silently
+        # undo the move.
         for name in (:radio_field, :checkbox_field, :text_field,
                      :help_tooltip, :form_legend, :form_section,
                      :preset_button, :signal_dialog)
@@ -1990,16 +1756,13 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     include("escape_conformance.jl")
 
     @testset "no type piracy or @generated+hasmethod under src/ and ext/" begin
-        # Why: Hyperscript broke on Julia 1.6 from `Vector{Node}`
-        # piracy (#24); HypertextLiteral broke on 1.10 from
-        # `@generated` + `hasmethod` (#28, #33). Both bans are
-        # documented in CONVENTIONS.md → "Out of scope". This test
-        # is the load-bearing enforcement.
+        # Why: Hyperscript broke on Julia 1.6 from `Vector{Node}` piracy;
+        # HypertextLiteral broke on 1.10 from `@generated` + `hasmethod`. Both bans live
+        # in CONVENTIONS.md → "Out of scope"; this test enforces them.
         roots = [joinpath(pkgdir(HyperSignal), "src"),
                  joinpath(pkgdir(HyperSignal), "ext")]
         offenders_generated = String[]
         offenders_piracy = String[]
-        # Owned types — Base.show etc. on these is fine.
         owned = Set(["Element", "Frag", "Raw", "Attribute", "DSAction", "DSExpr"])
 
         for root in roots
@@ -2009,22 +1772,17 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
                     endswith(f, ".jl") || continue
                     path = joinpath(dir, f)
                     for (lineno, line) in enumerate(eachline(path))
-                        # Strip line comments before scanning so the
-                        # CONVENTIONS reference in elements.jl doesn't
-                        # self-flag.
+                        # Why: strip line comments so CONVENTIONS reference in
+                        # elements.jl doesn't self-flag.
                         code = first(split(line, '#'; limit=2))
                         if occursin(r"\b(@generated|hasmethod)\b", code)
                             push!(offenders_generated, "$path:$lineno: $line")
                         end
-                        # A `Base.<name>(...)` definition is pirate
-                        # unless at least one of its argument types
-                        # *terminates* in an owned name. Match every
-                        # `::T` annotation on the line and require T
-                        # to be exactly one of the owned names — a
-                        # substring match would whitelist
-                        # `Base.push!(::Vector{Element}, ...)` because
-                        # `::Element` is a substring of
-                        # `::Vector{Element}`.
+                        # Why: `Base.<name>(...)` definition is pirate unless an
+                        # argument type *terminates* in an owned name; require `::T` to
+                        # equal an owned name exactly, since substring match would
+                        # whitelist `Base.push!(::Vector{Element}, ...)` via
+                        # `::Element`.
                         if occursin(r"\bBase\.[A-Za-z_][A-Za-z0-9_!]*\s*\(", code)
                             ann_types = [String(m.captures[1])
                                          for m in eachmatch(
@@ -2040,8 +1798,6 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         end
         @test isempty(offenders_generated)
         @test isempty(offenders_piracy)
-        # Surface the offenders if the test fails, so CI output is
-        # actionable.
         isempty(offenders_generated) || (@info "@generated/hasmethod offenders" offenders_generated)
         isempty(offenders_piracy) || (@info "type-piracy offenders" offenders_piracy)
     end
