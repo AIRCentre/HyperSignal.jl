@@ -12,7 +12,7 @@ Compatible with Datastar v1.0.4.
 ```julia
 using HyperSignal
 using HyperSignal.Helpers: radio_field      # app-grade helpers live here
-HyperSignal.@using_tags                       # brings div, select, summary
+HyperSignal.@using_tags                       # div, select, summary, mark, time
 
 page = Frag(DOCTYPE,
     html(lang="en",

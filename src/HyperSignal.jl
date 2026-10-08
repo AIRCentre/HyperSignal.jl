@@ -9,9 +9,9 @@ hand-typing `data-on:click="@post('/x', {…})"` or escaping HTML by hand.
 
 ```julia
 using HyperSignal
-HyperSignal.@using_tags                 # brings div / select / summary
+using HyperSignal.Helpers: radio_field
+HyperSignal.@using_tags                 # Base-shadowed tags: div, select, …
 
-# Build with tag constructors. Children go positional, attributes go kw.
 page = Frag(
     DOCTYPE,
     html(lang="en",
@@ -29,19 +29,18 @@ html_response(page)                   # full-page Response
 fragment_response(page, "#card")      # Datastar morph with selector header
 ```
 
-# What's exported
+# Exports
 
-- AST primitives: [`Element`](@ref), [`Raw`](@ref), [`Frag`](@ref),
+- AST: [`Element`](@ref), [`Raw`](@ref), [`Frag`](@ref),
   [`Attribute`](@ref), [`DOCTYPE`](@ref).
-- Tag constructors: every common HTML element (`div`, `h1`, `form`, …).
-  Names that overlap with Base (`div`, `select`, `summary`) are
-  brought into scope with the [`@using_tags`](@ref) macro.
+- Tag constructors: common HTML elements (`h1`, [`form`](@ref), …).
+  `div`, `select`, `summary`, `mark`, `time` are not exported; bring them in
+  with [`@using_tags`](@ref).
 - Datastar actions: [`ds_get`](@ref), [`ds_post`](@ref), [`ds_put`](@ref),
-  [`ds_delete`](@ref), bound via [`on`](@ref) /
-  [`on_click`](@ref) / [`on_submit`](@ref) /
-  [`on_change_debounced`](@ref) / [`on_interval`](@ref). `on(...)` accepts
-  raw JS expressions alongside `DSAction` and a `window=true` modifier
-  for global listeners.
+  [`ds_delete`](@ref), bound via [`on`](@ref) / [`on_click`](@ref) /
+  [`on_submit`](@ref) / [`on_change_debounced`](@ref) /
+  [`on_interval`](@ref). `on(...)` also takes raw JS expressions and
+  `window=true` for global listeners.
 - Datastar attributes: [`ds_indicator`](@ref), [`ds_ignore_morph`](@ref),
   [`ds_bind`](@ref), [`ds_signal`](@ref), [`ds_signals`](@ref),
   [`ds_show`](@ref), [`ds_text`](@ref), [`ds_json_signals`](@ref),
@@ -54,17 +53,26 @@ fragment_response(page, "#card")      # Datastar morph with selector header
 - Datastar expressions: [`@ds_str`](@ref) (`ds"\$count = \$(n)"`) writes
   `\$signal` without escaping and splices Julia values as escaped JS literals;
   it returns a [`DSExpr`](@ref).
-- Datastar signal decoding: [`parse_signals`](@ref) (read the JSON body
-  of a non-form Datastar action into a `Dict{String, Any}`).
-- Form helpers: [`cls`](@ref), [`radio_field`](@ref),
-  [`checkbox_field`](@ref), [`form_legend`](@ref), [`form_section`](@ref),
-  [`help_tooltip`](@ref), [`preset_button`](@ref).
-- Dialog helper: [`signal_dialog`](@ref) (native `<dialog>` driven by a
-  Datastar expression).
-- Rendering: [`render(io, x)`](@ref render) for streaming, [`render(x)`](@ref)
-  for the String you usually want at the response boundary.
+- Request decoding: [`parse_signals`](@ref).
+- Rendering: [`render(io, x)`](@ref render) streams; [`render(x)`](@ref)
+  returns a String.
 - Responses: [`html_response`](@ref), [`fragment_response`](@ref),
+  [`signals_response`](@ref), [`script_response`](@ref),
   [`redirect_via_fragment`](@ref), [`redirect_to`](@ref).
+- SSE: [`sse_response`](@ref), [`sse_stream`](@ref),
+  [`patch_elements`](@ref), [`patch_signals`](@ref).
+- SVG: [`patch_svg`](@ref), [`inline_svg`](@ref).
+- [`cls`](@ref) class-list builder; [`DATASTAR_SUPPORTED_VERSION`](@ref).
+
+`HyperSignal.Helpers` (not re-exported) holds form and dialog helpers:
+[`radio_field`](@ref HyperSignal.Helpers.radio_field),
+[`checkbox_field`](@ref HyperSignal.Helpers.checkbox_field),
+[`text_field`](@ref HyperSignal.Helpers.text_field),
+[`form_legend`](@ref HyperSignal.Helpers.form_legend),
+[`form_section`](@ref HyperSignal.Helpers.form_section),
+[`help_tooltip`](@ref HyperSignal.Helpers.help_tooltip),
+[`preset_button`](@ref HyperSignal.Helpers.preset_button),
+[`signal_dialog`](@ref HyperSignal.Helpers.signal_dialog).
 
 # Safety model
 
@@ -114,10 +122,6 @@ export parse_signals
 # Component helpers (top-level)
 export cls, redirect_to
 
-# App-grade helpers live in HyperSignal.Helpers. No top-level shim:
-# the package is pre-1.0 with no external users, so an outright move
-# is cheaper than maintaining a deprecation cycle.
-
 # Rendering + responses
 export render
 export fragment_response, html_response, redirect_via_fragment
@@ -130,11 +134,7 @@ export patch_svg, inline_svg
 # Macros
 export @using_tags, @ds_str
 
-# Drive precompilation of the render hot path so the first call in a
-# user's session doesn't pay JIT cost for the most common shapes.
-# `precompile` pins method specializations without executing them, so it
-# stays runtime-cheap and adds no dep — for richer workload-driven
-# precompilation, a downstream project can layer PrecompileTools on top.
+# Plain `precompile`, not PrecompileTools: no extra dep, nothing executed.
 let
     # Render hot path
     precompile(Tuple{typeof(render), IOBuffer, Element})

@@ -1,8 +1,8 @@
 # API reference
 
 Every exported helper, type, and macro. The HTML tag constructors
-(`div`, `h1`, `form`, …) are generated programmatically and have no
-individual docstrings, so they aren't listed here. They come into scope
+(`div`, `h1`, …) are generated and have no individual docstrings;
+[`form`](@ref) is the exception. They come into scope
 with `using HyperSignal` (except the Base-shadowed
 `div`/`select`/`summary`/`mark`/`time`, which need [`@using_tags`](@ref));
 see the Quickstart under [Module overview](#Module-overview) below.
@@ -23,6 +23,7 @@ Frag
 Raw
 Attribute
 HyperSignal.DOCTYPE
+form
 ```
 
 ## Rendering

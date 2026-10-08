@@ -1,13 +1,9 @@
-# Element tree — plain data, render() walks and emits to IO. Children are
-# anything renderable: another Element, a String (auto-escaped), a Number,
-# nothing (skipped), a Vector of children, or a Raw wrapper for trusted HTML.
-
 """
     Raw(html::String)
 
-Trusted HTML that bypasses auto-escape. Wrap the value at the boundary —
-SVG icon strings, output of an audited HTML generator, third-party widget
-markup — never wrap user input.
+Trusted HTML that bypasses auto-escape. Wrap at the boundary (SVG icon
+strings, audited HTML generators, third-party widget markup). Never wrap
+user input.
 
 # Examples
 ```julia
@@ -18,10 +14,8 @@ div(class="loading", SPINNER, " Working…")  # SVG kept verbatim, " Working…"
 
 # Adversarial round-trip
 
-`Raw` performs zero rewriting — what you put in is what the renderer
-writes out. A regression that re-escapes `Raw` (or worse, sanitizes
-it) would break SVG icons and audited generators and fail this
-doctest. **Never wrap user input.**
+`Raw` is written out verbatim: no escaping, no sanitizing. A regression
+that rewrites it breaks SVG icons and fails this doctest.
 
 ```jldoctest
 julia> render(p(Raw("<img src=x onerror=alert(1)>")))
@@ -35,9 +29,8 @@ end
 """
     DOCTYPE
 
-The `<!DOCTYPE html>` prelude as a [`Raw`](@ref) constant. Drop it as the
-first child of a [`Frag`](@ref) wrapping `html(...)` so page builders don't
-hand-type the doctype string at every call site.
+The `<!DOCTYPE html>` prelude as a [`Raw`](@ref) constant. Put it first in a
+[`Frag`](@ref) wrapping `html(...)`.
 
 # Examples
 ```julia
@@ -55,13 +48,13 @@ const DOCTYPE = Raw("<!DOCTYPE html>")
 """
     Frag(children...)
 
-A "group of children with no wrapper tag". Use it to return multiple
-sibling elements from a single function, or to prepend [`DOCTYPE`](@ref)
-to an `html(...)` tree.
+A group of children with no wrapper tag. Use it to return sibling
+elements from one function, or to prepend [`DOCTYPE`](@ref) to an
+`html(...)` tree.
 
 # Examples
 ```julia
-# A component that renders to two siblings — without an extra wrapper div:
+# Two siblings, no wrapper div:
 section_with_grid(label, cards...) = Frag(
     small(class="muted form-section-label", label),
     div(class="form-card-grid", cards...),
@@ -70,10 +63,9 @@ section_with_grid(label, cards...) = Frag(
 """
 struct Frag
     children::Vector{Any}
-    # Pin the typed inner constructor explicitly so Julia DOESN'T also
-    # auto-generate the generic single-arg form `Frag(children)` — that one
-    # matches `Frag(some_element)` and fails inside `convert(Vector{Any}, …)`
-    # before dispatch can fall through to the varargs outer.
+    # Explicit inner constructor suppresses the generic `Frag(children)`:
+    # it would match `Frag(some_element)` and fail in `convert` before the
+    # varargs outer method is reached.
     Frag(children::Vector{Any}) = new(children)
 end
 Frag(xs...) = Frag(collect(Any, xs))
@@ -81,13 +73,11 @@ Frag(xs...) = Frag(collect(Any, xs))
 """
     Attribute(key::Symbol, value)
 
-Attribute value returned by helpers like [`on`](@ref) and
-[`ds_indicator`](@ref). Tag constructors filter these out of positional
-args and merge them into the attrs list, so an `Attribute`-returning
-helper drops in next to children without a splat ceremony.
+Attribute returned by helpers like [`on`](@ref) and
+[`ds_indicator`](@ref). Tag constructors lift these out of positional args
+into the attrs list, so they sit next to children without a splat.
 
-You rarely construct `Attribute` directly — use the helpers. It's exported
-mostly so user code can pattern-match or filter on it.
+Rarely constructed directly; exported so user code can match or filter on it.
 
 # Examples
 ```julia
@@ -105,24 +95,21 @@ end
 """
     Element(tag::Symbol, attrs::Vector{Pair{Symbol,Any}}, children::Vector{Any})
 
-The HTML AST node. You almost never build one directly — call a tag
-constructor (`div`, `h1`, `form`, …) and let it split positional args /
-kwargs / [`Attribute`](@ref) values for you. Construct manually only if
-you're building a custom element with a non-static tag name.
+The HTML AST node. Normally built by a tag constructor (`div`, `h1`,
+`form`, …), which splits positional args, kwargs and [`Attribute`](@ref)
+values. Construct directly only for a tag name chosen at runtime.
 
 # Examples
 ```julia
-# Direct construction — for a component with a tag chosen at runtime:
+# Tag chosen at runtime:
 heading(level::Int, text) = Element(Symbol("h", level), Pair{Symbol,Any}[], Any[text])
 heading(2, "Hello")                                          # ≡ h2("Hello")
 ```
 
 # Boolean-attribute policy
 
-`true` renders the attribute as bare; `false`, `nothing`, and `missing`
-omit it entirely; any other value renders as a quoted, escaped string.
-Prior art (JuliaWeb/Hyperscript.jl#20) shows this corner is easy to get
-wrong — the doctest below pins it.
+`true` renders the attribute bare; `false`, `nothing` and `missing` omit
+it; any other value renders as a quoted, escaped string.
 
 ```jldoctest
 julia> render(input(type="checkbox", checked=true))
@@ -147,15 +134,9 @@ struct Element
     children::Vector{Any}
 end
 
-# Collapse duplicate attribute names so each name is emitted exactly once,
-# with the LAST value winning. This is load-bearing, not cosmetic: the
-# HTML5 parser keeps the FIRST of duplicate attributes and drops the rest
-# (§13.2.5.33), so emitting `class="a" class="b"` would silently apply
-# "a" — the opposite of the override a caller expects when they pass an
-# attribute twice (e.g. `button(on_click(a), on_click(b))` meaning b). We
-# resolve it at the source instead: keep the first-seen position (stable
-# order) but overwrite with the latest value. O(n) via a name→slot map, so
-# the 2000-attribute element stays cheap.
+# Last duplicate wins, at first-seen position. HTML5 parsers keep the FIRST
+# duplicate attribute (§13.2.5.33), so `class="a" class="b"` would apply "a",
+# not the override `button(on_click(a), on_click(b))` intends.
 function _dedup_attrs(attrs::Vector{Pair{Symbol, Any}})
     length(attrs) < 2 && return attrs
     slot = Dict{Symbol, Int}()
@@ -166,16 +147,13 @@ function _dedup_attrs(attrs::Vector{Pair{Symbol, Any}})
             push!(out, k => v)
             slot[k] = lastindex(out)
         else
-            out[i] = k => v   # later wins: same position, newest value
+            out[i] = k => v
         end
     end
     length(out) == length(attrs) ? attrs : out
 end
 
-# Internal builder. Positional args are children unless they're Attributes
-# (which become attrs); keyword args are always attrs. Order: kwarg attrs
-# first, then any positional Attributes. Duplicate names collapse via
-# _dedup_attrs (later wins) so the emitted tag carries each attribute once.
+# Attrs: kwargs first, then positional Attributes / Symbol- or String-keyed Pairs.
 function _make_element(tag::Symbol, args::Tuple, kwargs)
     children = Any[]
     attrs = Pair{Symbol, Any}[k => v for (k, v) in pairs(kwargs)]
@@ -184,26 +162,15 @@ function _make_element(tag::Symbol, args::Tuple, kwargs)
         if a isa Attribute
             push!(attrs, a.key => a.value)
         elseif a isa Pair && a.first isa Symbol
-            # Accept Symbol-keyed Pairs as ad-hoc attributes — covers
-            # attribute names that aren't valid Julia kwarg identifiers
-            # (e.g. `:for => "x"`, `Symbol("aria-label") => "..."`).
+            # Covers names that aren't valid kwarg identifiers (`:for`, `Symbol("aria-label")`).
             push!(attrs, a.first => a.second)
         elseif a isa Pair && a.first isa AbstractString
-            # String-keyed Pairs are the ergonomic shortcut for the
-            # same thing: `"data-foo" => "v"` reads better than
-            # `Symbol("data-foo") => "v"`. The render-time attribute
-            # name validation still fires, so the relaxation is purely
-            # syntactic.
             push!(attrs, Symbol(a.first) => a.second)
         elseif a isa Vector{UInt8}
-            # Keep byte buffers as a single child — render handles them
-            # as a verbatim write. Without this branch a buffer would
-            # get unpacked into individual UInt8 Number children, each
-            # emitting its decimal value.
+            # Single child (verbatim write); unpacking would emit each byte as a decimal Number.
             push!(children, a)
         elseif a isa Vector || a isa Tuple || a isa Base.Generator
-            # Generators are consumed here so the element can render more
-            # than once.
+            # Generators are consumed here so the element renders more than once.
             append!(children, a)
         else
             push!(children, a)
@@ -212,26 +179,6 @@ function _make_element(tag::Symbol, args::Tuple, kwargs)
     Element(tag, _dedup_attrs(attrs), children)
 end
 
-# Generate a constructor for each common HTML tag.
-#
-# Each constructor accepts arbitrary positional children (Element, String,
-# Number, Frag, Raw, Vector of any of those, nothing) plus arbitrary
-# kwargs which become attributes. Attribute-returning helpers (`on(...)`,
-# `ds_indicator()`, etc.) can be passed positionally — they're lifted out
-# of children and merged into attrs.
-#
-# Names that overlap with Base (`div`, `select`, `summary`) are
-# exported but `using` skips them by design; pull them in with the
-# [`@using_tags`](@ref) macro or an explicit `using HyperSignal: div, …`.
-#
-# # Examples
-# ```julia
-# h1("Hello, world")
-# div(class="card", id="welcome",
-#     h2("Title"),
-#     p("body text"),
-#     button(type="submit", on(:click, ds_post("/api/x")), "Go"))
-# ```
 const _TAGS = (
     :html, :head, :body, :title, :meta, :link, :script, :style, :noscript,
     :div, :span, :p, :a, :h1, :h2, :h3, :h4, :h5, :h6, :hr, :br, :wbr,
@@ -245,28 +192,28 @@ const _TAGS = (
     :progress, :details, :summary, :dialog, :meter, :output, :data, :time,
     :audio, :video, :picture, :source, :track, :iframe, :embed, :object, :param,
     :area,
-    # Deliberately excluded: <map> and <base> overlap with `Base.map`
-    # and `Base.base` and shadowing those for the rare HTML use case
-    # isn't worth the friction. Build via `Element(:map, …)` /
-    # `Element(:base, …)` at the call site that needs them. Note
-    # `<time>` IS listed: `Base.time` clashes but is opted in via
-    # `_BASE_SHADOWED` below, so the @using_tags macro brings the
-    # HTML version in explicitly without re-binding the global.
+    # <map>, <base> omitted: `map` would clash with Base.map. Build via `Element(:map, …)`.
 )
 
 for tag in _TAGS
     @eval $(tag)(args...; kwargs...) = _make_element($(QuoteNode(tag)), args, kwargs)
 end
 
-# `<form>` overrides the generic constructor to inject a default
-# `data-on:submit__prevent` when the caller didn't bind a submit handler.
-# Why: a bare <form> (one used only for change-driven Datastar fetches, or
-# for layout) still receives a native submit when the user presses Enter
-# in any input, which reloads the page and drops client signals. Forcing
-# preventDefault unless the caller wired their own submit handler removes
-# that footgun. Callers that *do* want native submission can pass
-# `on_submit(..., prevent=false)` or any other `data-on:submit*` binding —
-# the override only fires when no submit binding is present at all.
+"""
+    form(args...; kwargs...) -> Element
+
+Like the other tag constructors, plus a default
+`data-on:submit__prevent="void 0"` unless any `data-on:submit*` attribute is
+present. Without it, Enter in an input submits natively, reloading the page
+and dropping client signals. For native submission pass
+`on_submit(...; prevent=false)`.
+
+# Examples
+```jldoctest
+julia> render(form())
+"<form data-on:submit__prevent=\\"void 0\\"></form>"
+```
+"""
 function form(args...; kwargs...)
     el = _make_element(:form, args, kwargs)
     has_submit = any(p -> startswith(String(p.first), "data-on:submit"), el.attrs)
@@ -275,27 +222,19 @@ function form(args...; kwargs...)
     el
 end
 
-# Tags whose names overlap with Base names (Base.div, Base.select,
-# Base.summary) — `using HyperSignal` skips them by design, so the
-# @using_tags macro emits the explicit `using HyperSignal: …` line for
-# them. Note: `<time>` is NOT listed here; Base.time is the wall-clock
-# function the codebase uses, and the HTML <time> element is built
-# directly via `HyperSignal.Element(:time, …)` on the rare site that
-# needs it. `<map>` is similarly absent: no HyperSignal-defined `map`
-# constructor exists (it's not in `_TAGS`), so importing it would just
-# re-bind Base.map for no gain.
+# Defined but not exported: `div`, `summary`, `mark`, `time` clash with Base
+# exports; `select` is withheld alike.
 const _BASE_SHADOWED = (:div, :select, :summary, :mark, :time)
 
 """
     @using_tags
 
 Bring the Base-shadowed tag constructors (`div`, `select`, `summary`,
-`mark`, `time`) into the current module's scope. Equivalent to the
-explicit `using HyperSignal: div, select, summary, mark, time` line
-— saves callers from memorizing which names conflict.
+`mark`, `time`) into the current module. Equivalent to
+`using HyperSignal: div, select, summary, mark, time`.
 
-Plain `using HyperSignal` already imports every other tag (`h1`, `form`,
-`button`, …) automatically; only the Base-shadowed set needs this.
+`using HyperSignal` exports every other tag (`h1`, `form`, `button`, …);
+only these five need this.
 
 # Examples
 ```julia
@@ -310,7 +249,6 @@ macro using_tags()
     esc(Expr(:using, Expr(:(:), Expr(:., :HyperSignal), items...)))
 end
 
-# Self-closing tags that must not emit `</tag>`.
 const _VOID_TAGS = Set{Symbol}((
     :area, :base, :br, :col, :embed, :hr, :img, :input, :link,
     :meta, :param, :source, :track, :wbr,

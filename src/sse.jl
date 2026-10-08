@@ -1,6 +1,4 @@
-# Datastar SSE event constructors + buffered sse_response. The streaming
-# variant (long-lived connections) lives elsewhere; this file ships the
-# events you can fit in one Response.
+# Datastar SSE event constructors, buffered `sse_response`, streaming `sse_stream`.
 
 struct PatchElementsEvent
     html::String
@@ -14,13 +12,9 @@ struct PatchSignalsEvent
     only_if_missing::Bool
 end
 
-# A `data: selector <sel>` SSE line is terminated by CR/LF/CRLF (EventSource
-# treats all three as line ends), so a CR or LF in the selector would end the
-# line early and corrupt the rest of the event. Validate at build time (in
-# patch_elements, alongside the mode check) so the mistake surfaces at the
-# call site; _encode_event re-checks as defense-in-depth for a directly
-# constructed PatchElementsEvent. (Defined ABOVE patch_elements' docstring so
-# the docstring stays attached to patch_elements, not this helper.)
+# EventSource ends a line at CR, LF or CRLF: CR/LF in a selector would cut the
+# `data: selector` line short and corrupt the event.
+# Defined above patch_elements' docstring so the docstring stays on patch_elements.
 function _validate_sse_selector(sel::AbstractString)
     ('\n' in sel || '\r' in sel) &&
         throw(ArgumentError("patch_elements: selector must not contain a CR or LF, got $(repr(sel))"))
@@ -31,10 +25,10 @@ end
     patch_elements(body; selector=nothing, mode=nothing, view_transition=false)
 
 Build a `datastar-patch-elements` SSE event for [`sse_response`](@ref).
-`body` is rendered with [`render`](@ref); multi-line HTML is split into
-one `data: elements …` line per source line. `mode` is one of the
-fragment modes accepted by [`fragment_response`](@ref); unknown symbols
-throw `ArgumentError`.
+`body` is rendered with [`render`](@ref); multi-line HTML becomes one
+`data: elements …` line per source line. `mode` is one of the
+[`fragment_response`](@ref) modes; unknown symbols and a `selector` containing
+CR or LF throw `ArgumentError`.
 """
 function patch_elements(body; selector::Union{Nothing,AbstractString}=nothing,
                         mode::Union{Nothing,Symbol}=nothing,
@@ -59,19 +53,14 @@ patch_signals(signals; only_if_missing::Bool=false) =
 function _encode_event(io::IO, ev::PatchElementsEvent)
     print(io, "event: datastar-patch-elements\n")
     if ev.selector !== nothing
-        # Defense-in-depth: patch_elements already validated this for the
-        # public path; re-check here so a directly-built PatchElementsEvent
-        # can't emit a CR/LF that splits the SSE line.
+        # re-check: directly built PatchElementsEvent skips patch_elements' validation
         _validate_sse_selector(ev.selector)
         print(io, "data: selector ", ev.selector, "\n")
     end
     ev.mode === nothing || print(io, "data: mode ", ev.mode, "\n")
     ev.view_transition && print(io, "data: useViewTransition true\n")
-    # Split the payload on the full SSE line-terminator set (CR, LF, CRLF):
-    # splitting on '\n' alone would leave a lone '\r' embedded in a data
-    # line, which the client reads as an early line end and silently drops
-    # the remainder. Strip one trailing terminator first so render() output
-    # ending in a newline doesn't emit a stray `data: elements ` line.
+    # split on CR/LF/CRLF: a lone '\r' left in a data line ends it early, client drops the rest
+    # strip one trailing terminator: avoids a stray empty `data: elements ` line
     html = replace(ev.html, r"(?:\r\n|\r|\n)$" => "")
     for line in split(html, r"\r\n|\r|\n")
         print(io, "data: elements ", line, "\n")
@@ -88,10 +77,9 @@ end
 """
     sse_response(events; status=200, headers=[]) -> HTTP.Response
 
-Buffer one or more Datastar SSE events (built by [`patch_elements`](@ref) /
-[`patch_signals`](@ref)) into a single `text/event-stream` response. Use
-this when a handler must emit an HTML patch and a signal patch in one
-shot.
+Buffer Datastar SSE events ([`patch_elements`](@ref) /
+[`patch_signals`](@ref)) into one `text/event-stream` response, e.g. an HTML
+patch plus a signal patch from one handler.
 
 # Examples
 ```jldoctest
@@ -133,21 +121,20 @@ end
 Build an HTTP.jl stream handler that streams Datastar SSE events over a
 chunked `text/event-stream` response. `f` receives a `writer` callable:
 each call with a [`patch_elements`](@ref) / [`patch_signals`](@ref)
-event encodes the event and flushes it as its own chunk so the client
-sees progress in real time. Register the returned handler with
+event encodes it and flushes it as its own chunk. Register the handler with
 `HTTP.listen!(handler, host, port)` (or blocking `HTTP.listen`), which
 works on HTTP.jl 1.x and 2.x. On 2.x, `HTTP.serve` only calls request
 handlers, so a stream handler mounted there answers 500.
 
-`writer` is **not** concurrency-safe — concurrent calls from multiple
-tasks will interleave chunks. Serialize calls (or guard `writer` with
-a `ReentrantLock`) if `f` fans out work.
+`writer` is **not** concurrency-safe: concurrent calls from multiple tasks
+interleave chunks. Serialize calls (or guard `writer` with a `ReentrantLock`)
+if `f` fans out work.
 
 # Example
 ```julia
 HTTP.listen(sse_stream() do writer
     for i in 1:5
-        writer(patch_elements(div(id="progress", "step \$i"); selector="#progress", mode=:inner))
+        writer(patch_elements(HyperSignal.div(id="progress", "step \$i"); selector="#progress", mode=:inner))
         sleep(0.5)
     end
 end, "127.0.0.1", 8080)
@@ -168,9 +155,7 @@ function sse_stream(f; status::Int=200, headers=Pair{String,String}[])
         try
             f(writer)
         catch
-            # End the chunked response cleanly so the client sees EOF and
-            # keeps the bytes already flushed, rather than tearing the
-            # connection down mid-chunk (which raises HTTP.RequestError).
+            # close cleanly: client keeps flushed bytes; mid-chunk teardown raises HTTP.RequestError
             try; HTTP.closewrite(stream); catch; end
             rethrow()
         end

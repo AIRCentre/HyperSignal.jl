@@ -1,23 +1,16 @@
-# Component helpers — small, opinionated building blocks. Each is just a
-# function returning an Element (or a String for `cls`); nothing here is
-# magic. The goal is that a typical form route pulls 3-5 of these and stops
-# hand-rolling identical markup.
-
 """
     cls(parts...) -> String
 
-Build a CSS class attribute string from a flexible mix of inputs.
-Accepts:
+Build a CSS class string from a mix of inputs:
 
 - `AbstractString` → kept as-is (empty strings drop).
 - `"name" => bool` → included only when the bool is true.
-- `Vector` of any of the above → flattened.
+- `Vector`, `Tuple`, `NamedTuple` or `AbstractSet` of any of the above → flattened.
 - `nothing` / `missing` → skipped.
 
-Empty inputs collapse to `""` so a `class=cls(...)` attribute is safe
-even when nothing matches. Pair values that aren't `Bool` raise a loud
-`error` — a typo like `"active" => "yes"` would otherwise silently
-include the class.
+No match → `""`, so `class=cls(...)` is always safe. Pair values that
+aren't `Bool` throw `ArgumentError`; `"active" => "yes"` would otherwise
+silently include the class. Other types throw `ArgumentError` too.
 
 # Examples
 ```jldoctest
@@ -49,11 +42,8 @@ _push_cls!(out, p::Pair{<:AbstractString, Bool}) =
     (p.second && push!(out, String(p.first)); nothing)
 _push_cls!(out, p::Pair{<:AbstractString, <:Any}) =
     throw(ArgumentError("cls: Pair value must be Bool, got $(typeof(p.second))"))
-# Restrict the recursive walk to actual collection types. Without this
-# guard, `cls("a", 1)` matched the generic Any fallback, which iterated
-# the Int (Julia treats Number as a 1-iterable yielding itself) straight
-# back into the same fallback — a stack overflow rather than a useful
-# error.
+# Collections only: a Number is a 1-iterable yielding itself, so `cls("a", 1)`
+# would recurse through the Any fallback into a stack overflow.
 function _push_cls!(out, xs::Union{AbstractVector, Tuple, NamedTuple, AbstractSet})
     for x in xs
         _push_cls!(out, x)
@@ -65,15 +55,12 @@ _push_cls!(out, x) =
 """
     redirect_to(location::AbstractString; cookies=String[]) -> HTTP.Response
 
-Plain HTTP 303 redirect for non-Datastar flows (login form POST, logout,
-direct navigation). Pass `cookies` as a vector of complete `Set-Cookie`
-header values to attach session cookies to the redirect — useful for the
-post-login flow where you want to redirect AND set the session cookie in
-the same response.
+Plain HTTP 303 redirect for non-Datastar flows (login POST, logout, direct
+navigation). `cookies` is a vector of complete `Set-Cookie` header values
+sent with the redirect.
 
-For Datastar form submits that need to navigate after success, use
-[`redirect_via_fragment`](@ref) instead — Datastar's morph algorithm
-won't follow a 303.
+For Datastar form submits that navigate on success, use
+[`redirect_via_fragment`](@ref): Datastar's morph won't follow a 303.
 
 # Examples
 ```jldoctest
@@ -98,15 +85,6 @@ function redirect_to(location::AbstractString; cookies::AbstractVector=String[])
     HTTP.Response(303, headers)
 end
 
-# --- HyperSignal.Helpers ---------------------------------------------
-#
-# App-grade building blocks. These compose the primitives above into
-# the form/dialog idioms a typical HyperSignal+Datastar service reaches
-# for. They live in a submodule so the top-level v1.0 surface stays
-# minimal — see issue #1 and the `## Unreleased` CHANGELOG entry. No
-# top-level shim: the package is pre-1.0 with no external users, so
-# an outright move was cheaper than a deprecation cycle.
-
 module Helpers
 
 using ..HyperSignal: Element, Frag, Raw, Attribute,
@@ -118,10 +96,6 @@ export radio_field, checkbox_field, text_field,
        help_tooltip, form_legend, form_section,
        preset_button, signal_dialog
 
-# Shared body for radio_field / checkbox_field. The wrapping `<label>`
-# convention (label around input, with a leading space before the visible
-# text) is the same for both controls; only the input `type` and the
-# caller's argument order differ.
 _named_input_field(itype::AbstractString,
                     name::AbstractString,
                     value::AbstractString,
@@ -134,9 +108,7 @@ _named_input_field(itype::AbstractString,
 """
     radio_field(name::AbstractString, value::AbstractString, text::AbstractString; checked=false)
 
-Render a `<label><input type="radio" name=… value=… [checked]> text</label>`
-— the label-around-input convention. One call replaces ~6 lines of
-hand-built input-and-label boilerplate per choice.
+Render `<label><input type="radio" name=… value=… [checked]> text</label>`.
 
 # Examples
 ```jldoctest
@@ -155,9 +127,8 @@ radio_field(name::AbstractString, value::AbstractString, text::AbstractString;
     checkbox_field(name::AbstractString, text::AbstractString; checked=false, value="on")
 
 Render a `<label><input type="checkbox" name=… value=… [checked]> text</label>`.
-The default `value="on"` matches the form-encoded shape `parse_form_body`
-(and any standard form parser) expects — keep the default unless your
-backend explicitly wants a different value.
+The default `value="on"` is the browser's own value for a checked checkbox
+and what form parsers expect; change it only if your backend wants another.
 
 # Examples
 ```jldoctest
@@ -180,13 +151,11 @@ checkbox_field(name::AbstractString, text::AbstractString;
                type="text", required=false)
 
 Render a `<label for=name>text</label><input type=… id=name name=name [required]>`
-pair as a [`Frag`](@ref). The `for`/`id` attribute pair ties them so the
-input keeps focus when the label is clicked, and screen readers
-announce the label whether or not the input is the label's child.
+pair as a [`Frag`](@ref). `for`/`id` tie them: clicking the label focuses
+the input, and screen readers announce the label.
 
 Defaults to `type="text"`; pass `type="password"` for a masked input.
-Pass `required=true` to mark the field as a constraint the browser
-enforces before allowing submit.
+`required=true` makes the browser block submit while the field is empty.
 
 # Examples
 ```julia
@@ -208,9 +177,8 @@ end
 """
     DEFAULT_HELP_ICON :: Raw
 
-The default question-mark-in-circle SVG used by [`help_tooltip`](@ref).
-Pass your own [`Raw`](@ref)/[`Element`](@ref) as `help_tooltip(text;
-icon=…)` if your project uses a different glyph.
+Default question-mark-in-circle SVG for [`help_tooltip`](@ref). Override
+with `help_tooltip(text; icon=…)`.
 """
 const DEFAULT_HELP_ICON = Raw("""
     <svg class="help-icon" viewBox="0 0 24 24" fill="none"
@@ -223,10 +191,11 @@ const DEFAULT_HELP_ICON = Raw("""
 """
     help_tooltip(text::AbstractString; icon=DEFAULT_HELP_ICON)
 
-Render
+Render (attribute values shown unescaped; `data-effect`, which positions
+the popup inside the viewport, omitted)
 ```html
 <span class="help-trigger" tabindex="0"
-      data-signals="{help_open: '', help_hover: ''}"
+      data-signals='{"help_open":"","help_hover":""}'
       data-on:mouseenter="\$help_hover = '<id>'"
       data-on:mouseleave="\$help_hover = ''"
       data-on:click__outside="\$help_open === '<id>' && (\$help_open = '')">
@@ -234,22 +203,20 @@ Render
         data-on:click="\$help_open = \$help_open === '<id>' ? '' : '<id>'">
     [icon]
   </span>
-  <span class="help-popup" role="tooltip"
+  <span class="help-popup" role="tooltip" style="display: none"
         data-show="\$help_open === '<id>' || \$help_hover === '<id>'">text</span>
 </span>
 ```
-The popup opens on hover (and closes on mouseleave) and toggles on
-click of the icon, staying open until the user clicks anywhere outside
-the trigger (datastar's `__outside` modifier on a document-level
-listener). `id` is a stable hash of the tooltip text so two helpers
-with the same copy share state — fine, since they'd say the same thing.
+The popup opens on hover, closes on mouseleave, and toggles on click of
+the icon. It stays open until a click outside the trigger (Datastar's
+`__outside` modifier). `<id>` is a base-36 hash of the tooltip text, so
+equal texts share state. `hash` is stable within one Julia version only,
+so don't persist or compare ids across versions.
 
-Tooltip text is auto-escaped so caller copy can include quotes / `<` /
-`&` without worry. Override `icon` with your own [`Raw`](@ref)/[`Element`](@ref)
-for projects with a different help glyph.
+Tooltip text is escaped. Override `icon` with any [`Raw`](@ref) or
+[`Element`](@ref).
 
-Most code reaches for [`form_legend`](@ref) instead — it pairs a legend
-with this tooltip in one call.
+[`form_legend`](@ref) pairs a legend with this tooltip in one call.
 
 # Examples
 ```julia
@@ -259,15 +226,10 @@ legend("Confidence ", help_tooltip("ML certainty range. Lower = ambiguous."))
 function help_tooltip(text::AbstractString; icon=DEFAULT_HELP_ICON)
     id = string(hash(text) % UInt32; base=36)
     open_expr = "\$help_open === '$(id)' || \$help_hover === '$(id)'"
-    # Position the popup so it stays in-viewport. The effect re-runs
-    # whenever the open/hover signals change; the `&&` short-circuits
-    # when this tooltip is closed so we only measure when shown. rAF
-    # defers measurement until after data-show has un-hidden the popup
-    # and the browser has laid it out.
-    # `el` isn't captured across nested closures in Datastar's expression
-    # compiler, so snapshot it into a local before requestAnimationFrame.
-    # Reset any previously-applied position before measuring; otherwise a
-    # tooltip that was once flipped right would stay flipped forever.
+    # `&&` skips measuring while closed; rAF waits for data-show to unhide
+    # and layout. `el` isn't captured across nested closures in Datastar's
+    # expression compiler, so it's passed into an arrow fn. Position resets
+    # first, else a once-flipped tooltip stays flipped.
     reposition_js = "($(open_expr)) && ((e) => requestAnimationFrame(() => {" *
         "e.style.left=''; e.style.right=''; e.style.top=''; e.style.bottom='';" *
         "const r=e.getBoundingClientRect();" *
@@ -275,29 +237,20 @@ function help_tooltip(text::AbstractString; icon=DEFAULT_HELP_ICON)
         "if(r.bottom>innerHeight-8){e.style.top='auto'; e.style.bottom='calc(100% + 0.3rem)';}" *
         "}))(el)"
     span(class="help-trigger", tabindex="0",
-         # Initialise both shared signals once per page. Subsequent
-         # data-signals declarations are no-ops because the values are
-         # already present in the store.
+         # Repeat declarations are no-ops: the signals already exist in the store.
          ds_signals((help_open="", help_hover="")),
          on(:mouseenter, "\$help_hover = '$(id)'"),
          on(:mouseleave, "\$help_hover = ''"),
-         # Click-away closes only if this is the currently-open one, so
-         # opening tooltip B while A is open doesn't briefly clear both.
+         # Only the open tooltip closes; else opening B while A is open briefly clears both.
          on(:click, "\$help_open === '$(id)' && (\$help_open = '')";
             outside=true),
-         # Toggle on click is scoped to the icon — clicks on the popup
-         # itself (e.g. to select text) bubble up to the trigger without
-         # hitting this handler, so the popup stays put.
+         # Scoped to the icon: clicks inside the popup (selecting text) must not toggle it.
          span(class="help-icon-wrap",
               on(:click, "\$help_open = \$help_open === '$(id)' ? '' : '$(id)'"),
               icon),
          span(class="help-popup", role="tooltip",
-              # Inline `display: none` is the initial state until
-              # Datastar's data-show toggles it on. Without this the
-              # popup briefly flashes between HTML render and JS init,
-              # because data-show on its own only *toggles* the inline
-              # `display` style — it doesn't paint a default-hidden
-              # state for SSR'd markup.
+              # data-show only toggles inline `display`; without this the SSR'd
+              # popup flashes visible until Datastar initialises.
               Symbol("style") => "display: none",
               ds_show(open_expr),
               ds_effect(reposition_js),
@@ -307,9 +260,8 @@ end
 """
     form_legend(text::AbstractString; tooltip=nothing)
 
-Render `<legend class="muted">text [help-tooltip]</legend>`. Pass
-`tooltip` to attach an inline help icon via [`help_tooltip`](@ref).
-Without a tooltip the result is just a plain muted legend.
+Render `<legend class="muted">text [help-tooltip]</legend>`. `tooltip`
+attaches an inline [`help_tooltip`](@ref); without it the legend is plain.
 
 # Examples
 ```jldoctest
@@ -317,9 +269,8 @@ julia> render(form_legend("Size"))
 "<legend class=\\"muted\\">Size</legend>"
 ```
 
-For the with-tooltip variant the output includes a hashed id that
-isn't byte-stable across the tooltip text, so see the help_tooltip
-docstring for the structural details.
+With a tooltip the output embeds a hashed id, so there is no doctest; see
+[`help_tooltip`](@ref) for the markup.
 """
 function form_legend(text::AbstractString; tooltip::Union{Nothing, AbstractString}=nothing)
     if isnothing(tooltip)
@@ -332,14 +283,11 @@ end
 """
     form_section(label_text::AbstractString, cards...)
 
-Wrap a list of "card" elements (typically `<article>`s) under a muted
-section header. Renders a [`Frag`](@ref) of `<small class="muted
+Wrap "card" elements (typically `<article>`s) under a muted section
+header. Returns a [`Frag`](@ref) of `<small class="muted
 form-section-label">label</small>` and `<div
-class="form-card-grid">cards…</div>` — collapses the section-header +
-grid pattern that opens every section in this codebase's session form.
-
-Returns a `Frag` (no wrapper element), so it inlines into a `<form>`
-without forcing an extra `<div>` you'd then have to style around.
+class="form-card-grid">cards…</div>`. No wrapper element, so it inlines
+into a `<form>`.
 
 # Examples
 ```julia
@@ -363,11 +311,9 @@ Render a "preset" button: clicking it sets each named radio input to
 `checked` (matching `value`) and fires `input` on it, so a `data-bind`
 on the radio updates its signal. It then dispatches a bubbling `change`
 event on the form so any `data-on:change` handler (e.g. a live-count GET)
-recomputes. The `<button onclick="…">` JS is built once here so each
-preset doesn't repeat the escape-prone querySelector boilerplate.
-
-`settings` is a vector of `name => value` pairs identifying the radios
-to flip.
+recomputes. `settings` is a vector of `name => value` pairs identifying
+the radios to flip. Each name must be an ASCII CSS identifier, else
+`ArgumentError`.
 
 # Examples
 ```julia
@@ -392,35 +338,17 @@ function preset_button(text::AbstractString,
            String(text))
 end
 
-# A preset's `name` ends up as a CSS attribute selector with no quoting, so it
-# must be a plain identifier — anything else would let a stray character break
-# the selector or the surrounding JS. We refuse rather than silently mangle.
+# `name` lands unquoted in `input[name=…]`. A digit start (`123`, `-1`) makes
+# querySelector throw SyntaxError at click time, silently disabling the preset.
+# `\z`, not `$`: PCRE `$` also matches before a trailing newline.
 function _validate_preset_name(name::AbstractString)
-    # The name lands UNQUOTED in a CSS attribute selector (`input[name=…]`),
-    # so it must be a valid plain CSS identifier — not merely an
-    # `[A-Za-z0-9_-]` run. A CSS identifier cannot start with a digit (nor a
-    # hyphen-then-digit): `input[name=123]` / `input[name=-1]` make
-    # `querySelector` throw a SyntaxError at click time, silently disabling
-    # the preset — exactly the silent-in-the-browser failure this validator
-    # exists to prevent. Require a letter/underscore start (optionally after a
-    # single leading hyphen), then the documented `[A-Za-z0-9_-]` tail. An
-    # earlier per-char loop used `isletter`, which would also have let
-    # non-ASCII letters (é, ñ, …) through; the regex pins the rule strictly.
-    # Anchor with `\z` (absolute end), not `$`: PCRE `$` also matches just
-    # before a single trailing `\n`, so `$` would accept `"foo\n"` — the
-    # newline then lands raw in the CSS selector (`input[name=foo⏎]`),
-    # breaking it silently in the browser. `\z` forbids the trailing newline.
     occursin(r"^-?[A-Za-z_][A-Za-z0-9_-]*\z", name) ||
         throw(ArgumentError("preset_button: input name must be an ASCII CSS identifier " *
               "(letter or underscore start, then [A-Za-z0-9_-]), got $(repr(name))"))
 end
 
-# A preset's `val` is double-escaped at the JS layer: the whole selector is the
-# single-quoted argument to `querySelector('…')`, and `val` additionally sits
-# inside the double-quoted CSS `[value="…"]`. BOTH quote families therefore bound
-# a JS string here, so a `'` (outer arg) or `"` (inner) in `val` would terminate
-# it and break the handler. Escape backslash, double-quote, and single-quote; the
-# surrounding HTML attribute escape handles the HTML layer.
+# `val` sits in the CSS `[value="…"]` inside the single-quoted `querySelector('…')`
+# arg, so both quote kinds terminate a JS string. HTML layer: attribute escape.
 _escape_preset_value(v::AbstractString) =
     replace(v, "\\" => "\\\\", "\"" => "\\\"", "'" => "\\'")
 
@@ -428,35 +356,27 @@ _escape_preset_value(v::AbstractString) =
     signal_dialog(open_expr, body...; close_action, id=nothing, class="")
 
 Render a `<dialog>` whose open/close state is mirrored to a Datastar
-expression. Collapses the boilerplate of pairing
-`ds_effect("\$x ? \$dlg.showModal() : \$dlg.close()")` with a hand-rolled
-backdrop div and gives every dialog the same close semantics:
+expression:
 
-- `data-effect` reads `open_expr`; truthy → `el.showModal()` (puts the
-  dialog in the top layer with native focus trap, ESC, and `::backdrop`),
-  falsy → `el.close()`. Datastar exposes the host element as `el`
-  inside expressions; `this` is the signals proxy, not the DOM node.
-- `data-on:close` runs `close_action` whenever the dialog closes by any
-  means (ESC, programmatic, form `method=dialog`) so the bound signal
-  stays in sync without the caller threading it through every dismiss
-  site.
-- `data-on:click` checks `event.target === el` and runs `close_action`
-  — that's the standard "click the backdrop area to close" affordance.
-  Inner content must be wrapped in a child element so its clicks don't
-  match (a top-level child `<div>` / `<article>` is enough).
+- `data-effect` reads `open_expr`; truthy → `el.showModal()` (top layer,
+  native focus trap, ESC, `::backdrop`), falsy → `el.close()`. Datastar
+  exposes the host element as `el`; `this` is the signals proxy, not the
+  DOM node.
+- `data-on:close` runs `close_action` however the dialog closes (ESC,
+  programmatic, form `method=dialog`), keeping the bound signal in sync.
+- `data-on:click` runs `close_action` when `event.target === el`
+  (backdrop click). Wrap inner content in a child element (`<div>` /
+  `<article>`) so its clicks don't match.
 
 `close_action` is a JS statement (no trailing semicolon needed) that
-restores the signal to its closed state — typically `"\$modal = 0"` or
-`"\$confirmOpen = false"`. The same statement runs from both the
-`:close` listener (ESC, programmatic) and the backdrop click, so the
-signal converges to `false`/`0` no matter how the user dismissed.
+resets the signal to its closed state, e.g. `"\$modal = 0"` or
+`"\$confirmOpen = false"`.
 
 # Examples
 ```julia
-# Page-level lightbox indexed by an integer signal
+# Lightbox indexed by an integer signal
 signal_dialog("\$lightbox",
     div(class="lightbox-frame",
-        # Each panel ds_show-gated by the signal value
         (panel(i) for i in 1:n)...);
     close_action="\$lightbox = 0", class="image-lightbox")
 
@@ -475,9 +395,6 @@ function signal_dialog(open_expr::AbstractString, body...;
     attrs = Any[
         ds_effect("($(open_expr)) ? el.showModal() : el.close()"),
         on(:close, close_action),
-        # Backdrop click: only fires when the user clicks the dialog
-        # element itself (the area outside the inner wrapper). Inner
-        # content must live in a child element so its clicks don't match.
         on(:click, "if(event.target===el){$(close_action)}"),
     ]
     isnothing(id)  || push!(attrs, :id => String(id))
