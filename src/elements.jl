@@ -169,9 +169,14 @@ function _make_element(tag::Symbol, args::Tuple, kwargs)
         elseif a isa Vector{UInt8}
             # Single child (verbatim write); unpacking would emit each byte as a decimal Number.
             push!(children, a)
-        elseif a isa Vector || a isa Tuple || a isa Base.Generator
-            # Generators are consumed here so the element renders more than once.
+        elseif a isa Vector
             append!(children, a)
+        elseif a isa Tuple || a isa Base.Generator
+            # Generators are consumed here so the element renders more than
+            # once. A loop, not append!: append! trusts the iterator's length.
+            for c in a
+                push!(children, c)
+            end
         else
             push!(children, a)
         end
