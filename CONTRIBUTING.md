@@ -19,7 +19,10 @@ julia --project=. -e 'using Pkg; Pkg.instantiate(); Pkg.test()'
 
 CI runs the tests on Julia 1.10 (LTS) and the current stable, each with
 HTTP.jl 1 and 2. The CairoMakie integration test pulls a real plotting
-stack, so first-time precompile is several minutes.
+stack, so first-time precompile is several minutes. On Julia 1.10 a cold
+depot can deadlock precompiling the Makie extensions in parallel
+([Pkg.jl#4822](https://github.com/JuliaLang/Pkg.jl/issues/4822)); set
+`JULIA_NUM_PRECOMPILE_TASKS=1`, as CI does.
 
 ## Benchmarks
 
