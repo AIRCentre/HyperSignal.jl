@@ -291,42 +291,28 @@ render(io::IO, v::AbstractVector{UInt8}) = (write(io, v); nothing)
     b == 0x22 || b == 0x27 || b == 0x3e || b == 0x3c ||
     b == 0x2f || b == 0x3d || b == 0x00
 
-# Lock-guarded validator cache. The valid-name vocabulary is small and
-# bounded, so caching by interned-Symbol identity skips the codeunit walk
-# after the first check. `render` runs on many threads at once under a
-# multithreaded HTTP server, and the cache is shared mutable state, so every
-# access is guarded by a lock: a bare concurrent `push!` would let one task's
-# `rehash!` swap the Set's backing arrays non-atomically while another task's
-# `in` indexes them — corrupting the cache or segfaulting the process. The
-# lock is uncontended after warm-up: the cache only grows during the first
-# traffic burst, then every call is a read hit. (We guard with a
-# `ReentrantLock` rather than an `@atomic` Set field — the latter segfaults on
-# the julia 1.10 compat floor. The name is validated OUTSIDE the lock so a
-# rejected name throws without holding it.)
+# Name cache: valid names form a small vocabulary and Symbols are interned,
+# so a Set hit skips the codeunit walk. `render` runs on many threads; an
+# unguarded `push!` can rehash under a concurrent `in` and segfault.
+# ReentrantLock, not an @atomic Set field: the latter segfaults on 1.10.
+# Validation runs outside the lock so a rejected name throws without it.
 struct _NameCache
     names::Set{Symbol}
     lk::ReentrantLock
 end
 
 const _VALID_TAG_NAMES = _NameCache(Set{Symbol}(), ReentrantLock())
+const _VALID_ATTR_NAMES = _NameCache(Set{Symbol}(), ReentrantLock())
 
-@inline function _check_tag_name(t::Symbol)
-    lk = _VALID_TAG_NAMES.lk
-    lock(lk)
-    try
-        t in _VALID_TAG_NAMES.names && return nothing
-    finally
-        unlock(lk)
-    end
-    _check_tag_name_uncached(t)
-    lock(lk)
-    try
-        push!(_VALID_TAG_NAMES.names, t)
-    finally
-        unlock(lk)
-    end
+@inline function _cached_check(c::_NameCache, k::Symbol, check::F) where {F}
+    (@lock c.lk k in c.names) && return nothing
+    check(k)
+    @lock c.lk push!(c.names, k)
     nothing
 end
+
+_check_tag_name(t::Symbol) = _cached_check(_VALID_TAG_NAMES, t, _check_tag_name_uncached)
+_check_attr_name(k::Symbol) = _cached_check(_VALID_ATTR_NAMES, k, _check_attr_name_uncached)
 
 @noinline function _check_tag_name_uncached(t::Symbol)
     s = String(t)
@@ -338,41 +324,8 @@ end
     nothing
 end
 
-# HTML5's attribute-name grammar is permissive but bans the chars that
-# would break the parser: whitespace (incl. tab/LF/FF/CR/space), '"',
-# '\'', '<', '>', '/', '=', '\0'. We reject the parser-breaking subset
-# loudly — escaping wouldn't help (the spec doesn't define entity
-# decoding inside attribute names) and silent acceptance would mean a
-# hostile Symbol key like `Symbol("x onerror=...")` introduces a real
-# attribute. The lib's own Datastar helpers stay well within the
-# allowed set (`data-on:click__prevent` etc.) so this only fires on
-# adversarial input.
-#
-# Cache validated symbols: HTML attribute names form a small, bounded
-# vocabulary, and Symbols are interned, so identity-keyed Set lookup
-# is constant-time and skips the codeunit walk after the first check.
-# See `_NameCache` above for why the cache is guarded by a lock rather
-# than a bare concurrently-mutated Set.
-const _VALID_ATTR_NAMES = _NameCache(Set{Symbol}(), ReentrantLock())
-
-@inline function _check_attr_name(k::Symbol)
-    lk = _VALID_ATTR_NAMES.lk
-    lock(lk)
-    try
-        k in _VALID_ATTR_NAMES.names && return nothing
-    finally
-        unlock(lk)
-    end
-    _check_attr_name_uncached(k)
-    lock(lk)
-    try
-        push!(_VALID_ATTR_NAMES.names, k)
-    finally
-        unlock(lk)
-    end
-    nothing
-end
-
+# Rejected, not escaped: HTML defines no entity decoding inside attribute
+# names, so `Symbol("x onerror=...")` would otherwise add a real attribute.
 @noinline function _check_attr_name_uncached(k::Symbol)
     @inbounds for b in codeunits(String(k))
         _is_invalid_name_byte(b) &&
