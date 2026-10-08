@@ -114,6 +114,13 @@ julia> render(nothing)
 """
 render(x) = (io = IOBuffer(); render(io, x); String(take!(io)))
 
+# A child "produces content" unless it's one of the no-output skip types
+# (`Bool`/`Nothing`/`Missing`) that `render` deliberately emits nothing for
+# — the residue of the `cond && extra` conditional idiom. Used to decide
+# whether a void element was handed real content (a mistake) vs. a harmless
+# skip value.
+_is_content_child(c) = !(c isa Bool || c === nothing || c === missing)
+
 """
     render(io::IO, x)
 
@@ -146,13 +153,6 @@ render(io, h1("Hello, world"))
 String(take!(io))   # "<h1>Hello, world</h1>"
 ```
 """
-# A child "produces content" unless it's one of the no-output skip types
-# (`Bool`/`Nothing`/`Missing`) that `render` deliberately emits nothing for
-# — the residue of the `cond && extra` conditional idiom. Used to decide
-# whether a void element was handed real content (a mistake) vs. a harmless
-# skip value.
-_is_content_child(c) = !(c isa Bool || c === nothing || c === missing)
-
 function render(io::IO, e::Element)
     _check_tag_name(e.tag)
     # A void element (br, img, input, …) has no content model: a closing
