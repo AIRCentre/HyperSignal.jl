@@ -148,8 +148,8 @@ function redirect_via_fragment(selector::AbstractString, location::AbstractStrin
         throw(ArgumentError("redirect_via_fragment: selector must be a single \"#id\" " *
               "(the morph target is rendered with that id), got $(repr(selector))"))
     el = Element(wrapper_tag,
-                 Pair{Symbol, Any}[:id => _strip_hash(selector)],
-                 Any[Raw("<script>window.location='$(_js_escape(location))'</script>")])
+                 Pair{Symbol, Any}[:id => chopprefix(selector, "#")],
+                 Any[Raw("<script>window.location='$(_js_str_escape(location))'</script>")])
     headers = Pair{String, String}["Set-Cookie" => String(c) for c in cookies]
     fragment_response(el, selector; headers=headers)
 end
@@ -219,9 +219,3 @@ function script_response(js::AbstractString; script_attributes=nothing,
     h = _with_default(h, "Content-Type", "text/javascript; charset=utf-8")
     HTTP.Response(status, h, String(js))
 end
-
-_strip_hash(s::AbstractString) = chopprefix(s, "#")
-# The window.location='…' redirect string is a single-quoted JS literal in
-# an inline <script>, so it needs the exact same escaping as a Datastar
-# action's URL/extras — one source of truth in _js_str_escape (datastar.jl).
-const _js_escape = _js_str_escape
