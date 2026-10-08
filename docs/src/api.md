@@ -1,13 +1,13 @@
 # API reference
 
-Every exported helper, type, and macro. The 100-plus HTML tag constructors
+Every exported helper, type, and macro. The HTML tag constructors
 (`div`, `h1`, `form`, …) are generated programmatically and have no
-individual docstrings, so they aren't listed here — they come into scope
+individual docstrings, so they aren't listed here. They come into scope
 with `using HyperSignal` (except the Base-shadowed
 `div`/`select`/`summary`/`mark`/`time`, which need [`@using_tags`](@ref));
 see the Quickstart under [Module overview](#Module-overview) below.
-Docstrings live alongside the source — this page just indexes them so the
-rendered docs site has clickable cross-references.
+Docstrings live with the source; this page indexes them for
+cross-references.
 
 ## Module overview
 

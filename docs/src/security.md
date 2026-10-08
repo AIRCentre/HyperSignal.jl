@@ -1,17 +1,19 @@
 # Security model
 
-HyperSignal is an HTML-output library. The single most important
-question for one is: *what happens to user input that ends up in the
-page?* This page documents every escape boundary the lib draws, in
-the order they get crossed.
+HyperSignal is an HTML-output library, so the key question is: *what
+happens to user input that ends up in the page?* This page documents
+every escape boundary the lib draws, in the order they get crossed.
 
 ## Element text content
 
-!!! warning "Raw is the ONLY documented escape-hatch"
-    Use it for SVG icons, audited HTML generators, and the output of
-    [`patch_svg`](@ref) / [`inline_svg`](@ref). **Never wrap user
-    input.** There is no `SafeHTML`, no `unsafe=true` kwarg, no
-    sanitizer — one hatch, one trust boundary.
+!!! warning "Verbatim paths skip escaping"
+    [`Raw`](@ref) is the escape hatch for HTML: SVG icons, audited HTML
+    generators, the output of [`patch_svg`](@ref) / [`inline_svg`](@ref).
+    **Never wrap user input.** Three other paths carry the same trust
+    model, each covered below: a `Vector{UInt8}` child (HTML bytes), a raw
+    JS string passed to `on(...)` (the HTML attribute escape still
+    applies), and the body of [`script_response`](@ref). There is no
+    `SafeHTML`, no `unsafe=true` kwarg, no sanitizer.
 
 ```julia
 div("user said: $(user_input)")
@@ -20,8 +22,8 @@ div("user said: $(user_input)")
 The string interpolates a `String` (or `SubString`) into the element's
 children. At [`render`](@ref) time, `escape_html` walks the bytes and
 replaces `<`, `>`, `&`, `"`, `'` with HTML entities. **Auto-escape is
-on by default for every child of every Element.** The only way to opt
-out is to explicitly wrap the value in [`Raw`](@ref).
+on by default for every `String` child of every Element.** [`Raw`](@ref)
+and `Vector{UInt8}` children opt out.
 
 ## Attribute values
 
@@ -57,20 +59,19 @@ both let a caller pass an arbitrary name. The renderer would write
 those names verbatim — including a literal `<`, `=`, `"`, or a space
 — so a hostile name could inject markup. HyperSignal rejects names
 containing whitespace, `<`, `>`, `"`, `'`, `/`, `=`, or `\0`. Names
-that pass are cached by Symbol identity, so the validation cost is
-amortized to zero on the bounded vocabulary the library actually
-uses (`data-on:click__prevent`, `aria-label`, `xlink:href`, etc.).
+that pass cache by `Symbol` identity. The vocabulary in practice is
+small and bounded (`data-on:click__prevent`, `aria-label`,
+`xlink:href`, etc.), so each name is validated once.
 
-## `Raw(...)` — the only opt-out
+## `Raw(...)` — HTML opt-out
 
 ```julia
 const SPINNER = Raw("""<svg viewBox="0 0 24 24">…</svg>""")
 div(class="loading", SPINNER, " Working…")
 ```
 
-`Raw` writes its payload byte-for-byte with no escape. Use it for SVG
-icons, audited HTML generators, and the output of [`patch_svg`](@ref)
-or [`inline_svg`](@ref). **Never wrap user input in `Raw`.**
+`Raw` writes its payload byte-for-byte with no escape. **Never wrap user
+input in `Raw`.**
 
 ## `Vector{UInt8}` cached HTML
 
@@ -89,9 +90,9 @@ through [`patch_svg`](@ref). The patch removes:
 - The XML prolog and DOCTYPE (would break HTML parsing).
 - The hard-coded `width`/`height` (responsive embed).
 - Internal id collisions (`clip0`, `glyph0`) via the `id_prefix`
-  argument — and the prefix is splice-escaped so a user-supplied
-  prefix containing `\` won't get interpreted as a regex
-  back-reference.
+  argument. The prefix is written into the output as-is, with no regex
+  replacement, so `\` or `$` in it stay literal. It is not
+  HTML-escaped: pass a trusted prefix, never user input.
 
 The `add_class` and `aria_label` arguments patched onto the root
 `<svg>` are both attribute-escaped before splicing, so a value
@@ -141,7 +142,7 @@ or JSON-encoded otherwise — sanitize before passing.
 
 [`sse_response`](@ref) and its event constructors
 ([`patch_elements`](@ref), [`patch_signals`](@ref)) follow the same
-trust model as the other helpers, with two boundaries worth naming:
+trust model as the other helpers, with two boundaries:
 
 - `elements` HTML is rendered through [`render`](@ref), so text and
   attribute values are escape-walked — same guarantees as
@@ -168,7 +169,7 @@ whitespace selector (`.card`, `#a #b`) would produce an `id` the
 selector can't match (the redirect silently no-ops), and a CR/LF in the
 selector would be injected raw into the `datastar-selector` header. The
 `location` argument is escaped for its single-quoted inline-`<script>`
-JS literal via the same `_js_str_escape` set used by [`DSAction`](@ref)
+JS literal with the same JS-string escape as [`DSAction`](@ref)
 (backslash, single quote, `</`, and the four line terminators
 LF/CR/U+2028/U+2029).
 

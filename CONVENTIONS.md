@@ -175,13 +175,16 @@ Applies to every `.md` + every code comment / docstring.
   - ✅ `p(user.name)` — renderer handles `<`, `&`, quotes.
   - 🚫 pre-`replace` / pre-`escape_html` before passing in.
 
-- **`Raw(...)` is the only escape hatch.** `[sec]`
+- **Verbatim paths stay few, named, audited.** `[sec]`
 
   **Why:** every bypass = potential XSS hole. Surface must be small, named,
   grep-able.
 
-  **Convention:** `Raw` wraps trusted HTML you audited (SVG, vendored icons,
-  generator output). Never anything user-derived.
+  **Convention:** `Raw` is the HTML escape hatch: trusted HTML you audited (SVG,
+  vendored icons, generator output). Other verbatim paths (`Vector{UInt8}`
+  children, raw-string actions, `script_response`) follow the same trust
+  rule. Never anything user-derived. A new verbatim path → listed in
+  `docs/src/security.md`.
 
   - ✅ `Raw(read("logo.svg", String))` — vendored asset.
   - 🚫 `Raw(user_html)` / `Raw("<div>$untrusted</div>")`.
@@ -219,13 +222,16 @@ Applies to every `.md` + every code comment / docstring.
   - ✅ `div(class="card", h1("Title"))`.
   - 🚫 `Div`, `make_div`, `tag(:div, ...)`.
 
-- **Datastar helpers carry `ds_` prefix.** `[style]`
+- **Datastar attribute/signal helpers carry `ds_` prefix.** `[style]`
 
   **Why:** prefix marks "Datastar action/attribute/signal binding" without
   scanning the implementation.
 
-  **Convention:** every Datastar helper exported from `src/datastar.jl` starts
-  `ds_`: `ds_post`, `ds_signal`, `ds_indicator`, `ds_bind`, …
+  **Convention:** every exported helper in `src/datastar.jl` that builds a
+  Datastar action, attribute, or signal binding starts `ds_`: `ds_post`,
+  `ds_signal`, `ds_indicator`, `ds_bind`, … Exempt by class: event binders
+  (`on`, `on_*`; see below), exported types and macros, and request decoders
+  (`parse_signals`).
 
   - ✅ `ds_signal("count", 0)`.
   - 🚫 `signal("count", 0)` — collides with Base + domain code.
@@ -248,23 +254,22 @@ Applies to every `.md` + every code comment / docstring.
   **Why:** library → consumers resolve their own deps; committed manifest pins
   their world to ours.
 
-  **Convention:** `.gitignore` excludes `/Manifest.toml` and every nested
-  `*/Manifest.toml` (`docs/`, `benchmark/`, `examples/`).
+  **Convention:** `.gitignore` excludes `/Manifest.toml` and the
+  `Manifest.toml` of every sub-environment.
 
   - ✅ commit `Project.toml` only.
   - 🚫 `git add -f Manifest.toml` to "make CI reproducible".
 
 - **Optional integrations = package extensions under `ext/`.** `[corr]`
 
-  **Why:** extensions gate heavy deps (Makie, GeoInterface) on `using`.
-  Importing HyperSignal stays light for consumers that don't need them.
+  **Why:** extensions gate heavy deps on `using`. Importing HyperSignal stays
+  light for consumers that don't need them.
 
   **Convention:** integration requiring a third-party package lives in
   `ext/HyperSignal<Name>Ext.jl` with trigger package in `[weakdeps]` +
   `[extensions]`.
 
-  - ✅ `HyperSignalMakieExt` (gated on `Makie`), `HyperSignalMapLibreExt` (gated
-    on `GeoInterface`).
+  - ✅ `ext/HyperSignalFooExt.jl` triggered by `Foo` in `[weakdeps]`.
   - 🚫 hard-import optional deps from `src/`.
 
 ## JS-emitting code (extensions, server-returned scripts)
@@ -309,8 +314,10 @@ Applies to every `.md` + every code comment / docstring.
   - ✅ script: `document.dispatchEvent(new CustomEvent("hs-m_center", {detail:
     [lng, lat]}))`.
   - ✅ container: `data-on:hs-m_center__window="$map_center = evt.detail"`.
-  - ✅ action channels = signal + post: `data-on:hs-m_click__window="$_payload =
+  - ✅ action channels = signal + post: `data-on:hs-m_click__window="$payload =
     evt.detail; @post('/api/click')"`.
+  - 🚫 `_`-prefixed payload signal (`$_payload`) — Datastar drops `_` signals
+    from request bodies, so the `@post` carries nothing.
   - ✅ omit the listener attr entirely when the kwarg is `nothing` — opt-out path
     doesn't leak a `@post` to an undefined URL.
   - 🚫 single shared `hs-signal` event with `detail.name` — expressions can't
@@ -459,8 +466,8 @@ Applies to every `.md` + every code comment / docstring.
   - ✅ `ds_signal("drawer_open", false)` — pure UI affordance.
   - ✅ `ds_signal("active_tab", "overview")` — view selection.
   - ✅ `ds_signal("map_center", [0, 0])` — derived from a live UI event.
-  - ✅ `ds_signal("_payload", nothing)` — short-lived buffer for the next
-    `@post`.
+  - ✅ `ds_signal("payload", nothing)` — short-lived buffer for the next
+    `@post`; no `_` prefix, or the body omits it.
   - 🚫 `ds_signal("cart", [...])` — business state; POST adds, server sends back
     the rendered cart.
   - 🚫 `ds_signal("user", {...})` — identity belongs in the session.
@@ -477,9 +484,8 @@ Applies to every `.md` + every code comment / docstring.
   can't silently rewrite our semantics.
 
   **Convention:** a method defined under `HyperSignal` (or any extension)
-  dispatches on at least one HyperSignal-owned type. Owned = `Element`, `Frag`,
-  `Raw`, `Attribute`, `DSAction` (extensions own structs they define:
-  `MapLibreExpr`, `Source`, `Layer`).
+  dispatches on at least one HyperSignal-owned type. Owned = any type defined
+  in HyperSignal; an extension also owns the structs it defines.
 
   - ✅ `Base.show(io::IO, ::MIME"text/html", el::Element) = …` — owned type in
     signature.

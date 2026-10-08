@@ -23,7 +23,7 @@ const M = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
 
 Aliasing the extension to a short name (`M`) keeps call sites readable.
 You also need the MapLibre GL JS/CSS on the page — HyperSignal vendors a
-pinned `maplibre-gl@5.24.0` bundle under
+pinned `maplibre-gl` bundle under
 `docs/src/notebooks/assets/maplibre/`; serve those two files and link
 them in your `<head>`.
 
@@ -31,8 +31,8 @@ them in your `<head>`.
 
 `map_view` returns an `Element` tree: a namespaced container `div` plus
 a `<script>` that constructs the `maplibregl.Map`, publishes the
-instance to `window.__hs_maps[id_prefix]`, and wires the channels you
-opt into.
+instance to `window.__hs_maps[id_prefix]`, and wires the signals and
+posts you opt into.
 
 ```julia
 M.map_view(;
@@ -52,8 +52,8 @@ M.map_view(;
 
 | Keyword | Effect |
 | --- | --- |
-| `id_prefix` | Namespaces the container id, the instance handle, and every channel event. Defaults to `"map_"`; set a unique value per map so two maps on a page don't collide. |
-| `style` | MapLibre style URL or inline style object. Required. |
+| `id_prefix` | Namespaces the container id, the instance handle, and every bridge event. Defaults to `"map_"`; set a unique value per map so two maps on a page don't collide. |
+| `style` | MapLibre style URL string. Required. |
 | `center` / `zoom` | Initial camera. `center` is `(lon, lat)`. |
 | `sources` | `NamedTuple` of `name => source`; added on the map's `load` event. |
 | `layers` | Tuple of layer specs; added after the sources. |
@@ -63,21 +63,20 @@ M.map_view(;
 | `bbox_post` | URL `@post`ed after a shift-drag rectangle; `$payload` holds `{w, s, e, n}`. |
 | `click_layers` | Layer ids `queryRenderedFeatures` restricts to for the click payload. |
 
-Each channel you leave at `nothing` emits no handler — the script body
-carries no dead stubs.
+Each `*_signal` / `*_post` keyword you leave at `nothing` emits no
+handler, so the script body carries no dead stubs.
 
 ### How the Datastar bridge works
 
 `map_view` follows Datastar's "props down, events up" pattern. The
 script body is plain JS: a map event (`moveend`, `mousemove`, `click`,
 shift-drag) dispatches a `CustomEvent` on `document` with `bubbles:
-true`. `map_view` renders a matching `data-on:hs-<prefix><channel>__window`
+true`. `map_view` renders a matching `data-on:hs-<prefix><event>__window`
 attribute on the container; that attribute is where the real Datastar
 expression lives — a `$signal = evt.detail` assignment for the viewport
-/ cursor channels, or `$payload = evt.detail; @post('…')` for the click
-/ bbox channels. Keeping `@post` and `$signal` inside attribute context
-(the only place Datastar parses them) lets the script body stay plain
-JS.
+/ cursor signals, or `$payload = evt.detail; @post('…')` for the click
+/ bbox posts. `@post` and `$signal` stay in attribute context (the only
+place Datastar parses them), so the script body stays plain JS.
 
 ## Markers — `marker`
 

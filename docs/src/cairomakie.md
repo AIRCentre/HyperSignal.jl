@@ -65,9 +65,8 @@ article(h2("Q4"), Raw(patched))
 ## How it's wired
 
 Makie support lives in a [package extension][ext]
-(`HyperSignalMakieExt`) — `HyperSignal` itself stays a small HTML lib
-and does not pull a plotting stack. The typed entry point activates
-automatically as soon as the caller has `Makie` (or a backend like
-`CairoMakie`) in their session. No extra import needed.
+(`HyperSignalMakieExt`): HyperSignal pulls no plotting stack. The
+`Figure` method activates once `Makie` (or a backend like `CairoMakie`)
+is loaded; no extra import.
 
 [ext]: https://pkgdocs.julialang.org/v1/creating-packages/#Conditional-loading-of-code-in-packages-(Extensions)

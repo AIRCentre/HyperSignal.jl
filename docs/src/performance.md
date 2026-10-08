@@ -2,9 +2,8 @@
 
 The renderer sits on the request-handler hot path: a typical Datastar
 page may swap fragments dozens of times per interaction, and each swap
-goes through [`render`](@ref) / [`fragment_response`](@ref). To keep
-that cost honest, HyperSignal carries a self-contained benchmark suite
-under `benchmark/`.
+goes through [`render`](@ref) / [`fragment_response`](@ref).
+`benchmark/` holds a benchmark suite for that cost.
 
 ## Regenerating these numbers
 
@@ -12,13 +11,13 @@ under `benchmark/`.
 julia --project=benchmark benchmark/runbench.jl   # Julia 1.11+
 ```
 
-The script defines a `BenchmarkGroup`, tunes each case, then prints
-the per-case median time. Re-run before and after touching
-`elements.jl`, `render.jl`, or `svg.jl` — a regression that doubles
-allocation count won't surface in the correctness tests but will show
-up here.
+The script defines a `BenchmarkGroup`, runs it with
+`run(SUITE; verbose=true)`, and prints the full trial results per case.
+Re-run before and after touching `elements.jl`, `render.jl`, or `svg.jl`:
+a regression that doubles allocation count won't surface in the
+correctness tests but will show up here.
 
-## Indicative numbers (measured on `v0.1.0`; relative shape still holds)
+## Indicative numbers
 
 | benchmark                           | time      |
 |-------------------------------------|-----------|
@@ -33,10 +32,9 @@ up here.
 | `parse_signals` of a 4-key body     | ~640 ns   |
 | `parse_signals` of a 50-key body    | ~5 µs     |
 
-Numbers vary with CPU and Julia version — treat the relative
-shape (small fragment ≪ table ≪ form ≪ svg patch) as the
-contract, not the absolute nanoseconds. These figures were last
-measured on v0.1.0; regenerate with the command above after renderer
+Numbers vary with CPU and Julia version. Treat the relative shape
+(small fragment ≪ table ≪ form ≪ svg patch) as the contract, not the
+absolute nanoseconds. Regenerate with the command above after renderer
 changes.
 
 ## Workloads
@@ -97,17 +95,16 @@ filter form, a 50-key body is a settings dialog.
 [`render`](@ref) is safe to call from many threads at once — the
 expected shape when HTTP.jl serves requests on a thread pool. `render`
 itself holds no shared mutable state. The only shared state is the
-tag-name / attribute-name validator cache, which is copy-on-write under
-a lock: a reader atomically loads an immutable `Set` snapshot and never
-mutates it, and a cold miss validates the name, then copies-and-swaps
-the cache reference under a `ReentrantLock`. The hot path (a cache hit)
-is lock-free — just an atomic load of the snapshot plus a `Set`
-membership test. The first burst of traffic against a cold cache pays a
-one-time validation per distinct tag/attribute name; steady state is the
-lock-free membership test.
+tag-name / attribute-name validator cache: a `Set` of validated
+`Symbol`s behind a `ReentrantLock`. A bare concurrent `push!` could
+corrupt the `Set`, so every lookup takes the lock, hits included. A hit
+is lock, `Set` membership test, unlock. A miss validates the name
+outside the lock, then re-takes it to insert. Inserts happen only during
+the first burst of traffic, one per distinct tag/attribute name, so the
+lock is uncontended in steady state.
 
 ## Future work
 
-Threshold-gated CI is a 1.0 concern. A nightly job that just *records*
-per-case medians on a `bench-history` branch — no regression alarm,
-just a paper trail — is on the roadmap (see issue #7).
+Threshold-gated CI is a 1.0 concern. A nightly job that records per-case
+medians on a `bench-history` branch, a paper trail with no regression
+alarm, is planned.

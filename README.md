@@ -5,8 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Datastar-flavored HTML for Julia, with front-row support for inlining
-CairoMakie figures into your pages. Build hypermedia UIs that read
-top-to-bottom and stay out of the way.
+CairoMakie figures into your pages.
 
 Compatible with Datastar v1.0.4.
 
@@ -86,9 +85,9 @@ page = html(lang="en",
 html_response(page)
 ```
 
-`on(:submit, …)`, `on_change_debounced(…)`, and `ds_indicator()` drop in
-as positional arguments — they return `Attribute` values, and the
-element constructors lift them out of the children list automatically.
+`on(:submit, …)`, `on_change_debounced(…)` and `ds_indicator()` return
+`Attribute` values. Element constructors lift them out of the children
+list, so they drop in positionally.
 
 Same idea for a fragment response that targets a morph point:
 
@@ -107,6 +106,7 @@ sizes refuse to scale. `inline_svg` solves all three:
 
 ```julia
 using HyperSignal, CairoMakie
+HyperSignal.@using_tags
 
 fig = Figure()
 lines(fig[1, 1], 1:10, rand(10))
@@ -128,10 +128,9 @@ What you get:
 - **Accessibility** — `aria_label` adds `role="img"` and the label
   attribute so screen readers announce the figure as one image.
 
-Makie support is loaded as a [package extension][ext] — `HyperSignal`
-itself stays a small HTML lib and does not pull a plotting stack. The
-typed entry point activates automatically as soon as the caller has
-`Makie` (or a backend like `CairoMakie`) in their session.
+Makie support is a [package extension][ext]: HyperSignal pulls no
+plotting stack. `inline_svg(::Figure)` activates once `Makie` (or a
+backend like `CairoMakie`) is loaded.
 
 [ext]: https://pkgdocs.julialang.org/v1/creating-packages/#Conditional-loading-of-code-in-packages-(Extensions)
 
@@ -152,48 +151,46 @@ article(h2("Q4"), Raw(patched))
   `DSAction` struct. `on(:submit, action)` returns an `Attribute` you drop in
   positionally — the element constructor lifts it out of children into attrs,
   no splat. The renderer formats the JS expression once, in one place.
-- **Auto-escape by default; `Raw("…")` to opt out.** No more sprinkling
-  `html_escape` calls and hoping you got them all.
+- **Auto-escape by default; `Raw("…")` to opt out.** No `html_escape`
+  calls to forget.
 - **Boolean attribute semantics that match HTML.** `checked=true` → bare
-  attribute; `checked=false` or `nothing` → omitted. Lets you write
+  attribute; `checked=false` or `nothing` → omitted. Write
   `checked = is_selected(opt)` directly.
-- **`Frag(…)` for grouping without a wrapper.** Useful when a component
-  needs to return multiple siblings.
+- **`Frag(…)` for grouping without a wrapper.** A component can return
+  multiple siblings.
 
 ## Safety model
 
-Every escape boundary in one paragraph:
+Escape boundaries:
 
 - **Element text content** and **attribute values** are auto-escaped
   at render time. The five HTML metacharacters (`<`, `>`, `&`, `"`,
-  `'`) get entity-encoded; the codeunit-fast-path walker keeps this
-  branch-free on the safe-byte runs.
+  `'`) get entity-encoded.
 - **Attribute and tag *names*** that contain parser-breaking chars
   (whitespace, `<`, `>`, `"`, `'`, `/`, `=`, NUL) raise
-  `ArgumentError`. There is no escape syntax for names; rejecting
-  them is the only correct option. The check is cached by `Symbol`
-  identity, so the amortized cost is zero.
-- **`Raw(...)` is the only opt-out.** SVG icons, audited HTML
+  `ArgumentError`. Names have no escape syntax, so they are rejected.
+  The check caches by `Symbol` identity.
+- **`Raw(...)` opts out of escaping.** SVG icons, audited HTML
   generators, the output of `patch_svg` / `inline_svg`. Never wrap
   user input.
 - **`Vector{UInt8}`** renders as a verbatim byte buffer — same trust
   model as `Raw`. The common case is a pre-rendered, cached HTML
   fragment.
 - **Datastar JS extras** (string values inside `ds_post("/x"; foo=...)`)
-  are escaped against `\`, `'`, and `</script>` before going into the
-  attribute, so a user-supplied option value can't break out of the
-  JS string or the wrapping `<script>` tag.
+  are escaped against `\`, `'`, `</` and the JS line terminators, so a
+  user-supplied option value can't break out of the JS string or the
+  wrapping `<script>` tag.
 
 Full write-up: [Security page of the docs site][docs-security].
 
 [docs-security]: https://AIRCentre.github.io/HyperSignal.jl/stable/security/
 [docs-datastar]: https://AIRCentre.github.io/HyperSignal.jl/stable/datastar/
+[docs-performance]: https://AIRCentre.github.io/HyperSignal.jl/stable/performance/
 
 ## What it deliberately doesn't do
 
-- No client-side templating, hydration, or virtual DOM. The whole point of
-  Datastar is that the server owns state and ships HTML. This lib stays in
-  that lane.
+- No client-side templating, hydration, or virtual DOM. In Datastar the
+  server owns state and ships HTML; this lib stays in that lane.
 - No CSS-in-Julia. Use a stylesheet.
 - No macro DSL: function calls compose better and play nicely with multiple
   dispatch and IDE tooling. The one string macro, `ds"…"`, writes Datastar
@@ -206,8 +203,11 @@ App-grade form/dialog helpers live in `HyperSignal.Helpers`. `cls` and
 idioms).
 
 ```julia
+using HyperSignal
 using HyperSignal.Helpers: radio_field, checkbox_field, form_section,
                             form_legend, preset_button
+
+is_active = true; picked = "red"; token = "YOUR_TOKEN"
 
 # Conditional classes — replaces `class="card $(active ? "active" : "")"`.
 button("Save", class=cls("btn", "primary", "active" => is_active))
@@ -242,19 +242,17 @@ preset_button("Easy", ["confidence" => "all", "label_filter" => "both"])
 
 ## Layout — built from primitives, not a `page_layout` helper
 
-Real-world page layouts are heavily project-specific (which CDN, which
-fonts, which footer copy, which favicons). A one-size-fits-all
-`page_layout` helper would either be too rigid or balloon into a
-configuration object that's worse than just composing primitives.
+Page layouts are project-specific (CDN, fonts, footer, favicons). A
+`page_layout` helper would be too rigid or grow into a configuration
+object worse than composing primitives.
 
-The lib exposes one tiny `DOCTYPE` constant — the only truly invariant
-prelude — and lets consumers build their layout from the AST tags
-directly.
+The lib exposes `DOCTYPE`, the one invariant prelude. Build the rest from
+tags.
 
 ## Prior art
 
-Two existing Julia packages cover adjacent ground. Both were considered
-as bases for this work; the Datastar use case ruled them out.
+Two Julia packages cover adjacent ground. Datastar's needs ruled both
+out as a base.
 
 ### [Hyperscript.jl](https://github.com/JuliaWeb/Hyperscript.jl) (JuliaWeb)
 
@@ -270,17 +268,16 @@ transitions) before emit. That's helpful for ordinary HTML but
 ```julia
 # Hyperscript.jl mangles the wire-format name before emit:
 button("Click"; Symbol("data-on:click") => "@post('/x')")
-# → <button data-on-:click="...">                    ⚠ extra hyphen
+# → <button data-on-:click="...">                    extra hyphen
 button("Click"; Symbol("data-on:change__debounce.300ms") => "@get('/c')")
-# → <button data-on-:change-_-_debounce-.300ms="..."> ⚠ multiple injections
+# → <button data-on-:change-_-_debounce-.300ms="..."> multiple injections
 
 # HyperSignal emits the name verbatim:
-on(:click, ds_post("/x")).key   # → Symbol("data-on:click")  ✓ unmodified
+on(:click, ds_post("/x")).key   # → Symbol("data-on:click")  unmodified
 ```
 
-Datastar's client binds on the exact attribute names — mangled names
-are silently ignored. HyperSignal emits attribute names verbatim,
-which is the property Datastar requires.
+Datastar's client binds on the exact attribute names; mangled names are
+silently ignored.
 
 ### [HypertextLiteral.jl](https://github.com/JuliaPluto/HypertextLiteral.jl) (JuliaPluto)
 
@@ -296,17 +293,12 @@ which is what the `DSAction` type exists to avoid.
 
 ### Relationship to Datastar
 
-At the time of writing no other Julia binding for
-[Datastar](https://data-star.dev) exists — the official SDK list covers
-13 languages but Julia is absent. The Datastar layer in this package
-(`DSAction`, `ds"…"` / `DSExpr`, `ds_get` / `ds_post` / `ds_put` / `ds_delete`, `on` /
-`on_click` / `on_submit` / `on_change_debounced` / `on_interval`,
-`ds_indicator` / `ds_bind` / `ds_signal` / `ds_signals` / `ds_show` /
-`ds_text` / `ds_json_signals` / `ds_ignore_morph`, `ds_ref` /
-`ds_attr` / `ds_class` / `ds_computed` / `ds_style` / `ds_effect` /
-`ds_init`, `parse_signals`, `fragment_response` /
-`redirect_via_fragment`) is the actual novel surface — the AST, render,
-and form helpers exist to serve it.
+The [Datastar](https://data-star.dev) layer is the package's core
+surface: typed actions (`DSAction`, `ds_get` / `ds_post` / …), expressions
+(`ds"…"`), event binders (`on`, `on_click`, …), attribute and signal
+helpers (`ds_*`), `parse_signals`, and the response helpers. The AST,
+render, and form helpers exist to serve it. See the
+[Datastar docs][docs-datastar].
 
 ## Signals: encoding and decoding
 
@@ -316,8 +308,11 @@ browser through two surfaces: an attribute on the seed element
 without `contentType: 'form'` (a JSON object the server reads).
 
 ```julia
-# Encode: seed several signals from a NamedTuple — the lib JSON-encodes it
-# once and lets the renderer's attribute escape handle the `"` round-trip.
+using HyperSignal, HTTP
+HyperSignal.@using_tags
+
+# Encode: seed several signals from a NamedTuple. The lib JSON-encodes it
+# once; the renderer's attribute escape handles the `"`.
 div(ds_signals((showDetails=false, count=0)),
     span(ds_show(:showDetails), "Details…"))
 # → <div data-signals="{&quot;showDetails&quot;:false,&quot;count&quot;:0}">…</div>
@@ -333,13 +328,12 @@ end
 ```
 
 For form-mode submits (`@post('/x', {contentType: 'form'})`), parse the
-body with your service's form parser — that wire format and the
-JSON-mode signals payload are distinct.
+body with your HTTP framework's form parser. The wire format differs from
+the JSON-mode signals payload.
 
 ## Responses beyond a page
 
-Beyond `html_response` and `fragment_response`, the response layer covers
-the rest of the Datastar wire surface:
+Besides `html_response` and `fragment_response`:
 
 - `signals_response(signals)` — patch JSON signals (`application/json`);
   pass anything `JSON.jl` encodes (a `NamedTuple`, `Dict`, or struct).
@@ -352,7 +346,7 @@ Full reference on the [docs site][docs-datastar].
 
 ## Runnable example
 
-A 50-line Datastar counter app lives in
+A Datastar counter app lives in
 [`examples/counter_app.jl`](examples/counter_app.jl):
 
 ```bash
@@ -360,14 +354,13 @@ julia --project=examples examples/counter_app.jl   # Julia 1.11+
 # → serving on http://127.0.0.1:8080
 ```
 
-It uses the core public surface — `html_response`, `fragment_response`,
-`on_click(ds_post(...))`, and id-matched fragment morph — in the
-smallest pasteable shape.
+It uses `html_response`, `fragment_response`, `on_click(ds_post(...))`,
+and id-matched fragment morph.
 
 A CairoMakie dashboard with two figures on one page lives in
 [`examples/cairomakie_dashboard.jl`](examples/cairomakie_dashboard.jl) —
-the proof that `inline_svg(::Figure)` lets two plots share a page
-without `clip0` / `glyph0` collisions.
+`inline_svg(::Figure)` lets two plots share a page without `clip0` /
+`glyph0` collisions.
 
 ## Notebook display
 
@@ -383,34 +376,20 @@ julia --project=test test/runtests.jl
 
 `Pkg.test()` works too, but spawns a subprocess with non-default flags
 (`--check-bounds=yes`, …) that force a separate precompile-cache slot —
-so `Makie`/`CairoMakie` re-precompile (~49s) on every switch between
-`Pkg.test` and a normal REPL. Running `runtests.jl` directly reuses the
-warm cache (~12s end-to-end vs. ~110s). CI keeps using `Pkg.test`.
+so `Makie`/`CairoMakie` re-precompile on every switch between `Pkg.test`
+and a normal REPL. Running `runtests.jl` directly reuses the warm cache.
+CI uses `Pkg.test`.
 
 ## Benchmarks
 
-The renderer is on the request-handler hot path; a self-contained
-benchmark suite lives in `benchmark/` so regressions are catchable.
+The renderer is on the request-handler hot path; `benchmark/` holds a
+suite for catching regressions.
 
 ```bash
 julia --project=benchmark benchmark/runbench.jl   # Julia 1.11+
 ```
 
-Indicative numbers on a typical workstation; figures are approximate and
-meant for catching regressions, not precise comparison:
-
-| benchmark                           | time      |
-|-------------------------------------|-----------|
-| render small fragment               | ~290 ns   |
-| render 50-row table                 | ~14 µs    |
-| render 100-field form               | ~24 µs    |
-| escape 10k adversarial chars        | ~48 µs    |
-| `html_response` of a small fragment | ~460 ns   |
-| `fragment_response` with selector   | ~670 ns   |
-| `patch_svg` on a 200-path SVG       | ~130 µs   |
-| `patch_svg` on a 1000-path SVG      | ~630 µs   |
-| `parse_signals` of a 4-key body     | ~640 ns   |
-| `parse_signals` of a 50-key body    | ~5 µs     |
+Indicative numbers and workload descriptions: [Performance][docs-performance].
 
 ## Contributing
 
