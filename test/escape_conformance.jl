@@ -71,8 +71,9 @@ end
 
     @testset "long safe-byte run with embedded metacharacters" begin
         # Why: 10 KiB safe-byte run punctuated by all five escapes stresses
-        # `escape_html` run-of-safe-bytes fast path against slow branches; regression
-        # skips an escape (smoke) or breaks byte-run boundary (parse asserts).
+        # `escape_html` run-of-safe-bytes fast path against slow branches; a regression
+        # either skips an escape (byte-equality asserts fail) or breaks a run
+        # boundary (EzXML parse asserts fail).
         pad = repeat("x", 10 * 1024)
         input = pad * "<&>\"'" * pad
         out = render(HyperSignal.p(input))

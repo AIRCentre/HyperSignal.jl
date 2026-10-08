@@ -249,7 +249,7 @@ function _init_js(; id_prefix, center, zoom, style,
     # script dispatches CustomEvents and map_view's `data-on:<event>__window`
     # attributes run the expressions.
     # `bubbles:true` required: the `__window` listener sits on `window`, and an event
-    # dispatched on `document` reaches it only by bubbling; without it every channel no-ops.
+    # dispatched on `document` reaches it only by bubbling; without it every event no-ops.
     _dispatch(io, name, value_js) =
         print(io, "document.dispatchEvent(new CustomEvent($(JSON.json(_event_name(id_prefix, name))),{detail:$value_js,bubbles:true}));")
 
@@ -272,12 +272,14 @@ function _init_js(; id_prefix, center, zoom, style,
 
     # Marker scan deferred to `load`: the inline script runs before markers placed
     # after it in source order are parsed, so a synchronous scan attaches none.
+    # `load` waits on the style fetch, so the body is normally parsed by then.
     sel = JSON.json("[data-hs-marker=\"$(id_prefix)\"]")
     print(io, "_m.on('load',function(){")
     print(io, "document.querySelectorAll($sel).forEach(function(el){")
     print(io, "const mk=new maplibregl.Marker({element:el})")
     print(io, ".setLngLat([parseFloat(el.dataset.lon),parseFloat(el.dataset.lat)]);")
     print(io, "if(el.dataset.popup!==undefined){")
+    # setHTML parses raw HTML: safe only because data-popup holds render() output (escaped)
     print(io, "mk.setPopup(new maplibregl.Popup().setHTML(el.dataset.popup));")
     print(io, "}")
     print(io, "mk.addTo(_m);")
@@ -389,9 +391,13 @@ function map_view(; id_prefix::AbstractString="map_",
     click_post === nothing    || _on("click",  "\$payload = evt.detail; @post('$(_js_squote(click_post))')")
     bbox_post  === nothing    || _on("bbox",   "\$payload = evt.detail; @post('$(_js_squote(bbox_post))')")
 
+    # The HTML parser ends the <script> on `</script>` whatever the JS quoting,
+    # and after `<!--<script` it skips the real `</script>`. Both sequences only
+    # occur inside JS string literals here, where `<\/` and `<\!` read the same.
     HyperSignal.Frag(
         HyperSignal.div(attrs...),
-        HyperSignal.script(HyperSignal.Raw(init_js)),
+        HyperSignal.script(HyperSignal.Raw(
+            replace(init_js, "</" => "<\\/", "<!--" => "<\\!--"))),
     )
 end
 

@@ -24,6 +24,7 @@ jobs:
           filters: |
             code:
               - 'src/**'
+              - 'ext/**'
               - 'test/**'
               - 'Project.toml'
               - '.github/workflows/CI.yml'

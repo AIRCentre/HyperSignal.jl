@@ -1,7 +1,7 @@
 using Test, HTTP, JSON, Sockets, HyperSignal
 
 include("maplibre.jl")
-# Why: Base-shadowed tags need explicit override (`using` skips them); manual here so
+# Why: unexported tags need explicit override (`using` skips them); manual here so
 # `@using_tags` is tested in isolation below.
 using HyperSignal: div, select, summary
 using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
@@ -152,9 +152,9 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test occursin("data-on:change__debounce.300ms=", out)
     end
 
-    @testset "ds_indicator() drops in as a positional Attribute on the element" begin
-        out = render(button("Loading", ds_indicator()))
-        @test occursin("data-indicator>", out) || occursin("data-indicator ", out)
+    @testset "ds_indicator needs a signal name" begin
+        # Why: Datastar 1.0.4 throws KeyOrValueRequired on a bare data-indicator.
+        @test_throws MethodError ds_indicator()
     end
 
     @testset "MIME round-trip: text/html, text/plain, and html_response agree byte-for-byte" begin
@@ -248,6 +248,13 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         # Why: stray ' in URL would close JS string and inject code.
         resp = redirect_via_fragment("#x", "/a'b")
         @test occursin("window.location='/a\\'b'", String(resp.body))
+    end
+
+    @testset "redirect_via_fragment defends against <!-- in the location" begin
+        # Why: `<!--<script` puts the HTML parser in a state where the real
+        # </script> no longer closes the element.
+        resp = redirect_via_fragment("#x", "/x<!--<script>")
+        @test !occursin("<!--", String(resp.body))
     end
 
     @testset "redirect_via_fragment defends against </script> in the location" begin
@@ -1005,8 +1012,8 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "ds_json_signals renders the bare debug attribute (and an optional filter)" begin
-        # Why: in-page debugger; bare form is valueless attribute like ds_indicator(),
-        # filter overload scopes to matching signal names.
+        # Why: in-page debugger; bare form is a valueless attribute, filter
+        # overload scopes to matching signal names.
         @test render(pre(ds_json_signals())) == "<pre data-json-signals></pre>"
         a = ds_json_signals()
         @test (a.key, a.value) == (Symbol("data-json-signals"), true)
@@ -1109,7 +1116,7 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test occursin("event.target===el", out)
     end
 
-    @testset "@using_tags imports the Base-shadowed tag names in one line" begin
+    @testset "@using_tags imports the unexported tag names in one line" begin
         # Why: macro replaces manual `using HyperSignal: div, select, …`, the API's most
         # awkward line; expansion must be same `using` form.
         ex = macroexpand(@__MODULE__, :(HyperSignal.@using_tags))
@@ -1171,6 +1178,7 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test occursin("url(#fig1_clip0)", out)
         @test occursin("xlink:href=\"#fig1_glyph0\"", out)
         @test occursin("href=\"#fig1_g1\"", out)
+        # Why: prefix applies once, never to its own output
         @test !occursin("xlink:href=\"#fig1_fig1_", out)
     end
 
@@ -1457,14 +1465,14 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
 
     @testset "package sanity: no method ambiguities or unbound-arg generics" begin
         # Why: ambiguities creep in silently (Base.show on struct overlapping an
-        # AbstractDisplay path, Vector{T} dispatch crossing Vector{S}). Without Aqua
-        # dep, Base.detect_ambiguities catches common case; recursive=false skips
-        # Base/loaded modules to keep noise down.
-        ambs = Test.detect_ambiguities(HyperSignal; recursive=false)
+        # AbstractDisplay path, Vector{T} dispatch crossing Vector{S}). Without Aqua,
+        # Test.detect_ambiguities catches the common case; recursive=true covers
+        # the Helpers submodule.
+        ambs = Test.detect_ambiguities(HyperSignal; recursive=true)
         @test isempty(ambs)
         # Why: unbound type parameters surface as MethodErrors only on specific call
         # shapes; static detection is cheaper.
-        unbounds = Test.detect_unbound_args(HyperSignal; recursive=false)
+        unbounds = Test.detect_unbound_args(HyperSignal; recursive=true)
         @test isempty(unbounds)
     end
 
@@ -1496,7 +1504,7 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         # Why: SubString{String} results from any slice/interpolation; must walk parent
         # buffer correctly and match String output.
         base = "ab<c&d>ef\"gh'ij"
-        sub = SubString(base, 2, 14)
+        sub = SubString(base, 2, 14)  # "b<c&d>ef\"gh'i"
         @test render(sub) == "b&lt;c&amp;d&gt;ef&quot;gh&#39;i"
         @test render(SubString("hello world", 1, 5)) == "hello"
         @test render(SubString("xyz", 1, 0)) == ""
@@ -1654,9 +1662,9 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test occursin("data-x-2000=\"v2000\"", out)
     end
 
-    @testset "stress: patch_svg on 1 MB synthetic input stays sub-second" begin
-        # Why: CairoMakie figure with many marks hits a few hundred KB; 1 MB is past
-        # realistic, proves regex passes don't blow up super-linearly.
+    @testset "stress: patch_svg on ~470 KB synthetic input stays fast" begin
+        # Why: CairoMakie figure with many marks hits a few hundred KB; this input
+        # is past realistic, proves regex passes don't blow up super-linearly.
         io = IOBuffer()
         print(io, """<svg viewBox="0 0 1 1"><defs>""")
         for i in 0:5000
@@ -1670,7 +1678,7 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         big = String(take!(io))
         @test sizeof(big) > 400_000
         t = @elapsed out = patch_svg(big; id_prefix="p_")
-        @test t < 2.0
+        @test t < 2.0  # loose on purpose: ~10 ms typical, avoids CI flakes
         @test occursin("id=\"p_clip0\"", out)
         @test occursin("url(#p_clip5000)", out)
         @test !occursin("<?xml", out)
@@ -1795,6 +1803,7 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         end
         @test isempty(offenders_generated)
         @test isempty(offenders_piracy)
+        # Why: @info lists offenders in CI output
         isempty(offenders_generated) || (@info "@generated/hasmethod offenders" offenders_generated)
         isempty(offenders_piracy) || (@info "type-piracy offenders" offenders_piracy)
     end

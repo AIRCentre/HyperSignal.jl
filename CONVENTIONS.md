@@ -31,18 +31,17 @@ How HyperSignal.jl code reads. Each convention: **Why** → **Convention** → �
 Applies to every `.md` in the repo (this file, `README.md`, `CHANGELOG.md`,
 `docs/`) _and_ every code comment / docstring in `src/`, `ext/`, `test/`.
 
-- **Telegraphic style. Sacrifice grammar for concision.** `[style]`
+- **Plain, tight prose.** `[style]`
 
-  **Why:** full sentences with articles + linking verbs add token weight without
-  adding signal; readers scan, they don't read.
+  **Why:** padding costs every reader time; dropped articles and fragments cost
+  newcomers comprehension, and they read README and `docs/` start to finish.
 
-  **Convention:** drop articles ("the", "a") and linking verbs ("is", "are")
-  where meaning survives. Fragments OK. `→` and `=` over "leads to" / "means".
-  One idea per bullet. If a sentence reads fine with words removed, remove them.
+  **Convention:** full sentences, one claim each. Cut words that add no meaning
+  and sentences that repeat a heading, table or code block. Code comments may be
+  fragments.
 
-  - ✅ "render once, at IO boundary".
-  - ✅ "macros = parse-time dialect, fight tooling".
-  - ✅ "`Raw` wraps trusted HTML you audited".
+  - ✅ "Render once, at the IO boundary."
+  - ✅ "`Raw` wraps trusted HTML you audited."
   - 🚫 "We should make sure that the render function is called only one time at
     the IO boundary of the system" — verbose padding.
   - 🚫 narrative paragraphs in code comments — break into fragments or delete.
@@ -198,7 +197,7 @@ Applies to every `.md` + every code comment / docstring.
   helper rendered by `render`, or (b) `JSON.json(value)` into a `Raw`/script
   string. Julia `$x` into JS literal = forbidden, "safe-looking" or not.
 
-  - ✅ `on(:click, ds_post("/api/x", (id=user.id,)))`.
+  - ✅ `on(:click, ds_post("/api/x"; id=user.id))`.
   - ✅ `Raw("$(handle).setZoom($(JSON.json(zoom)))")` — value via JSON.json.
   - ✅ `Raw("$(handle).addSource($(JSON.json(id)), $(JSON.json(spec)))")` — id
     _and_ payload JSON-encoded.
@@ -306,22 +305,22 @@ Applies to every `.md` + every code comment / docstring.
   guide][ds-js], the only bridge = dispatch CustomEvents that
   `data-on:<event>__window` catches.
 
-  **Convention:** one CustomEvent per logical channel, dispatched on `document`,
-  name `hs-<id_prefix><channel>`, payload on `detail`. Component server-renders
-  matching `data-on:hs-…__window` on its container; that expression does the
-  signal write and/or `@post`.
+  **Convention:** one CustomEvent name per kind of event (`center`, `click`, …),
+  dispatched on `document`, name `hs-<id_prefix><event>`, payload on `detail`.
+  Component server-renders matching `data-on:hs-…__window` on its container;
+  that expression does the signal write and/or `@post`.
 
   - ✅ script: `document.dispatchEvent(new CustomEvent("hs-m_center", {detail:
     [lng, lat]}))`.
   - ✅ container: `data-on:hs-m_center__window="$map_center = evt.detail"`.
-  - ✅ action channels = signal + post: `data-on:hs-m_click__window="$payload =
+  - ✅ action events = signal + post: `data-on:hs-m_click__window="$payload =
     evt.detail; @post('/api/click')"`.
   - 🚫 `_`-prefixed payload signal (`$_payload`) — Datastar drops `_` signals
     from request bodies, so the `@post` carries nothing.
   - ✅ omit the listener attr entirely when the kwarg is `nothing` — opt-out path
     doesn't leak a `@post` to an undefined URL.
   - 🚫 single shared `hs-signal` event with `detail.name` — expressions can't
-    switch on `evt.detail.name` cleanly; one-event-per-channel = grep-able
+    switch on `evt.detail.name` cleanly; one name per event = grep-able
     wiring.
   - 🚫 dispatch on container when listener uses `__window` (or vice versa) —
     event + modifier must agree.

@@ -10,7 +10,7 @@ hand-typing `data-on:click="@post('/x', {…})"` or escaping HTML by hand.
 ```julia
 using HyperSignal
 using HyperSignal.Helpers: radio_field
-HyperSignal.@using_tags                 # Base-shadowed tags: div, select, …
+HyperSignal.@using_tags                 # unexported tags: div, select, …
 
 page = Frag(
     DOCTYPE,

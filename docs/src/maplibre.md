@@ -21,7 +21,6 @@ const M = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
 # now M.map_view, M.fill_layer, M.geojson_source, … are available
 ```
 
-Aliasing the extension to a short name (`M`) keeps call sites readable.
 You also need the MapLibre GL JS/CSS on the page — HyperSignal vendors a
 pinned `maplibre-gl` bundle under
 `docs/src/notebooks/assets/maplibre/`; serve those two files and link
@@ -29,7 +28,7 @@ them in your `<head>`.
 
 ## A map on the page — `map_view`
 
-`map_view` returns an `Element` tree: a namespaced container `div` plus
+`map_view` returns a `Frag`: a namespaced container `div` plus
 a `<script>` that constructs the `maplibregl.Map`, publishes the
 instance to `window.__hs_maps[id_prefix]`, and wires the signals and
 posts you opt into.

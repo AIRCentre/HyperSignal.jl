@@ -1,7 +1,7 @@
 # Datastar
 
 HyperSignal targets the [Datastar](https://data-star.dev) protocol
-pinned by [`DATASTAR_SUPPORTED_VERSION`](@ref) (`v"1.0.4"`). A Datastar
+pinned by [`DATASTAR_SUPPORTED_VERSION`](@ref). A Datastar
 app has two halves: attributes and actions you put *into* the page to
 wire up reactivity, and the response shapes a handler sends *back*. This
 page covers both — actions/signals first, then the HTML / JSON / JS /
@@ -15,9 +15,6 @@ The client acts on the response `Content-Type`:
 | `application/json; charset=utf-8` | [`signals_response`](@ref) | Patch JSON signals |
 | `text/javascript; charset=utf-8` | [`script_response`](@ref) | Append a `<script>` tag and run it |
 | `text/event-stream` | [`sse_response`](@ref) / [`sse_stream`](@ref) | Buffered or streaming SSE |
-
-The response sections cover the non-streaming HTML / JSON / JS responses
-first, then the buffered and streaming SSE forms.
 
 Every body-bearing response helper on this page sets `Content-Type` as a
 *default* (`sse_response` / `sse_stream` also set `Cache-Control: no-cache`
@@ -100,13 +97,9 @@ The reactive attribute helpers (all return an [`Attribute`](@ref)):
 | [`ds_effect(expr)`](@ref ds_effect) | `data-effect` | Run a side-effecting expression on signal change |
 | [`ds_init(action_or_expr)`](@ref ds_init) | `data-init` | Run an action/expression on element insert |
 | [`ds_ref(name)`](@ref ds_ref) | `data-ref` | Name an element so `\$name` reaches it |
-| [`ds_indicator()` / `ds_indicator(signal)`](@ref ds_indicator) | `data-indicator` | Mark an in-flight request indicator |
+| [`ds_indicator(signal)`](@ref ds_indicator) | `data-indicator` | Mark an in-flight request indicator |
 | [`ds_ignore_morph()`](@ref ds_ignore_morph) | `data-ignore-morph` | Leave a subtree untouched across morphs |
 | [`ds_json_signals()` / `ds_json_signals(filter)`](@ref ds_json_signals) | `data-json-signals` | In-page signals debugger |
-
-`ds_bind`, `ds_show`, `ds_text`, `ds_attr`, `ds_class`, `ds_style`,
-`ds_computed` and `ds_indicator` also accept a `Symbol` signal name in
-place of the `String` shown (see [Writing expressions](@ref)).
 
 ```julia
 julia> render(div(class="bar", ds_style("width", ds"$pct + '%'")))
@@ -261,7 +254,7 @@ so a Datastar `@post` form can navigate after success (e.g. login →
 dashboard). The helper *renders the morph target itself* with `id` set
 to the selector, so `selector` **must** be a single `"#id"` — a class,
 compound, or whitespace selector throws `ArgumentError`. Single quotes,
-backslashes, and `</` in `location` are escaped.
+backslashes, `</` and `<!--` in `location` are escaped.
 
 Pass `cookies` as a vector of complete `Set-Cookie` header values to set
 the session cookie *and* navigate in one response (the post-login flow).

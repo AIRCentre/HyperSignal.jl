@@ -34,8 +34,7 @@ correctness tests but will show up here.
 
 Numbers vary with CPU and Julia version. Treat the relative shape
 (small fragment ≪ table ≪ form ≪ svg patch) as the contract, not the
-absolute nanoseconds. Regenerate with the command above after renderer
-changes.
+absolute nanoseconds.
 
 ## Workloads
 

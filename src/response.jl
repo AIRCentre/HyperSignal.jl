@@ -104,9 +104,10 @@ fragment_response(body, selector::AbstractString; kwargs...) =
 Datastar can't follow an HTTP 303 from a form submit it owns: the morph
 replaces the target instead. This helper puts a
 `<script>window.location='…'</script>` in the morph target so a Datastar
-form can navigate after success. Single quotes, backslashes and `</`
-sequences in `location` are escaped (`</` so the HTML parser doesn't close
-the surrounding `<script>` mid-string).
+form can navigate after success. `location` gets the same JS-string escape
+as [`DSAction`](@ref): quotes, backslashes, JS line terminators, and `</`
+and `<!--`, so the HTML parser closes the surrounding `<script>` where
+intended.
 
 `selector` must be a single `#id`; anything else throws `ArgumentError`.
 `cookies` is a vector of complete `Set-Cookie` header values, e.g. to set a
@@ -126,8 +127,8 @@ return redirect_via_fragment("#login-form", "/dashboard";
 function redirect_via_fragment(selector::AbstractString, location::AbstractString;
                                cookies::AbstractVector=String[],
                                wrapper_tag::Symbol=:div)
-    # target's `id` = selector minus `#`: `.card` / `#a #b` would never match (silent no-op),
-    # CR/LF would land raw in the `datastar-selector` header
+    # Morph target id = selector minus `#`, so only `#id` works: `.card` / `#a #b`
+    # never match (silent no-op); CR/LF would land raw in the `datastar-selector` header.
     (startswith(selector, "#") && !occursin(r"\s", selector) && length(selector) > 1) ||
         throw(ArgumentError("redirect_via_fragment: selector must be a single \"#id\" " *
               "(the morph target is rendered with that id), got $(repr(selector))"))

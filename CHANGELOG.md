@@ -3,6 +3,20 @@
 All notable changes to this project are documented here. Format roughly
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Removed
+- `ds_indicator()` without a signal: Datastar 1.0.4 throws
+  `KeyOrValueRequired` on a bare `data-indicator`. Use
+  `ds_indicator(:saving)` and `ds_show(:saving)`.
+
+### Fixed
+- `map_view` (MapLibre extension): a `</script>` or `<!--<script` in
+  `id_prefix`, `style` or another string argument no longer ends the
+  inline `<script>` early or keeps it from ending.
+- JS strings in `DSAction` URLs and extras, `ds"…"` splices and
+  `redirect_via_fragment` locations escape `<!--` as `<\!--`.
+
 ## 0.4.1 — 2026-10-07
 
 ### Added

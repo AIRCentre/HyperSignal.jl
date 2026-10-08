@@ -40,7 +40,8 @@ entirely. `Number`s are written as their decimal representation
 formatted by the renderer; the JS string inside is escaped against
 single quote, backslash, `</` (which an HTML parser treats as the start
 of an end-tag, closing an enclosing `<script>` regardless of JS
-quoting), and the four JS line terminators (LF, CR, U+2028, U+2029).
+quoting), `<!--` (after which `<script` stops the real `</script>` from
+closing it), and the four JS line terminators (LF, CR, U+2028, U+2029).
 A `$(value)` spliced into [`ds"…"`](@ref @ds_str) has every JS string
 delimiter escaped (`'`, `"`, backtick, `$`), so it stays inert even where
 the macro misreads the surrounding quoting, such as a quote inside a regex
@@ -113,7 +114,7 @@ button(on_click(ds_post("/api/save")),       # safe — typed action
 ```
 
 A [`DSAction`](@ref) value is formatted by the renderer with
-`single-quote → \'`, `\ → \\`, `</ → <\/`, and the four JS line
+`single-quote → \'`, `\ → \\`, `</ → <\/`, `<!-- → <\!--`, and the four JS line
 terminators (`LF → \n`, `CR → \r`, `U+2028 → \u2028`, `U+2029 → \u2029`)
 (the same JS-string escape used by [`redirect_via_fragment`](@ref) and
 `DSAction` extras). A raw
@@ -148,8 +149,8 @@ trust model as the other helpers, with two boundaries:
 - `elements` HTML is rendered through [`render`](@ref), so text and
   attribute values are escape-walked — same guarantees as
   [`html_response`](@ref).
-- `selector` and `script_attributes` are written into the wire format
-  verbatim. Sanitize before passing if they can carry user input. A
+- `selector` is written into the wire format verbatim. Sanitize it
+  before passing if it can carry user input. A
   `selector` containing a CR or LF would split the SSE line and corrupt
   the rest of the event; [`patch_elements`](@ref) rejects this with an
   `ArgumentError` at event-build time (so the mistake surfaces at the
@@ -171,8 +172,19 @@ selector can't match (the redirect silently no-ops), and a CR/LF in the
 selector would be injected raw into the `datastar-selector` header. The
 `location` argument is escaped for its single-quoted inline-`<script>`
 JS literal with the same JS-string escape as [`DSAction`](@ref)
-(backslash, single quote, `</`, and the four line terminators
+(backslash, single quote, `</`, `<!--`, and the four line terminators
 LF/CR/U+2028/U+2029).
+
+## MapLibre `map_view` and `marker`
+
+`map_view` emits an inline `<script>` built from its arguments as JSON
+or single-quoted JS strings, then rewrites every `</` in it to `<\/` and
+every `<!--` to `<\!--`, so a string in `id_prefix`, `style` or a source
+cannot end the script early or keep it from ending. `marker(...; popup)`
+stores `HyperSignal.render(popup)` in `data-popup`, and the map script
+passes it to MapLibre's `setHTML`, which parses raw HTML: the popup is
+safe because `render` escaped it.
+A `Raw` popup reaches `setHTML` unescaped.
 
 ## Reporting a security issue
 

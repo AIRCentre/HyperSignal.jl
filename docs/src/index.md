@@ -4,7 +4,8 @@ Datastar-flavored HTML for Julia, with front-row support for inlining
 CairoMakie figures and driving interactive MapLibre maps from your
 pages.
 
-Compatible with Datastar v1.0.4.
+Compatible with the Datastar build vendored at
+[`docs/src/notebooks/assets/datastar.js`](https://github.com/AIRCentre/HyperSignal.jl/blob/main/docs/src/notebooks/assets/datastar.js).
 
 ```julia
 using HyperSignal
@@ -48,7 +49,7 @@ Element tree (data) + `render(io, x)` (streaming): components return
 `Element` values you can compose, test, and inline; rendering streams
 to IO with auto-escape — no intermediate strings. Datastar actions
 are typed values; the element constructors lift `Attribute`-returning
-helpers (`on(:click, ds_post(…))`, `ds_indicator()`, …) out of the
+helpers (`on(:click, ds_post(…))`, `ds_indicator(:saving)`, …) out of the
 children list, so they drop in positionally without a splat.
 Auto-escape by default; `Raw("…")` opts out — never wrap user input.
 

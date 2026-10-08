@@ -122,10 +122,11 @@ _js_value(v::AbstractFloat) =
     isnan(v) ? "NaN" : isinf(v) ? (v > 0 ? "Infinity" : "-Infinity") : string(v)
 _js_value(v::Number) = string(v)
 # For a '…' JS literal. `</` → `<\/`: the HTML parser closes an inline
-# <script> on `</script>` whatever the JS quoting. Raw LF, CR, U+2028 and
+# <script> on `</script>` whatever the JS quoting; after `<!--<script` it
+# skips the real `</script>`, hence `<!--` → `<\!--`. Raw LF, CR, U+2028 and
 # U+2029 inside a JS string are SyntaxErrors.
 _js_str_escape(s::AbstractString) =
-    replace(s, "\\" => "\\\\", "'" => "\\'", "</" => "<\\/",
+    replace(s, "\\" => "\\\\", "'" => "\\'", "</" => "<\\/", "<!--" => "<\\!--",
                "\n" => "\\n", "\r" => "\\r",
                "\u2028" => "\\u2028", "\u2029" => "\\u2029")
 _js_value(v::AbstractString) = "'$(_js_str_escape(v))'"
@@ -370,27 +371,19 @@ on_change_debounced(action::Union{DSAction, AbstractString}; ms::Int=300) =
     on(:change, action; debounce=ms)
 
 """
-    ds_indicator() -> Attribute
-
-Mark an element as a Datastar request indicator. The element becomes
-visible while a Datastar action initiated under it is in flight, and
-hides again on completion — Datastar adds/removes the visibility via
-the `data-indicator` attribute the renderer emits.
-
-# Examples
-```julia
-button("Save", on_click(ds_post("/api/save")),
-    span(class="spinner", ds_indicator(), "…"))
-```
-"""
-ds_indicator() = Attribute(Symbol("data-indicator"), true)
-
-"""
     ds_indicator(signal::AbstractString) -> Attribute
     ds_indicator(signal::Symbol) -> Attribute
 
-Datastar sets the signal `signal` to true while a request from this
-element is in flight, so siblings can `ds_show(:signal)` a spinner.
+Datastar sets the named signal to true while a request from this
+element is in flight, so any element can `ds_show` it as a spinner.
+Datastar rejects `data-indicator` without a signal, so there is no
+zero-argument form.
+
+# Examples
+```julia
+button("Save", on_click(ds_post("/api/save")), ds_indicator(:saving))
+span(class="spinner", ds_show(:saving), "…")
+```
 """
 ds_indicator(signal::AbstractString) =
     Attribute(Symbol("data-indicator"), String(signal))
@@ -481,7 +474,8 @@ ds_show(signal::Symbol) = ds_show(_signal_ref(signal))
     ds_text(signal::Symbol) -> Attribute
 
 Set this element's text content from the JS expression `expr`. Renders
-as `data-text="expr"`; tracks signals that change client-side.
+as `data-text="expr"`; Datastar re-evaluates it when the signals `expr`
+reads change.
 
 # Examples
 ```julia

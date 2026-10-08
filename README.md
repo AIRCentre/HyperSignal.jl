@@ -7,7 +7,8 @@
 Datastar-flavored HTML for Julia, with front-row support for inlining
 CairoMakie figures into your pages.
 
-Compatible with Datastar v1.0.4.
+Compatible with the Datastar build vendored at
+[`docs/src/notebooks/assets/datastar.js`](docs/src/notebooks/assets/datastar.js).
 
 ```julia
 using HyperSignal
@@ -85,7 +86,7 @@ page = html(lang="en",
 html_response(page)
 ```
 
-`on(:submit, …)`, `on_change_debounced(…)` and `ds_indicator()` return
+`on(:submit, …)`, `on_change_debounced(…)` and `ds_indicator(:saving)` return
 `Attribute` values. Element constructors lift them out of the children
 list, so they drop in positionally.
 
@@ -177,7 +178,7 @@ Escape boundaries:
   model as `Raw`. The common case is a pre-rendered, cached HTML
   fragment.
 - **Datastar JS extras** (string values inside `ds_post("/x"; foo=...)`)
-  are escaped against `\`, `'`, `</` and the JS line terminators, so a
+  are escaped against `\`, `'`, `</`, `<!--` and the JS line terminators, so a
   user-supplied option value can't break out of the JS string or the
   wrapping `<script>` tag.
 
@@ -285,7 +286,7 @@ silently ignored.
 context-sensitive auto-escape. Strong fit for Pluto notebooks.
 
 **Why it isn't the base here:** the value-add here is *typed Datastar
-actions* (`on(:click, ds_post(...))`, `ds_indicator()`) that compose
+actions* (`on(:click, ds_post(...))`, `ds_indicator(:saving)`) that compose
 with element constructors and enforce escaping at the attribute
 boundary. That doesn't translate well to a string-template macro —
 you'd be shipping JS strings inside `$(...)` interpolations again,
@@ -304,7 +305,7 @@ render, and form helpers exist to serve it. See the
 
 Datastar signals round-trip between server-rendered HTML and the
 browser through two surfaces: an attribute on the seed element
-(`data-signals='{...}'`) and a request body when an action fires
+(`data-signals="{…}"`) and a request body when an action fires
 without `contentType: 'form'` (a JSON object the server reads).
 
 ```julia

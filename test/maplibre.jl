@@ -285,7 +285,7 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
             @test decoded["type"] == "MultiPolygon"
             @test length(decoded["coordinates"]) == 2
             @test length(decoded["coordinates"][1]) == 1
-            @test length(decoded["coordinates"][1][1]) == 5
+            @test length(decoded["coordinates"][1][1]) == 5  # closed ring: 4 corners + repeat
             @test decoded["coordinates"][2][1][1] == [2.0, 0.0]
         end
 
@@ -460,6 +460,24 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
                 id_prefix="a'b_", center=(0.0, 0.0)))
             @test occursin("window.__hs_maps['a\\'b_']", js)
         end
+
+        @testset "`</script>` in a map_view string cannot close the inline script" begin
+            # Why: JSON.json and _js_squote leave `</` alone; the HTML parser ends
+            # the <script> on `</script>` whatever the JS quoting.
+            out = HyperSignal.render(MapLibre.map_view(;
+                id_prefix="m</script>_", center=(0.0, 0.0), zoom=2,
+                style="/s.json?</script><b>x</b>"))
+            @test count("</script>", out) == 1
+        end
+
+        @testset "`<!--` in a map_view string is escaped in the inline script" begin
+            # Why: `<!--<script` puts the HTML parser in a state where the real
+            # </script> no longer closes the element.
+            out = HyperSignal.render(MapLibre.map_view(;
+                id_prefix="m_", center=(0.0, 0.0), zoom=2,
+                style="/s.json?<!--<script>"))
+            @test !occursin("<!--", out)
+        end
     end
 
     @testset "map_view + marker" begin
@@ -598,8 +616,8 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
         @testset "marker scan is deferred until _m.on('load')" begin
             # Why: inline <script> runs mid-parse; sibling markers after it are not in
             # DOM yet, so non-deferred querySelectorAll matches zero in common
-            # `div(map_view(...), marker(...))` case. Scan must sit inside
-            # `_m.on('load',function(){...})`; regex pins that.
+            # `div(map_view(...), marker(...))` case. Regex checks an
+            # `_m.on('load',function(){` opener precedes the scan, not that it is still open.
             body = match(r"<script[^>]*>(.*?)</script>"s,
                          HyperSignal.render(MapLibre.map_view(;
                              id_prefix="m_", center=(0.0, 0.0),
@@ -665,7 +683,7 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
             @test !occursin("ctx.\$", js)
         end
 
-        @testset "script dispatches one CustomEvent per channel on document" begin
+        @testset "script dispatches one CustomEvent name per map event on document" begin
             # Why: "props down, events up": scripts dispatch CustomEvents; data-on:*
             # expressions turn them into signal writes / @post. Event names namespaced
             # by id_prefix so maps do not collide.
@@ -680,7 +698,7 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
 
         @testset "dispatched CustomEvents bubble to the window listener" begin
             # Why: Datastar data-on:*__window listeners live on `window`; event on
-            # `document` reaches it only by bubbling → every channel needs bubbles:true,
+            # `document` reaches it only by bubbling → every event needs bubbles:true,
             # else cursor/viewport/click/bbox bridge silently no-ops.
             @test occursin("bubbles:true", js)
             @test !occursin("CustomEvent(\"hs-m_cursor\",{detail:[e.lngLat.lng,e.lngLat.lat]})", js)

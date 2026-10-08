@@ -3,7 +3,7 @@
 Every exported helper, type, and macro. The HTML tag constructors
 (`div`, `h1`, …) are generated and have no individual docstrings;
 [`form`](@ref) is the exception. They come into scope
-with `using HyperSignal` (except the Base-shadowed
+with `using HyperSignal` (except the unexported
 `div`/`select`/`summary`/`mark`/`time`, which need [`@using_tags`](@ref));
 see the Quickstart under [Module overview](#Module-overview) below.
 Docstrings live with the source; this page indexes them for

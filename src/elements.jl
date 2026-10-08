@@ -82,7 +82,7 @@ Rarely constructed directly; exported so user code can match or filter on it.
 # Examples
 ```julia
 button("Submit",
-    ds_indicator(),                          # Attribute
+    ds_indicator(:saving),                   # Attribute
     on(:click, ds_post("/api/submit")),      # Attribute
     "  ", strong("now"))                     # children
 ```
@@ -196,7 +196,8 @@ const _TAGS = (
     :progress, :details, :summary, :dialog, :meter, :output, :data, :time,
     :audio, :video, :picture, :source, :track, :iframe, :embed, :object, :param,
     :area,
-    # <map>, <base> omitted: `map` would clash with Base.map. Build via `Element(:map, …)`.
+    # <map> omitted: `map` would clash with Base.map. <base> is not generated
+    # either. Build both via `Element(:map, …)` / `Element(:base, …)`.
 )
 
 for tag in _TAGS
@@ -227,14 +228,15 @@ function form(args...; kwargs...)
 end
 
 # Defined but not exported: `div`, `summary`, `mark`, `time` clash with Base
-# exports. `select` has no Base clash but is withheld with them.
-const _BASE_SHADOWED = (:div, :select, :summary, :mark, :time)
+# exports. `select` has no Base clash but is left unexported with them.
+const _UNEXPORTED_TAGS = (:div, :select, :summary, :mark, :time)
 
 """
     @using_tags
 
-Bring the Base-shadowed tag constructors (`div`, `select`, `summary`,
-`mark`, `time`) into the current module. Equivalent to
+Bring the unexported tag constructors (`div`, `select`, `summary`,
+`mark`, `time`; all but `select` clash with Base) into the current
+module. Equivalent to
 `using HyperSignal: div, select, summary, mark, time`.
 
 `using HyperSignal` exports every other tag (`h1`, `form`, `button`, …);
@@ -249,7 +251,7 @@ div(class="card", select(name="kind", option("a"), option("b")))
 ```
 """
 macro using_tags()
-    items = [Expr(:., name) for name in _BASE_SHADOWED]
+    items = [Expr(:., name) for name in _UNEXPORTED_TAGS]
     esc(Expr(:using, Expr(:(:), Expr(:., :HyperSignal), items...)))
 end
 

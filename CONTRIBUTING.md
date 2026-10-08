@@ -67,9 +67,10 @@ process moves `Unreleased` to a dated heading.
 
 ## Commit messages
 
-The repo follows imperative-mood subject lines ("Fix X" not "Fixed X")
-under ~70 characters, with a blank line then a body that explains the
-*why* — not the *what*, which the diff already shows.
+One imperative line ("Fix X", not "Fixed X") under ~70 characters, with
+an optional type prefix (`fix:`, `docs:`, `tidy:`). No body: the PR
+description carries the *why*, and the squash-merge title is what lands
+on `main`.
 
 ## Submitting a PR
 

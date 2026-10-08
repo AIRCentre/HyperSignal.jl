@@ -9,7 +9,7 @@ sizes refuse to scale. [`inline_svg`](@ref) solves all three.
 
 ```julia
 using HyperSignal, CairoMakie
-HyperSignal.@using_tags  # brings the Base-shadowed `div`, `select`, ... into scope
+HyperSignal.@using_tags  # brings the unexported `div`, `select`, ... into scope
 
 fig = Figure()
 lines(fig[1, 1], 1:10, rand(10))
