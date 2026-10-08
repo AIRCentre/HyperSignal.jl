@@ -47,6 +47,20 @@ Applies to every `.md` in the repo (this file, `README.md`, `CHANGELOG.md`,
     the IO boundary of the system" — verbose padding.
   - 🚫 narrative paragraphs in code comments — break into fragments or delete.
 
+- **Comments carry a why, nothing else. Prefer none.** `[taste]`
+
+  **Why:** code + names already say _what_; a what-comment drifts from the code
+  it restates and nobody notices.
+
+  **Convention:** comment only what code can't show — upstream bug, protocol
+  quirk, perf tradeoff, failure mode guarded. Rename or extract before
+  commenting. No section banners, no history ("added in", issue numbers,
+  review rounds).
+
+  - ✅ `# ReentrantLock, not an @atomic Set field: the latter segfaults on 1.10.`
+  - 🚫 `# loop over children and render each`.
+  - 🚫 `# ---- Sources ----`.
+
 ## Staleness-proof
 
 Applies to every `.md` + every code comment / docstring.
@@ -404,14 +418,13 @@ Applies to every `.md` + every code comment / docstring.
     occursin("data-on:hs-click__window=", out)`.
   - 🚫 `success(pipeline(\`node --check $path\`))`inside`@test`.
 
-- **Every comment in a test body answers "why this test exists".** `[taste]`
+- **Test comments start with `Why:`.** `[taste]`
 
-  **Why:** the assertion already says _what_; only the rationale survives the
-  next refactor and tells the next reader whether the test is still
-  load-bearing.
+  **Why:** assertion already says _what_; the guarded failure tells the next
+  reader whether the test is still load-bearing.
 
-  **Convention:** if you comment in a test, start with `Why:` and name the
-  failure mode guarded.
+  **Convention:** same rule as code comments (why only, prefer none); in tests,
+  prefix `Why:` and name the failure mode guarded.
 
   - ✅ `# Why: an empty ramp is meaningless and silently renders nothing.`
   - 🚫 `# Test that interpolate works.`
