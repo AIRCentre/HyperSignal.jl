@@ -154,29 +154,6 @@ end
 
 render(io::IO, f::Frag) = render(io, f.children)
 render(io::IO, r::Raw) = (print(io, r.html); nothing)
-
-Base.show(io::IO, ::MIME"text/html", e::Element) = render(io, e)
-Base.show(io::IO, ::MIME"text/html", f::Frag)    = render(io, f)
-Base.show(io::IO, ::MIME"text/html", r::Raw)     = render(io, r)
-
-function Base.show(io::IO, ::MIME"text/plain", e::Element)
-    print(io, "HyperSignal.Element: ")
-    render(io, e)
-end
-function Base.show(io::IO, ::MIME"text/plain", f::Frag)
-    print(io, "HyperSignal.Frag: ")
-    render(io, f)
-end
-function Base.show(io::IO, ::MIME"text/plain", r::Raw)
-    print(io, "HyperSignal.Raw: ")
-    print(io, r.html)
-end
-
-# `string(el)` and `"$(el)"` go through 1-arg show: give markup, not a
-# struct dump.
-Base.show(io::IO, e::Element) = render(io, e)
-Base.show(io::IO, f::Frag)    = render(io, f)
-Base.show(io::IO, r::Raw)     = render(io, r)
 render(io::IO, s::AbstractString) = escape_html(io, s)
 render(io::IO, c::Char) = escape_html(io, c)
 render(io::IO, n::Number) = print(io, n)
@@ -204,6 +181,29 @@ end
 # Bytes = pre-rendered HTML; the generic vector path would print each byte
 # as a number.
 render(io::IO, v::AbstractVector{UInt8}) = (write(io, v); nothing)
+
+Base.show(io::IO, ::MIME"text/html", e::Element) = render(io, e)
+Base.show(io::IO, ::MIME"text/html", f::Frag)    = render(io, f)
+Base.show(io::IO, ::MIME"text/html", r::Raw)     = render(io, r)
+
+function Base.show(io::IO, ::MIME"text/plain", e::Element)
+    print(io, "HyperSignal.Element: ")
+    render(io, e)
+end
+function Base.show(io::IO, ::MIME"text/plain", f::Frag)
+    print(io, "HyperSignal.Frag: ")
+    render(io, f)
+end
+function Base.show(io::IO, ::MIME"text/plain", r::Raw)
+    print(io, "HyperSignal.Raw: ")
+    print(io, r.html)
+end
+
+# `string(el)` and `"$(el)"` go through 1-arg show: give markup, not a
+# struct dump.
+Base.show(io::IO, e::Element) = render(io, e)
+Base.show(io::IO, f::Frag)    = render(io, f)
+Base.show(io::IO, r::Raw)     = render(io, r)
 
 # Tag and attr names are written verbatim, so a hostile Symbol would emit raw
 # HTML. Both reject the same parser-breaking bytes: whitespace, quotes,
