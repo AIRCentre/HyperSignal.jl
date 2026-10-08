@@ -63,7 +63,7 @@ plotting stack in a temp env — budget 60–120 s for the cold start.
 """
 
 # ╔═╡ 00000001-0000-0000-0000-000000000004
-# Bring HyperSignal's tag constructors that shadow Base / Makie into scope.
+# Bring HyperSignal's unexported tag constructors into scope.
 import HyperSignal: div, on
 
 # ╔═╡ 00000001-0000-0000-0000-000000000010
