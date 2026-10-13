@@ -54,8 +54,9 @@ Everything reactive flows through HyperSignal + Datastar:
   morph, so your pan/zoom survives.
 - **Shift-drag bbox** posts `{w, s, e, n}`; the server area-weights by
   `cos(lat)`, smooths, and morphs a fresh CairoMakie SVG into `#plot`.
-- **Cursor lon/lat**, **camera nav**, and **click popups** are wired with
-  `map_view`'s `cursor_signal`, `fly_to`, and `click_post`.
+- **Cursor lon/lat**, **camera nav**, **click popups** and the **loading
+  hint** are wired with `map_view`'s `cursor_signal`, `fly_to`,
+  `click_post` and `loading_signal`.
 
 The basemap (country outlines) streams live from `demotiles.maplibre.org`;
 only the pinned `maplibre-gl` library is vendored. First run installs the
@@ -408,7 +409,7 @@ md"""
 ## The page
 
 `map_view` emits the container plus the init `<script>`. Viewport, cursor,
-click, and shift-drag bbox are wired through its kwargs. The camera nav
+loading, click, and shift-drag bbox are wired through its kwargs. The camera nav
 buttons write `$nav_center` / `$nav_zoom`; a single `data-effect` flies
 the map to them — kept separate from the map's own `$map_*` readout
 signals so the moveend echo can't feed back into a flyTo loop.
@@ -451,7 +452,7 @@ Frag(
     """),
     div(class="demo",
         ds_signals((; map_center=collect(CENTER), map_zoom=ZOOM0,
-                      map_cursor=nothing,
+                      map_cursor=nothing, map_loading=true,
                       nav_center=collect(CENTER), nav_zoom=ZOOM0,
                       bbox=(; w=W0, s=S0, e=E0, n=N0),
                       yr0=START0, yr1=END0, smooth=12)),
@@ -467,7 +468,8 @@ Frag(
             navbtn("↓", "\$nav_center=[\$nav_center[0],\$nav_center[1]-5]"),
             navbtn("＋", "\$nav_zoom=Math.min(10,\$nav_zoom+1)"),
             navbtn("－", "\$nav_zoom=Math.max(1,\$nav_zoom-1)"),
-            span(class="hint", "shift-drag a box to pick the timeseries region")),
+            span(class="hint", "shift-drag a box to pick the timeseries region"),
+            span(class="hint", ds_show(:map_loading), "loading map…")),
         div(class="grid",
             div(class="mapwrap",
                 M.map_view(; id_prefix="map_",
@@ -478,6 +480,7 @@ Frag(
                            center_signal="map_center",
                            zoom_signal="map_zoom",
                            cursor_signal="map_cursor",
+                           loading_signal="map_loading",
                            click_post="$(BASE_URL)/click",
                            click_layers=["cells-fill"],
                            bbox_post="$(BASE_URL)/series"),

@@ -235,6 +235,7 @@ set_paint_property(; id_prefix::AbstractString,
 function _init_js(; id_prefix, center, zoom, style,
                   sources, layers,
                   center_signal, zoom_signal, bounds_signal, cursor_signal,
+                  loading_signal, loading_delay,
                   click_post, bbox_post, click_layers)
     handle = _handle(id_prefix)
     container = "$(id_prefix)root"
@@ -309,6 +310,26 @@ function _init_js(; id_prefix, center, zoom, style,
         print(io, "});")
     end
 
+    # `idle` waits for rendering to settle, not just the network. `_ld` starts
+    # null, not false, so the first idle clears a signal the page initialised
+    # to true.
+    if loading_signal !== nothing
+        print(io, "let _ld=null,_lt=null;")
+        print(io, "const _lset=function(v){if(v===_ld)return;_ld=v;")
+        _dispatch(io, "loading", "v")
+        print(io, "};")
+        print(io, "_m.on('dataloading',function(){")
+        print(io, "if(_ld||_lt!==null)return;")
+        print(io, "_lt=setTimeout(function(){_lt=null;_lset(true);},$(loading_delay));")
+        print(io, "});")
+        print(io, "_m.on('idle',function(){")
+        print(io, "if(_lt!==null){clearTimeout(_lt);_lt=null;}_lset(false);")
+        print(io, "});")
+        # MapLibre renders again on 'data' but not on 'error', so after a failed
+        # source load nothing re-checks idle and the signal sticks at true.
+        print(io, "_m.on('error',function(){_m.triggerRepaint();});")
+    end
+
     if click_post !== nothing
         layers_js = JSON.json(click_layers)
         print(io, "_m.on('click',function(e){")
@@ -371,12 +392,15 @@ function map_view(; id_prefix::AbstractString="map_",
                   zoom_signal=nothing,
                   bounds_signal=nothing,
                   cursor_signal=nothing,
+                  loading_signal=nothing,
+                  loading_delay::Integer=200,
                   click_post=nothing,
                   bbox_post=nothing,
                   click_layers::Vector{String}=String[])
     init_js = _init_js(; id_prefix, center, zoom, style,
                        sources, layers,
                        center_signal, zoom_signal, bounds_signal, cursor_signal,
+                       loading_signal, loading_delay,
                        click_post, bbox_post, click_layers)
 
     attrs = Pair[:id => "$(id_prefix)root"]
@@ -386,6 +410,7 @@ function map_view(; id_prefix::AbstractString="map_",
     zoom_signal   === nothing || _on("zoom",   "\$$zoom_signal = evt.detail")
     bounds_signal === nothing || _on("bounds", "\$$bounds_signal = evt.detail")
     cursor_signal === nothing || _on("cursor", "\$$cursor_signal = evt.detail")
+    loading_signal === nothing || _on("loading", "\$$loading_signal = evt.detail")
     # payload signal must not be `_`-prefixed: Datastar's request filter drops
     # /(^|\.)_/ signals from @post bodies, so the handler would never see it
     click_post === nothing    || _on("click",  "\$payload = evt.detail; @post('$(_js_squote(click_post))')")

@@ -3,6 +3,14 @@
 All notable changes to this project are documented here. Format roughly
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+- `map_view` now accepts `loading_signal` and `loading_delay=200`: the
+  signal turns `true` once MapLibre has been loading data for
+  `loading_delay` ms and `false` on `idle`, so a spinner needs no custom
+  JS (#51).
+
 ## 0.5.0 — 2026-10-08
 
 ### Removed
