@@ -788,6 +788,27 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
                 r"Math\.abs\([^)]*-\s*_bs_y[^)]*\)\s*[<>]=?\s*\d", body)
         end
 
+        @testset "loading_signal: dataloading arms a delayed true, idle sets false" begin
+            # Why: ds_indicator clears when the server's script arrives, before
+            # MapLibre fetches anything; only dataloading/idle span the real wait.
+            out = HyperSignal.render(MapLibre.map_view(;
+                id_prefix="m_", center=(0.0, 0.0), zoom=2, style="/s.json",
+                loading_signal="map_loading", loading_delay=350))
+            body = _script_body(out)
+            @test occursin("data-on:hs-m_loading__window=\"\$map_loading = evt.detail\"", out)
+            @test occursin("CustomEvent(\"hs-m_loading\"", body)
+            @test occursin("_m.on('dataloading'", body)
+            @test occursin("_m.on('idle'", body)
+            @test occursin("},350)", body)
+            @test occursin("clearTimeout(", body)
+            # Why: _ld starts unknown (null), not false, so the first idle still
+            # clears a signal the page initialised to true.
+            @test occursin("let _ld=null", body)
+            # Why: MapLibre schedules no render after a failed source load, so
+            # idle never fires and the signal would stick at true.
+            @test occursin("_m.on('error',function(){_m.triggerRepaint();})", body)
+        end
+
         @testset "opting out of signals/posts emits no listeners" begin
             # Why: bare map_view must not leak data-on:* attrs posting to undefined URLs
             # or writing phantom signals.

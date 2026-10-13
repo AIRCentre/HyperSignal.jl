@@ -58,6 +58,8 @@ M.map_view(;
 | `layers` | Tuple of layer specs; added after the sources. |
 | `center_signal` / `zoom_signal` / `bounds_signal` | Signal names written on `moveend` (idle). |
 | `cursor_signal` | Signal name written `[lon, lat]` on every `mousemove`. |
+| `loading_signal` | Signal name set `true` once MapLibre has been fetching data (`dataloading`) for `loading_delay` ms, and `false` on `idle`. |
+| `loading_delay` | Milliseconds of loading before `loading_signal` turns `true`, so short loads never flash a spinner. Defaults to `200`; `0` sets it on the next tick. |
 | `click_post` | URL `@post`ed on click; the payload signal `$payload` holds `{lat, lon, properties}` from the top feature under the cursor (restricted to `click_layers`). |
 | `bbox_post` | URL `@post`ed after a shift-drag rectangle; `$payload` holds `{w, s, e, n}`. |
 | `click_layers` | Layer ids `queryRenderedFeatures` restricts to for the click payload. |
@@ -65,15 +67,37 @@ M.map_view(;
 Each `*_signal` / `*_post` keyword you leave at `nothing` emits no
 handler, so the script body carries no dead stubs.
 
+### Loading indicator
+
+`ds_indicator` can't show a map load: its request ends when the server's
+script arrives, before MapLibre fetches any tiles or parses the
+GeoJSON. `loading_signal` covers that wait instead, for every source,
+including a `set_source_data` swap:
+
+```julia
+div(ds_signals((; map_loading = true)),
+    M.map_view(; style, center, zoom, sources, layers,
+               loading_signal = "map_loading"),
+    span(ds_show(:map_loading), "Loading map…"))
+```
+
+Nothing is dispatched until the first `dataloading` or `idle` event, so
+initialise the signal to `true` to show the indicator before the
+first paint. `idle` fires once the map has also finished rendering, so
+the signal can stay `true` a little after the last tile arrives. A
+failed source load also ends with `false`; a tile that 404s after a
+delay fires no MapLibre event and can leave it `true` until the next
+render.
+
 ### How the Datastar bridge works
 
 `map_view` follows Datastar's "props down, events up" pattern. The
 script body is plain JS: a map event (`moveend`, `mousemove`, `click`,
-shift-drag) dispatches a `CustomEvent` on `document` with `bubbles:
+shift-drag, `dataloading`/`idle`) dispatches a `CustomEvent` on `document` with `bubbles:
 true`. `map_view` renders a matching `data-on:hs-<prefix><event>__window`
 attribute on the container; that attribute is where the real Datastar
 expression lives — a `$signal = evt.detail` assignment for the viewport
-/ cursor signals, or `$payload = evt.detail; @post('…')` for the click
+/ cursor / loading signals, or `$payload = evt.detail; @post('…')` for the click
 / bbox posts. `@post` and `$signal` stay in attribute context (the only
 place Datastar parses them), so the script body stays plain JS.
 
@@ -203,6 +227,6 @@ vendored NOAA ERSSTv5 sea-surface-temperature data: a `geojson_source`
 of one polygon per grid cell colored by mean SST, date sliders that
 `@post` a range and get back a `set_source_data` recolor, a shift-drag
 box that posts `{w, s, e, n}` and gets a CairoMakie timeseries, plus
-`cursor_signal`, `fly_to`, and `click_post`.
+`cursor_signal`, `fly_to`, `click_post`, and `loading_signal`.
 [`map_smoke.jl`](https://github.com/AIRCentre/HyperSignal.jl/blob/main/docs/src/notebooks/map_smoke.jl)
 is the thin CI smoke fixture.
