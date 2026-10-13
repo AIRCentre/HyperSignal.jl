@@ -89,6 +89,7 @@ using JSON
 
 include("elements.jl")
 include("datastar.jl")
+include("ds_str.jl")
 include("render.jl")
 include("response.jl")
 include("sse.jl")

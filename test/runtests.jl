@@ -1009,6 +1009,11 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test_throws ArgumentError HyperSignal._ds_parse("'hi \$(name)'")
         @test_throws ArgumentError HyperSignal._ds_parse("\$(a")
         @test_throws ArgumentError HyperSignal._ds_parse("'open")
+        @test HyperSignal._ds_parse("\$a\\") == ["\$a\\"]
+        @test HyperSignal._ds_parse("'\\\$a'") == ["'\\\$a'"]
+        @test HyperSignal._ds_parse("\"it's\" + `\"`") == ["\"it's\" + `\"`"]
+        @test HyperSignal._ds_parse("\$(a)") == Any[:a]
+        @test HyperSignal._ds_parse("é\$(a)\$\$(é") == Any["é", :a, "\$(é"]
     end
 
     @testset "ds_json_signals renders the bare debug attribute (and an optional filter)" begin
