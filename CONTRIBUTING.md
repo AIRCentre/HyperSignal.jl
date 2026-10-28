@@ -24,6 +24,11 @@ depot can deadlock precompiling the Makie extensions in parallel
 ([Pkg.jl#4822](https://github.com/JuliaLang/Pkg.jl/issues/4822)); set
 `JULIA_NUM_PRECOMPILE_TASKS=1`, as CI does.
 
+The browser tests drive headless Chromium at `HS_CHROMIUM` (default: the
+first of `chromium`, `chromium-browser`, `google-chrome` on `PATH`, else
+`/usr/bin/chromium`). Without it they are skipped with a warning; set
+`HS_REQUIRE_CDP=1`, as CI does, to make a missing browser fail the run.
+
 ## Benchmarks
 
 The renderer is on the request-handler hot path. Any change to

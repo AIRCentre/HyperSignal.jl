@@ -58,7 +58,7 @@ Auto-escape by default; `Raw("…")` opts out — never wrap user input.
 - [CairoMakie inlining](cairomakie.md) — drop figures into pages.
 - [MapLibre maps](maplibre.md) — render a map and drive it from the
   server: viewport / cursor / click / drag-box as signals, recolor and
-  fly back with JS snippets.
+  fly back with JS snippets, draw lines, and markers the server updates.
 - [Datastar response shapes](datastar.md) — the HTML / JSON / JS / SSE
   responses a handler returns, plus the full attribute-helper surface
   (`ds_signals`, `ds_computed`, `ds_style`, `ds_bind`, `ds_show`, …).

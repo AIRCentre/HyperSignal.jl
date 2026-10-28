@@ -102,9 +102,10 @@ fragment_response(body, selector::AbstractString; kwargs...) =
     redirect_via_fragment(selector, location; cookies=String[], wrapper_tag=:div) -> HTTP.Response
 
 Datastar can't follow an HTTP 303 from a form submit it owns: the morph
-replaces the target instead. This helper puts a
-`<script>window.location='…'</script>` in the morph target so a Datastar
-form can navigate after success. `location` gets the same JS-string escape
+replaces the target instead. This helper puts a script that sets
+`window.location.href` in the morph target so a Datastar form can navigate
+after success; like [`navigate`](@ref), it leaves past a
+[`confirm_leave`](@ref) guard. `location` gets the same JS-string escape
 as [`DSAction`](@ref): quotes, backslashes, JS line terminators, and `</`
 and `<!--`, so the HTML parser closes the surrounding `<script>` where
 intended.
@@ -115,7 +116,9 @@ session cookie and navigate in one response. `wrapper_tag` sets the morph
 target's tag when it isn't a `<div>` (e.g. `:li`).
 
 For non-Datastar redirects (login form POST, plain navigation), use
-[`redirect_to`](@ref) instead.
+[`redirect_to`](@ref) instead. An SSE handler can send
+[`navigate`](@ref), which also stands down a [`confirm_leave`](@ref) guard
+and leaves no script in the page.
 
 # Examples
 ```julia
@@ -134,7 +137,7 @@ function redirect_via_fragment(selector::AbstractString, location::AbstractStrin
               "(the morph target is rendered with that id), got $(repr(selector))"))
     el = Element(wrapper_tag,
                  Pair{Symbol, Any}[:id => chopprefix(selector, "#")],
-                 Any[Raw("<script>window.location='$(_js_str_escape(location))'</script>")])
+                 Any[Raw("<script>" * _leave_js(location) * "</script>")])
     headers = Pair{String, String}["Set-Cookie" => String(c) for c in cookies]
     fragment_response(el, selector; headers=headers)
 end

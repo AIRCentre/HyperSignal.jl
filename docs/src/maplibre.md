@@ -24,7 +24,8 @@ const M = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
 You also need the MapLibre GL JS/CSS on the page — HyperSignal vendors a
 pinned `maplibre-gl` bundle under
 `docs/src/notebooks/assets/maplibre/`; serve those two files and link
-them in your `<head>`.
+them in your `<head>`. A map with [`draw`](#Drawing-—-draw) also needs the
+Terra Draw scripts, loaded after MapLibre.
 
 ## A map on the page — `map_view`
 
@@ -53,7 +54,12 @@ M.map_view(;
 | --- | --- |
 | `id_prefix` | Namespaces the container id, the instance handle, and every bridge event. Defaults to `"map_"`; set a unique value per map so two maps on a page don't collide. |
 | `style` | MapLibre style URL string. Required. |
-| `center` / `zoom` | Initial camera. `center` is `(lon, lat)`. |
+| `center` / `zoom` | Initial camera. `center` is `(lon, lat)`. Give these or `bounds`, not both. |
+| `bounds` / `fit_padding` | Fit the first frame to `(w=…, s=…, e=…, n=…)`, with optional pixel padding: a number, or `(top=…, bottom=…, left=…, right=…)`. |
+| `rotate` | `false` turns off rotation by right-drag, touch and keyboard, and two-finger tilt; pinch-zoom still works. |
+| `double_click_zoom` | `false` turns off zoom on double-click. |
+| `nav_control` | Adds MapLibre's zoom buttons at `:top_left`, `:top_right`, `:bottom_left` or `:bottom_right`. The compass shows only when `rotate` is on. |
+| `draw` | Line drawing with Terra Draw; see [Drawing](#Drawing-—-draw). |
 | `sources` | `NamedTuple` of `name => source`; added on the map's `load` event. |
 | `layers` | Tuple of layer specs; added after the sources. |
 | `center_signal` / `zoom_signal` / `bounds_signal` | Signal names written on `moveend` (idle). |
@@ -66,6 +72,14 @@ M.map_view(;
 
 Each `*_signal` / `*_post` keyword you leave at `nothing` emits no
 handler, so the script body carries no dead stubs.
+
+A `map_view` patched into the page starts one map. A patch over a live
+map replaces it with a fresh one, built from the patched script, with
+the drawing's lines and stamp kept, and its mode when the patch morphs the
+root (a `mode=:replace` patch starts from the first mode); the patch's own `features` seed
+only a drawing that had not loaded. A map whose root leaves the page
+removes itself; putting the same root back does not start it again. The
+init script has the id `<id_prefix>init`, so no other element may use it.
 
 ### Loading indicator
 
@@ -93,20 +107,21 @@ render.
 
 `map_view` follows Datastar's "props down, events up" pattern. The
 script body is plain JS: a map event (`moveend`, `mousemove`, `click`,
-shift-drag, `dataloading`/`idle`) dispatches a `CustomEvent` on `document` with `bubbles:
-true`. `map_view` renders a matching `data-on:hs-<prefix><event>__window`
+shift-drag, `dataloading`/`idle`, and with `draw` a Terra Draw change)
+dispatches a `CustomEvent` on `document` with `bubbles: true`. `map_view` renders a matching `data-on:hs-<prefix><event>__window`
 attribute on the container; that attribute is where the real Datastar
 expression lives — a `$signal = evt.detail` assignment for the viewport
-/ cursor / loading signals, or `$payload = evt.detail; @post('…')` for the click
-/ bbox posts. `@post` and `$signal` stay in attribute context (the only
+/ cursor / loading / `$draw` signals, `$payload = evt.detail; @post('…')` for the click
+/ bbox posts, or a bare `@post('…')` for `change_post`, which sends the updated `$draw`. `@post` and `$signal` stay in attribute context (the only
 place Datastar parses them), so the script body stays plain JS.
 
 ## Markers — `marker`
 
 `marker` renders a `<div data-hs-marker="<prefix>">`; `map_view`'s init
-script scans for those divs on `load` and attaches each as a real
-`maplibregl.Marker`. The div itself becomes the marker element, so its
-(auto-escaped) HyperSignal content renders inside the marker.
+script scans for those divs on `load` and attaches each one outside a
+`markers` container as a real `maplibregl.Marker`. The div itself becomes
+the marker element, so its (auto-escaped) HyperSignal content renders
+inside the marker.
 
 ```julia
 div(
@@ -116,14 +131,31 @@ div(
 )
 ```
 
-Pass the **same `id_prefix`** to `marker` as to its `map_view`. The
-optional `popup` is rendered and wired to a `maplibregl.Popup`.
+Pass the **same `id_prefix`** to `marker` and `markers` as to their
+`map_view`. The
+optional `popup` is rendered and wired to a `maplibregl.Popup`. A `lat`
+outside [-90, 90] or a `lon` that is not finite throws `ArgumentError`.
+
+A marker attaches once, at `load`. For markers the server updates, put
+them in a `markers` container. It stays hidden in the page, and the map
+shows copies of its children, rebuilt whenever the container changes, so a
+Datastar patch of the container replaces the map's markers. The container
+must be in the page when the map loads; render it empty if it starts with
+no markers:
+
+```julia
+crests(sets) = M.markers((M.marker(span(class="crest", "A"); lat, lon)
+                          for (lat, lon) in sets)...; id="crests")
+# in a handler
+sse_response([patch_elements(crests(new_sets))])
+```
 
 ## Sources
 
 ```julia
 M.geojson_source(data; cluster=false, cluster_radius=50)
 M.raster_xyz_source(tiles; tile_size=256, attribution="")
+M.image_source(url; coordinates)
 ```
 
 - `geojson_source` — `data` is an inline GeoJSON object (a `Dict`, e.g.
@@ -131,6 +163,9 @@ M.raster_xyz_source(tiles; tile_size=256, attribution="")
   Set `cluster=true` for point clustering.
 - `raster_xyz_source` — XYZ basemap tiles; `tiles` is a vector of URL
   templates (at least one, or it throws).
+- `image_source` — one image placed by its 4 corners, `(lon, lat)` each,
+  in the order top-left, top-right, bottom-right, bottom-left. Show it
+  with a `raster_layer`.
 
 ## Layers
 
@@ -194,12 +229,63 @@ M.feature_collection(rows; geometry_col=:geom, properties_cols=(:name, :mean_sst
   `"geometry": null` (GeoJSON RFC 7946 §3.2) rather than crashing the
   whole collection.
 
+## Drawing — `draw`
+
+`map_view(; draw=M.draw_options(…))` adds line drawing with
+[Terra Draw](https://github.com/JamesLMilner/terra-draw). The page loads
+`terra-draw.js` and its MapLibre adapter itself, as it loads MapLibre.
+HyperSignal is tested against `terra-draw@1.38.0` and
+`terra-draw-maplibre-gl-adapter@1.5.0`, from their `dist/*.umd.js` builds
+on unpkg.
+
+```julia
+M.map_view(; style, bounds, rotate=false, double_click_zoom=false,
+    draw = M.draw_options(;
+        modes = (:select, :linestring),
+        properties = ds"{set: $active}",
+        line_color = M.by_property("set", 0 => "#e4572e", 1 => "#17bebb"; default="#888"),
+        line_dash = M.by_property("set", 0 => [], 1 => [2.5, 1.7]; default=[]),
+        selected_color = "#ffffff",
+        features = saved_lines,
+        change_post = "/drawing/preview"))
+
+button(on_click(M.draw_call(:undo; id_prefix="map_")),
+       ds_attr("disabled", ds"!$draw.can_undo"), "Undo")
+div(ds_show(ds"$draw.drawing"), "Click the last point to finish the line.")
+```
+
+| Keyword | Effect |
+| --- | --- |
+| `modes` | Terra Draw modes, `:select` and `:linestring`. The first one is active at start. |
+| `signal` | Name of the signal object, `"draw"` by default. A dotted name or one starting with `_` throws `ArgumentError`. Two drawing maps on one page need different names. |
+| `properties` | Datastar expression, re-evaluated as its signals change; its value when a line is finished is stamped on the line. If it throws, the stamp keeps its last value and the error goes to the console. |
+| `line_color` / `line_dash` / `selected_color` | Line styles: a value, or `M.by_property(key, value => style…; default)` to pick by a stamped property. |
+| `features` | GeoJSON `LineString` Features loaded at start. Their `properties` are their stamps. Loading them is not an undo step. Needs `:linestring` in `modes`. |
+| `change_post` | URL `@post`ed after each finished edit, with the updated signals. |
+
+Terra Draw state is in signals under `$draw`:
+
+| Signal | Holds |
+| --- | --- |
+| `$draw.features` | Finished lines as GeoJSON Features with their stamps. Written after a line is finished, edited, deleted, undone or redone, never while the pointer moves. |
+| `$draw.mode` | The active mode. Set it to switch modes. |
+| `$draw.drawing` | `true` while a line is in progress. |
+| `$draw.selected` | Ids of the selected lines. |
+| `$draw.can_undo` / `$draw.can_redo` | Whether undo and redo have anything to do. |
+| `$draw.rejected` | Features from `features` that Terra Draw refused as invalid. |
+
+`M.draw_call(:undo | :redo | :delete_selected; id_prefix)` returns a
+Datastar expression for a button or [`on_keys`](@ref), not a `Raw` snippet
+like the server-returned helpers below. Double-clicking after a line
+cancels the one-point line the second click starts.
+
 ## Server-returned JS helpers
 
 Each helper returns a `Raw` JS snippet that the Datastar client runs.
 They act on `window.__hs_maps[id_prefix]`, so pass the same `id_prefix`
-the map was created with. Return them from a handler (e.g. via
-`script_response` or inside an SSE event) in response to a `@post`.
+the map was created with. Return them from a handler in response to a
+`@post`, via `script_response` or, inside an SSE response, as
+`execute_script(snippet.html)`.
 
 ```julia
 M.fly_to(; id_prefix, center, zoom=nothing, duration_ms=600)

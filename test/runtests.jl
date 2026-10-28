@@ -1,6 +1,7 @@
 using Test, HTTP, JSON, Sockets, HyperSignal
 
 include("maplibre.jl")
+include("http_port.jl")
 # Why: unexported tags need explicit override (`using` skips them); manual here so
 # `@using_tags` is tested in isolation below.
 using HyperSignal: div, select, summary
@@ -237,17 +238,18 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test h["datastar-use-view-transition"] == "true"
     end
 
-    @testset "redirect_via_fragment wraps a window.location script in the morph target" begin
+    @testset "redirect_via_fragment wraps a leave-flagged window.location script in the morph target" begin
         resp = redirect_via_fragment("#login-form", "/dashboard")
         body = String(resp.body)
         @test occursin("<div id=\"login-form\">", body)
-        @test occursin("<script>window.location='/dashboard'</script>", body)
+        @test occursin("<script>window.__hs_leaving=true;try{window.location.href='/dashboard'}" *
+                       "finally{setTimeout(function(){window.__hs_leaving=false})}</script>", body)
     end
 
     @testset "redirect_via_fragment escapes single quotes in the location" begin
         # Why: stray ' in URL would close JS string and inject code.
         resp = redirect_via_fragment("#x", "/a'b")
-        @test occursin("window.location='/a\\'b'", String(resp.body))
+        @test occursin("window.location.href='/a\\'b'", String(resp.body))
     end
 
     @testset "redirect_via_fragment defends against <!-- in the location" begin
@@ -270,7 +272,7 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     @testset "redirect_via_fragment escapes backslashes in the location" begin
         # Why: trailing '\' in URL would escape closing JS quote.
         resp = redirect_via_fragment("#x", "/a\\b")
-        @test occursin("window.location='/a\\\\b'", String(resp.body))
+        @test occursin("window.location.href='/a\\\\b'", String(resp.body))
     end
 
     @testset "redirect_via_fragment attaches Set-Cookie headers and honors wrapper_tag" begin
@@ -281,7 +283,8 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
             wrapper_tag=:li)
         body = String(resp.body)
         @test occursin("<li id=\"login-form\">", body)
-        @test occursin("<script>window.location='/dashboard'</script>", body)
+        @test occursin("<script>window.__hs_leaving=true;try{window.location.href='/dashboard'}" *
+                       "finally{setTimeout(function(){window.__hs_leaving=false})}</script>", body)
         cookies = [String(v) for (k, v) in resp.headers if lowercase(String(k)) == "set-cookie"]
         @test cookies == ["sid=abc; HttpOnly; Path=/; SameSite=Lax"]
         h = Dict(lowercase(String(k)) => String(v) for (k, v) in resp.headers)
@@ -355,6 +358,112 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         resp = script_response("x"; script_attributes=Dict("type" => "module"))
         h = Dict(lowercase(String(k)) => String(v) for (k, v) in resp.headers)
         @test JSON.parse(h["datastar-script-attributes"]) == Dict("type" => "module")
+    end
+
+    @testset "execute_script appends a self-removing script to body" begin
+        # Why: the Datastar SDKs' ExecuteScript shape; the script removes itself
+        # so a later morph of body finds no stale code.
+        body = String(sse_response([execute_script("go()")]).body)
+        @test body == "event: datastar-patch-elements\ndata: selector body\n" *
+                      "data: mode append\n" *
+                      "data: elements <script data-effect=\"el.remove()\">go()</script>\n\n"
+    end
+
+    @testset "execute_script escapes </ and <!-- so the HTML parser keeps the script whole" begin
+        # Why: `</script>` in the JS ends the element early; `<!--` makes the
+        # parser skip the real `</script>`.
+        body = String(sse_response([execute_script("x='</script><!--'")]).body)
+        @test occursin("x='<\\/script><\\!--'</script>", body)
+    end
+
+    @testset "navigate sets the leave flag and the location in one script" begin
+        # Why: confirm_leave reads window.__hs_leaving; set in the same statement
+        # list as the navigation, the guard can't see the navigation without it.
+        body = String(sse_response([navigate("/next?a=1&b='2'")]).body)
+        @test occursin("<script data-effect=\"el.remove()\">window.__hs_leaving=true;" *
+                       "try{window.location.href='/next?a=1&b=\\'2\\''}", body)
+        # Why: a URL that keeps the page (a 204, a download) or throws must not leave the guard off.
+        @test occursin("finally{setTimeout(function(){window.__hs_leaving=false})}</script>", body)
+    end
+
+    @testset "confirm_leave guards beforeunload on its condition and the leave flag" begin
+        # Why: no __debounce/__delay: those run the expression after the event,
+        # when preventDefault no longer stops the navigation.
+        a = confirm_leave()
+        @test a.key == Symbol("data-on:beforeunload__window")
+        @test a.value == "if ((\$dirty) && !window.__hs_leaving) { evt.preventDefault(); evt.returnValue = '' }"
+        @test confirm_leave(ds"$draw.features.length > 0").value ==
+              "if ((\$draw.features.length > 0) && !window.__hs_leaving) { evt.preventDefault(); evt.returnValue = '' }"
+    end
+
+    @testset "on_keys emits one window keydown listener with a typing guard" begin
+        # Why: a shortcut must not fire while the user types in a field.
+        a = on_keys(:l => ds"$mode = 'line'")
+        @test a.key == Symbol("data-on:keydown__window")
+        @test startswith(a.value, "const __t = document.activeElement; " *
+            "if (__t && (__t.isContentEditable || /^(TEXTAREA|SELECT)\$/.test(__t.tagName) || " *
+            "(__t.tagName === 'INPUT' && !/^(checkbox|radio|range|button|submit|reset|color|file|image)\$/.test(__t.type)))) return; ")
+    end
+
+    @testset "on_keys matches modifiers exactly and :mod means Ctrl or Cmd" begin
+        # Why: Ctrl+Z must not also fire the Ctrl+Shift+Z binding, and Mac users
+        # press Cmd where others press Ctrl.
+        v = on_keys((:mod, :z) => ds"undo()", (:shift, :mod, :z) => ds"redo()").value
+        @test occursin("if (__k === 'z' && (__c || __m) && !__a && !__s) { evt.preventDefault(); undo(); return }", v)
+        @test occursin("if (__k === 'z' && (__c || __m) && !__a && __s) { evt.preventDefault(); redo(); return }", v)
+        v = on_keys((:ctrl, :alt, :k) => ds"x()").value
+        @test occursin("if (__k === 'k' && __c && !__m && __a && !__s) {", v)
+    end
+
+    @testset "on_keys compares letters case-blind and named keys as written" begin
+        # Why: Shift turns evt.key 'z' into 'Z'; 'Delete' has no case variant.
+        v = on_keys(:Delete => ds"del()", :L => ds"l()").value
+        @test occursin("const __e = evt.key || ''; const __k = __e.length === 1 ? __e.toLowerCase() : __e;", v)
+        @test occursin("if (__k === 'Delete' && !__c && !__m && !__a && !__s) {", v)
+        @test occursin("if (__k === 'l' && ", v)
+    end
+
+    @testset "on_keys ignores Shift on a punctuation key unless the chord names it" begin
+        # Why: '?' is Shift+/ on a US layout, so requiring no Shift makes :? unreachable.
+        v = on_keys(Symbol("?") => ds"help()", (:shift, Symbol("+")) => ds"zoom()").value
+        @test occursin("if (__k === '?' && !__c && !__m && !__a) {", v)
+        @test occursin("if (__k === '+' && !__c && !__m && !__a && __s) {", v)
+    end
+
+    @testset "on_keys runs a Datastar action as its @-expression" begin
+        # Why: a DSAction must reach the listener as Datastar's @post text, not its Julia repr.
+        v = on_keys(:s => ds_post("/save")).value
+        @test occursin("evt.preventDefault(); @post('/save'); return }", v)
+    end
+
+    @testset "on_keys rejects an unknown modifier, a chord ending in a modifier, a lowercase, misnamed or empty key, an empty, repeated or String chord" begin
+        # Why: a typo like :cmd would otherwise bind a key no one can press.
+        err = try on_keys((:cmd, :z) => ds"x()"); nothing catch e; e end
+        @test err isa ArgumentError
+        @test occursin(":mod", err.msg) && occursin(":cmd", err.msg)
+        @test_throws ArgumentError on_keys(() => ds"x()")
+        # Why: a String chord splits into Chars and blames a bogus modifier :E.
+        err = try on_keys("Escape" => ds"x()"); nothing catch e; e end
+        @test err isa ArgumentError && occursin("Symbol", err.msg)
+        # Why: evt.key is never 'Shift' with shiftKey false, nor 'escape'.
+        @test_throws ArgumentError on_keys((:mod, :shift) => ds"x()")
+        @test_throws ArgumentError on_keys(:escape => ds"x()")
+        # Why: evt.key is ' ' for the space bar and 'Escape', never 'Space' or 'Esc'.
+        err = try on_keys((:mod, :Space) => ds"x()"); nothing catch e; e end
+        @test err isa ArgumentError && occursin("Symbol(\" \")", err.msg)
+        @test_throws ArgumentError on_keys(:Esc => ds"x()")
+        @test occursin("__k === ' '", on_keys(Symbol(" ") => ds"x()").value)
+        # Why: evt.key is 'Shift' only with shiftKey true, which the test rules out.
+        @test_throws ArgumentError on_keys(:Shift => ds"x()")
+        # Why: the test would ignore :ctrl, so Cmd+Z would also fire.
+        @test_throws ArgumentError on_keys((:mod, :ctrl, :z) => ds"x()")
+        @test_throws ArgumentError on_keys((:ctrl, :Control) => ds"x()")
+        # Why: `__k === ''` matches a keydown with no evt.key, such as autofill's.
+        @test_throws ArgumentError on_keys(Symbol("") => ds"x()")
+        # Why: only the first of two equal tests runs; the later binding would be dead.
+        @test_throws ArgumentError on_keys(:l => ds"x()", :L => ds"y()")
+        @test_throws ArgumentError on_keys((:mod, :shift, :z) => ds"x()", (:shift, :mod, :z) => ds"y()")
+        @test_throws ArgumentError on_keys()
     end
 
     @testset "sse_response emits text/event-stream with SSE headers" begin
@@ -503,10 +612,9 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     @testset "sse_stream" begin
         function _hit_stream(handler)
             # Why: `listen!` takes `::HTTP.Stream` handler on both majors (2.x `serve!`
-            # only calls `handler(::Request)`); only bound-port lookup differs.
+            # only calls `handler(::Request)`).
             srv = HTTP.listen!(handler, "127.0.0.1", 0)
-            port = pkgversion(HTTP) >= v"2" ? srv.bound_port :
-                Sockets.getsockname(srv.listener.server)[2]
+            port = bound_port(srv)
             try
                 resp = HTTP.get("http://127.0.0.1:$port/"; retry=false,
                                 decompress=false, status_exception=false)
@@ -549,11 +657,13 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
             # can't tell them apart.
             ev1 = patch_elements(div("ok"); selector="#card", mode=:inner)
             ev2 = patch_signals((; n=3))
+            ev3 = execute_script("go()")
+            ev4 = navigate("/next")
             handler = sse_stream() do writer
-                writer(ev1); writer(ev2)
+                writer(ev1); writer(ev2); writer(ev3); writer(ev4)
             end
             _, _, body = _hit_stream(handler)
-            expected = String(sse_response([ev1, ev2]).body)
+            expected = String(sse_response([ev1, ev2, ev3, ev4]).body)
             @test body == expected
         end
 
@@ -1584,7 +1694,7 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         @test HyperSignal.action_js(ds_get("/search?q=it's")) ==
               "@get('/search?q=it\\'s')"
         # Why: </script> in URL is broken same way as extras, so action survives
-        # inline-<script> context (e.g. script_response).
+        # inline-<script> context (e.g. execute_script).
         @test HyperSignal.action_js(ds_get("/a</script>")) == "@get('/a<\\/script>')"
         @test HyperSignal.action_js(ds_post("/a\\b")) == "@post('/a\\\\b')"
         @test HyperSignal.action_js(ds_get("/api/refresh")) == "@get('/api/refresh')"
@@ -1607,10 +1717,10 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         # Why: backslash then real newline must not double-decode; backslash doubles, LF
         # escapes independently.
         @test HyperSignal.action_js(ds_get("/x\\\ny")) == "@get('/x\\\\\\ny')"
-        # Why: redirect path shares _js_str_escape (response.jl); newline in location
+        # Why: redirect path shares _js_str_escape through _leave_js (window.jl); newline in location
         # must not land raw in inline <script>.
         let body = String(redirect_via_fragment("#x", "/a\nb").body)
-            @test occursin("window.location='/a\\nb'", body)
+            @test occursin("window.location.href='/a\\nb'", body)
             @test !occursin("'/a\nb'", body)
         end
     end
@@ -1812,4 +1922,26 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         isempty(offenders_generated) || (@info "@generated/hasmethod offenders" offenders_generated)
         isempty(offenders_piracy) || (@info "type-piracy offenders" offenders_piracy)
     end
+end
+
+include("cdp.jl")
+const BROWSER = Ref{CDP.Browser}()
+if CDP.available()
+    try
+        CDP.with_browser() do b
+            BROWSER[] = b
+            @testset "browser" include("browser.jl")
+        end
+    catch e
+        (e isa CDP.LaunchError && !CDP.required()) || rethrow()
+        @warn "Chromium at $(CDP.CHROMIUM) did not start; browser tests skipped." exception = e
+        @testset "browser" begin @test_skip false end
+    end
+elseif CDP.required()
+    @testset "browser tests need Chromium (HS_REQUIRE_CDP=1)" begin
+        @test CDP.available()
+    end
+else
+    @warn "No Chromium at $(CDP.CHROMIUM); browser tests skipped. Set HS_CHROMIUM to run them."
+    @testset "browser" begin @test_skip CDP.available() end
 end

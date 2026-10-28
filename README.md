@@ -341,7 +341,9 @@ Besides `html_response` and `fragment_response`:
 - `script_response(js)` — append and run a `<script>` (`text/javascript`).
 - `sse_response(events)` / `sse_stream(f)` — buffered or streaming
   Server-Sent Events; `patch_elements` / `patch_signals` build the
-  individual events. Use `sse_stream` to push progress over a long task.
+  individual events, `execute_script(js)` runs JS in the page, and
+  `navigate(url)` sends the browser on. Use
+  `sse_stream` to push progress over a long task.
 
 Full reference on the [docs site][docs-datastar].
 
@@ -380,6 +382,12 @@ julia --project=test test/runtests.jl
 so `Makie`/`CairoMakie` re-precompile on every switch between `Pkg.test`
 and a normal REPL. Running `runtests.jl` directly reuses the warm cache.
 CI uses `Pkg.test`.
+
+`test/browser.jl` checks the generated JS in headless Chromium: the
+first of `chromium`, `chromium-browser`, `google-chrome` on `PATH`, else
+`/usr/bin/chromium`, or `HS_CHROMIUM` if set. Without a browser those
+tests skip with a warning; `HS_REQUIRE_CDP=1` (set in CI) turns the skip into
+a failure.
 
 ## Benchmarks
 
