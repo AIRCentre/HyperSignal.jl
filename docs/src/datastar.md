@@ -65,6 +65,20 @@ on(:change, ds_get("/c"); debounce=300).key   # Symbol("data-on:change__debounce
 on(:keydown, "\$open = true"; window=true).key # Symbol("data-on:keydown__window")
 ```
 
+### Keyboard shortcuts — `on_keys`
+
+[`on_keys`](@ref) binds several shortcuts with one `keydown` listener on
+`window`. A chord is a key Symbol or a tuple of modifiers ending in the key;
+`:mod` matches Ctrl or Cmd on any platform. Modifiers match exactly, except that
+Shift is ignored on a punctuation key unless the chord names it. A match
+calls `preventDefault`, and no shortcut fires while focus is in a text field.
+
+```julia
+div(on_keys((:mod, :z) => ds"$count = $count - 1",
+            (:shift, :mod, :z) => ds"$count = $count + 1",
+            :Escape => ds"$open = false"))
+```
+
 ## Signals and reactive attributes
 
 Signals are Datastar's reactive state. Seed one signal with
@@ -240,8 +254,9 @@ Default is `false` (header omitted).
 ## Redirects
 
 Datastar can't follow an HTTP `303` from a form submit it owns — its
-morph algorithm replaces the target instead of navigating. Two helpers
-cover the two redirect cases.
+morph algorithm replaces the target instead of navigating.
+`redirect_via_fragment` and `navigate` leave from a Datastar request,
+`redirect_to` from a plain one; `confirm_leave` guards the page in between.
 
 ### `redirect_via_fragment` — navigate from a Datastar form
 
@@ -249,8 +264,8 @@ cover the two redirect cases.
 redirect_via_fragment(selector, location; cookies=String[], wrapper_tag=:div)
 ```
 
-Wraps a tiny `<script>window.location='…'</script>` in the morph target
-so a Datastar `@post` form can navigate after success (e.g. login →
+Wraps a script that sets `window.location.href` in the morph target so
+a Datastar `@post` form can navigate after success (e.g. login →
 dashboard). The helper *renders the morph target itself* with `id` set
 to the selector, so `selector` **must** be a single `"#id"` — a class,
 compound, or whitespace selector throws `ArgumentError`. Single quotes,
@@ -266,7 +281,29 @@ Use `wrapper_tag` when the morph target isn't a `<div>` (e.g. `:li`).
 redirect_via_fragment("#login-form", "/dashboard";
     cookies=["sid=$token; HttpOnly; Path=/; SameSite=Lax"])
 # => 200 text/html, header  datastar-selector: #login-form
-#    body  <div id="login-form"><script>window.location='/dashboard'</script></div>
+#    body  <div id="login-form"><script>window.__hs_leaving=true;
+#          try{window.location.href='/dashboard'}finally{…}</script></div>
+```
+
+### `navigate` — leave from an SSE response
+
+```julia
+sse_response([navigate("/sessions/42")])
+```
+
+[`navigate`](@ref) is an SSE event whose script sends the browser to the
+URL. It also stands down a [`confirm_leave`](@ref) guard, so a page that
+asks before closing with unsaved work leaves without asking after a save;
+`redirect_via_fragment` does the same.
+Send it alone: events after it may not run before the page unloads.
+
+[`confirm_leave(when = ds"$dirty")`](@ref confirm_leave) renders a
+`beforeunload` listener that asks the browser to confirm leaving while the
+Datastar expression `when` is true. Browsers show their own wording, and
+only after the user has interacted with the page.
+
+```julia
+body(ds_signals((; dirty=false)), confirm_leave(), …)
 ```
 
 ### `redirect_to` — plain `303` for non-Datastar flows
@@ -358,6 +395,10 @@ way as for [`html_response`](@ref); multi-line HTML is split into one
 fragment-swap symbols as [`fragment_response`](@ref) — unknown
 symbols throw `ArgumentError`.
 
+[`execute_script(js)`](@ref execute_script) builds a `patch-elements` event
+that appends a self-removing `<script>` to `<body>`. [`navigate`](@ref) is
+built on it.
+
 `patch_signals(signals; only_if_missing=false)` builds a
 `datastar-patch-signals` event. `signals` is JSON-encoded with
 `JSON.json`. `only_if_missing=true` mirrors the
@@ -376,7 +417,8 @@ duplicating it (see the note in the intro).
 
 The `elements` HTML is escape-walked by `render` like any other
 HyperSignal body. The `selector` is written verbatim into the SSE
-line — sanitize before passing if it can contain user input. See
+line — sanitize before passing if it can contain user input.
+`execute_script` code runs as written; never build it from user input. See
 [Security › SSE responses](security.md#SSE-responses).
 
 ## `sse_stream` — streaming SSE (long-running tasks)

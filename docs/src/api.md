@@ -43,6 +43,8 @@ sse_response
 sse_stream
 patch_elements
 patch_signals
+execute_script
+navigate
 redirect_via_fragment
 redirect_to
 ```
@@ -68,6 +70,8 @@ on_click
 on_submit
 on_change_debounced
 on_interval
+on_keys
+confirm_leave
 ```
 
 ## Datastar attributes

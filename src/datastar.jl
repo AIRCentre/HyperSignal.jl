@@ -121,14 +121,17 @@ _js_value(v::Bool)   = v ? "true" : "false"
 _js_value(v::AbstractFloat) =
     isnan(v) ? "NaN" : isinf(v) ? (v > 0 ? "Infinity" : "-Infinity") : string(v)
 _js_value(v::Number) = string(v)
-# For a '…' JS literal. `</` → `<\/`: the HTML parser closes an inline
-# <script> on `</script>` whatever the JS quoting; after `<!--<script` it
-# skips the real `</script>`, hence `<!--` → `<\!--`. Raw LF, CR, U+2028 and
-# U+2029 inside a JS string are SyntaxErrors.
-_js_str_escape(s::AbstractString) =
-    replace(s, "\\" => "\\\\", "'" => "\\'", "</" => "<\\/", "<!--" => "<\\!--",
+# For a '…' JS literal inside a <script>. Raw LF, CR, U+2028 and U+2029
+# inside a JS string are SyntaxErrors.
+_js_str_escape(s::AbstractString) = _script_safe(
+    replace(s, "\\" => "\\\\", "'" => "\\'",
                "\n" => "\\n", "\r" => "\\r",
-               "\u2028" => "\\u2028", "\u2029" => "\\u2029")
+               "\u2028" => "\\u2028", "\u2029" => "\\u2029"))
+
+# JS that goes inside a <script> element: `</` would end the element and
+# `<!--` switch the HTML parser's script state. Escaped they read the same
+# inside a JS string, so callers keep those sequences inside strings.
+_script_safe(s::AbstractString) = replace(s, "</" => "<\\/", "<!--" => "<\\!--")
 _js_value(v::AbstractString) = "'$(_js_str_escape(v))'"
 # `repr` of a Dict/NamedTuple is not JS; JSON is. Extras only land in HTML
 # attributes, where escape_html covers `<` and `'`.

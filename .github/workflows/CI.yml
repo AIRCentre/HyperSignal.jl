@@ -26,6 +26,8 @@ jobs:
               - 'src/**'
               - 'ext/**'
               - 'test/**'
+              # Browser tests load the vendored Datastar and MapLibre bundles.
+              - 'docs/src/notebooks/assets/**'
               - 'Project.toml'
               - '.github/workflows/CI.yml'
 
@@ -37,6 +39,11 @@ jobs:
     # cold depot (JuliaLang/Pkg.jl#4822); serial precompile avoids it.
     env:
       JULIA_NUM_PRECOMPILE_TASKS: 1
+      # Browser tests fail instead of skipping when Chromium is missing.
+      HS_REQUIRE_CDP: 1
+      # The image's Chromium build may lack a usable sandbox on Ubuntu 24.04;
+      # Chrome stable ships the AppArmor profile that allows it.
+      HS_CHROMIUM: /usr/bin/google-chrome
     strategy:
       fail-fast: false
       matrix:

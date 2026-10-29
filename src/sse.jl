@@ -48,6 +48,29 @@ data line so the client skips signals already present.
 patch_signals(signals; only_if_missing::Bool=false) =
     PatchSignalsEvent(JSON.json(signals), only_if_missing)
 
+"""
+    execute_script(js)
+
+Build an SSE event that runs `js` in the page: a `<script>` appended to
+`<body>` that removes itself once it runs. `</` and `<!--` in `js` are
+escaped as `<\\/` and `<\\!--`, which read the same inside a JS string, so
+keep those sequences inside strings. [`script_response`](@ref) needs no such
+escape: its body never passes through the HTML parser.
+"""
+execute_script(js::AbstractString) = PatchElementsEvent(
+    "<script data-effect=\"el.remove()\">" * _script_safe(String(js)) * "</script>",
+    "body", :append, false)
+
+"""
+    navigate(url)
+
+Build an SSE event that sends the browser to `url`, past any
+[`confirm_leave`](@ref) guard. Send it alone: `sse_response([navigate(url)])`.
+`url` goes to `location.href`, where a `javascript:` URL runs as code: never
+build it from user input.
+"""
+navigate(url::AbstractString) = execute_script(_leave_js(url))
+
 function _encode_event(io::IO, ev::PatchElementsEvent)
     print(io, "event: datastar-patch-elements\n")
     if ev.selector !== nothing
@@ -76,7 +99,7 @@ end
     sse_response(events; status=200, headers=[]) -> HTTP.Response
 
 Buffer Datastar SSE events ([`patch_elements`](@ref) /
-[`patch_signals`](@ref)) into one `text/event-stream` response, e.g. an HTML
+[`patch_signals`](@ref) / [`execute_script`](@ref) / [`navigate`](@ref)) into one `text/event-stream` response, e.g. an HTML
 patch plus a signal patch from one handler.
 
 # Examples
@@ -118,8 +141,8 @@ end
 
 Build an HTTP.jl stream handler that streams Datastar SSE events over a
 chunked `text/event-stream` response. `f` receives a `writer` callable:
-each call with a [`patch_elements`](@ref) / [`patch_signals`](@ref)
-event encodes it and flushes it as its own chunk. Register the handler with
+each call with a [`patch_elements`](@ref) / [`patch_signals`](@ref) /
+[`execute_script`](@ref) / [`navigate`](@ref) event encodes it and flushes it as its own chunk. Register the handler with
 `HTTP.listen!(handler, host, port)` (or blocking `HTTP.listen`), which
 works on HTTP.jl 1.x and 2.x. On 2.x, `HTTP.serve` only calls request
 handlers, so a stream handler mounted there answers 500.

@@ -181,8 +181,9 @@ Applies to every `.md` + every code comment / docstring.
 
   **Convention:** `Raw` is the HTML escape hatch: trusted HTML you audited (SVG,
   vendored icons, generator output). Other verbatim paths (`Vector{UInt8}`
-  children, raw-string actions, `script_response`) follow the same trust
-  rule. Never anything user-derived. A new verbatim path → listed in
+  children, raw-string actions, `script_response`, `execute_script`,
+  `draw_options(properties=…)`) follow the same trust rule. Never anything
+  user-derived. A new verbatim path → listed in
   `docs/src/security.md`.
 
   - ✅ `Raw(read("logo.svg", String))` — vendored asset.
@@ -226,11 +227,11 @@ Applies to every `.md` + every code comment / docstring.
   **Why:** prefix marks "Datastar action/attribute/signal binding" without
   scanning the implementation.
 
-  **Convention:** every exported helper in `src/datastar.jl` that builds a
-  Datastar action, attribute, or signal binding starts `ds_`: `ds_post`,
-  `ds_signal`, `ds_indicator`, `ds_bind`, … Exempt by class: event binders
-  (`on`, `on_*`; see below), exported types and macros, and request decoders
-  (`parse_signals`).
+  **Convention:** every exported helper in `src/datastar.jl` and
+  `src/window.jl` that builds a Datastar action, attribute, or signal binding
+  starts `ds_`: `ds_post`, `ds_signal`, `ds_indicator`, `ds_bind`, … Exempt
+  by class: event binders (`on`, `on_*`, `confirm_leave`; see below),
+  exported types and macros, and request decoders (`parse_signals`).
 
   - ✅ `ds_signal("count", 0)`.
   - 🚫 `signal("count", 0)` — collides with Base + domain code.
@@ -347,10 +348,11 @@ Applies to every `.md` + every code comment / docstring.
   downstream helper fails.
 
   **Convention:** first emit into any shared `window.*` slot guards with
-  `window.X = window.X || {}` (or equivalent).
+  `window.X = window.X || Object.create(null)`: a key such as `id_prefix` may
+  be `"constructor"`, which a plain `{}` already holds.
 
-  - ✅ `window.__hs_maps = window.__hs_maps || {}; window.__hs_maps[$prefix] =
-    _m;`.
+  - ✅ `window.__hs_maps = window.__hs_maps || Object.create(null);
+    window.__hs_maps[$prefix] = _m;`.
   - 🚫 assume the slot exists at load time.
 
 ## Testing
@@ -418,7 +420,10 @@ Applies to every `.md` + every code comment / docstring.
 
   **Convention:** suite runs with Julia + declared `Project.toml` deps only.
   Verify emitted JS at the shell with `node` during dev, then translate findings
-  into `@test occursin(...)` / `@test !occursin(...)`.
+  into `@test occursin(...)` / `@test !occursin(...)`. One exemption:
+  `test/browser.jl` drives Chromium through `test/cdp.jl` for behaviour a
+  string can't show (drawing, touch, leave prompts). It skips without
+  Chromium, and CI sets `HS_REQUIRE_CDP=1` so a missing browser fails there.
 
   - ✅ `@test !occursin("@post(", js)` and `@test
     occursin("data-on:hs-click__window=", out)`.

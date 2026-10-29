@@ -172,6 +172,24 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
             @test_throws ArgumentError MapLibre.raster_xyz_source(
                 String[])
         end
+
+        @testset "image_source emits {type: image, url, coordinates}" begin
+            # Why: MapLibre's image source reads these three keys; corner order
+            # (TL, TR, BR, BL) passes through unchanged.
+            corners = [(-10.0, 40.0), (-9.0, 40.0), (-9.0, 39.0), (-10.0, 39.0)]
+            src = MapLibre.image_source("https://s3/v.png?sig=1"; coordinates=corners)
+            decoded = JSON.parse(JSON.json(src))
+            @test decoded["type"] == "image"
+            @test decoded["url"] == "https://s3/v.png?sig=1"
+            @test decoded["coordinates"] == [[-10.0, 40.0], [-9.0, 40.0], [-9.0, 39.0], [-10.0, 39.0]]
+        end
+
+        @testset "image_source rejects anything but 4 corners" begin
+            # Why: MapLibre drops a malformed image source with a console error and
+            # the layer renders nothing.
+            @test_throws ArgumentError MapLibre.image_source("u"; coordinates=[(0, 0), (1, 0), (1, 1)])
+            @test_throws ArgumentError MapLibre.image_source("u"; coordinates=fill((0, 0), 5))
+        end
     end
 
     @testset "Layer constructors" begin
@@ -461,8 +479,17 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
             @test occursin("window.__hs_maps['a\\'b_']", js)
         end
 
+        @testset "id_prefix with `</script>` cannot close an inline script in a call" begin
+            # Why: map_call and draw_call land in inline scripts and attributes.
+            for out in (HyperSignal.render(MapLibre.map_call(:resize; id_prefix="a</script>_")),
+                        String(MapLibre.draw_call(:undo; id_prefix="a</script>_")))
+                @test !occursin("</script>", out)
+                @test occursin("a<\\/script>_", out)
+            end
+        end
+
         @testset "`</script>` in a map_view string cannot close the inline script" begin
-            # Why: JSON.json and _js_squote leave `</` alone; the HTML parser ends
+            # Why: JSON.json leaves `</` alone; the HTML parser ends
             # the <script> on `</script>` whatever the JS quoting.
             out = HyperSignal.render(MapLibre.map_view(;
                 id_prefix="m</script>_", center=(0.0, 0.0), zoom=2,
@@ -582,6 +609,16 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
             @test occursin("data-lat=\"10.0\"", out)
             @test occursin("data-lon=\"20.0\"", out)
             @test occursin("Hi &lt;b&gt;there&lt;/b&gt;", out)
+        end
+
+        @testset "marker rejects a lat MapLibre would reject and a lon that is not finite" begin
+            # Why: MapLibre's LngLat throws on these, and the page drops the marker.
+            @test_throws ArgumentError MapLibre.marker("x"; lat=NaN, lon=0.0)
+            @test_throws ArgumentError MapLibre.marker("x"; lat=95, lon=0.0)
+            @test_throws ArgumentError MapLibre.marker("x"; lat=-95, lon=0.0)
+            @test occursin("data-lat=\"90\"", HyperSignal.render(MapLibre.marker("x"; lat=90, lon=0.0)))
+            @test occursin("data-lat=\"-90\"", HyperSignal.render(MapLibre.marker("x"; lat=-90, lon=0.0)))
+            @test_throws ArgumentError MapLibre.marker("x"; lat=0.0, lon=Inf)
         end
 
         @testset "init JS scans for [data-hs-marker] divs and creates real Markers" begin
@@ -732,7 +769,7 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
         @testset "window.__hs_maps is lazily initialised before assignment" begin
             # Why: `window.__hs_maps['m_']=_m` throws TypeError unless __hs_maps created
             # first.
-            @test occursin("window.__hs_maps=window.__hs_maps||{}", js)
+            @test occursin("window.__hs_maps=window.__hs_maps||Object.create(null)", js)
         end
 
         @testset "bbox handler disables MapLibre's built-in boxZoom and listens on document" begin
@@ -809,6 +846,53 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
             @test occursin("_m.on('error',function(){_m.triggerRepaint();})", body)
         end
 
+        @testset "map_view bounds emits bounds + fitBoundsOptions and omits center/zoom" begin
+            # Why: MapLibre fits a constructor `bounds` itself; a center/zoom next to
+            # it would be ignored and mislead the reader of the output.
+            out = HyperSignal.render(MapLibre.map_view(;
+                id_prefix="m_", style="/s.json",
+                bounds=(w=-10.0, s=39.0, e=-9.0, n=40.0),
+                fit_padding=(top=140, bottom=90, left=40, right=100)))
+            opts = JSON.parse(match(r"new maplibregl\.Map\((\{.*?\})\);", out)[1])
+            @test opts["bounds"] == [[-10.0, 39.0], [-9.0, 40.0]]
+            @test opts["fitBoundsOptions"] ==
+                  Dict("padding" => Dict("top" => 140, "bottom" => 90, "left" => 40, "right" => 100))
+            @test !haskey(opts, "center")
+            @test !haskey(opts, "zoom")
+            # Why: MapLibre takes one number for even padding; pairs() on it emits {"1":10}.
+            even(p) = JSON.parse(match(r"new maplibregl\.Map\((\{.*?\})\);", HyperSignal.render(
+                MapLibre.map_view(; style="/s.json", bounds=(w=0, s=0, e=1, n=1), fit_padding=p)))[1])
+            @test even(10)["fitBoundsOptions"] == Dict("padding" => 10)
+            @test_throws ArgumentError even([10, 20])
+        end
+
+        @testset "map_view without bounds or center/zoom fails loud" begin
+            # Why: MapLibre with no view starts at zoom 0 over (0, 0), which looks
+            # like a broken page rather than an error.
+            @test_throws ArgumentError MapLibre.map_view(; style="/s.json")
+            @test_throws ArgumentError MapLibre.map_view(; style="/s.json", center=(0, 0))
+        end
+
+        @testset "map_view with bounds and center, or bounds off the globe, fails loud" begin
+            # Why: MapLibre would silently prefer bounds; one source of the view.
+            @test_throws ArgumentError MapLibre.map_view(; style="/s.json",
+                bounds=(w=0, s=0, e=1, n=1), center=(0, 0), zoom=2)
+            @test_throws ArgumentError MapLibre.map_view(; style="/s.json",
+                bounds=(w=0, s=0, e=1, n=1), zoom=2)
+            @test_throws ArgumentError MapLibre.map_view(; style="/s.json",
+                bounds=(w=0, s=0, e=1, n=1), center=(0, 0))
+            @test_throws ArgumentError MapLibre.map_view(; style="/s.json",
+                center=(0, 0), zoom=2, fit_padding=(top=1, bottom=1, left=1, right=1))
+            # Why: a tuple would fail on `.w` with an error that names no keyword.
+            err = try MapLibre.map_view(; style="/s.json", bounds=(0, 0, 1, 1)); nothing catch e; e end
+            @test err isa ArgumentError && occursin("bounds", err.msg)
+            # Why: MapLibre's LngLat throws on these and the map never starts.
+            for b in ((w=0, s=0, e=1, n=95), (w=0, s=-95, e=1, n=1), (w=NaN, s=0, e=1, n=1), (w=0, s=0, e=Inf, n=1))
+                @test_throws ArgumentError MapLibre.map_view(; style="/s.json", bounds=b)
+            end
+            @test MapLibre.map_view(; style="/s.json", bounds=(w=-180, s=-90, e=180, n=90)) isa HyperSignal.Frag
+        end
+
         @testset "opting out of signals/posts emits no listeners" begin
             # Why: bare map_view must not leak data-on:* attrs posting to undefined URLs
             # or writing phantom signals.
@@ -871,6 +955,179 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
                 id_prefix="m_", layer="a\"b", prop="c\\d", value=1))
             @test occursin("\"a\\\"b\"", js)
             @test occursin("\"c\\\\d\"", js)
+        end
+    end
+
+    @testset "drawing, rotation and marker containers" begin
+        _view(; kw...) = HyperSignal.render(MapLibre.map_view(;
+            id_prefix="m_", center=(0.0, 0.0), zoom=2, style="/s.json", kw...))
+        _body(out) = match(r"<script[^>]*>(.*?)</script>"s, out).captures[1]
+        _attr(out, name) = String(match(Regex("$(name)=\"([^\"]*)\""), out).captures[1])
+        _unescape(s) = replace(String(s), "&quot;" => "\"", "&#39;" => "'", "&amp;" => "&",
+                               "&lt;" => "<", "&gt;" => ">")
+
+        @testset "map_view without draw emits no Terra Draw code" begin
+            # Why: pages that don't draw must not need terra-draw.js loaded.
+            out = _view()
+            @test !occursin("terraDraw", out)
+            @test !occursin("__hs_draw", out)
+            @test !occursin("data-signals", out)
+        end
+
+        @testset "draw_options rejects an unknown keyword or mode, a bad signal name and seeds it cannot load" begin
+            # Why: a misspelt option would otherwise be dropped without a trace.
+            @test_throws MethodError MapLibre.draw_options(; line_colour="#fff")
+            @test_throws ArgumentError MapLibre.draw_options(; modes=(:select, :polygon))
+            @test_throws ArgumentError MapLibre.draw_options(; modes=())
+            @test_throws ArgumentError MapLibre.draw_options(; signal="my-draw")
+            # Why: data-signals would declare "a.b" as one key, unreachable as $a.b.
+            @test_throws ArgumentError MapLibre.draw_options(; signal="a.b")
+            # Why: Datastar leaves `_` signals out of @post, so change_post would get no lines.
+            @test_throws ArgumentError MapLibre.draw_options(; signal="_draw")
+            # Why: a PCRE `$` also matches before a final newline.
+            @test_throws ArgumentError MapLibre.draw_options(; signal="draw\n")
+            # Why: Terra Draw refuses a seed with no linestring mode to file it under.
+            seed = Dict("type" => "Feature", "properties" => Dict(),
+                        "geometry" => Dict("type" => "LineString", "coordinates" => [[0, 0], [1, 1]]))
+            @test_throws ArgumentError MapLibre.draw_options(; modes=(:select,), features=[seed])
+            # Why: "$draw" would emit "$$draw" references that Datastar can't resolve.
+            @test_throws ArgumentError MapLibre.draw_options(; signal="\$draw")
+            # Why: a missing geometry throws in the load handler and aborts the drawing.
+            @test_throws ArgumentError MapLibre.draw_options(; features=[Dict("type" => "Feature")])
+            @test_throws ArgumentError MapLibre.draw_options(; features=["x"])
+            # Why: a seed's properties become its stamp, and by_property reads keys off it.
+            @test_throws ArgumentError MapLibre.draw_options(; features=[Dict("type" => "Feature",
+                "properties" => "x", "geometry" => Dict("type" => "LineString", "coordinates" => [[0, 0], [1, 1]]))])
+            # Why: a NamedTuple or Symbol-keyed Dict is the same GeoJSON once serialised.
+            nt = (type="Feature", properties=(;), geometry=(type="LineString", coordinates=[[0, 0], [1, 1]]))
+            js = _body(_view(draw=MapLibre.draw_options(; features=[nt])))
+            @test JSON.parse(match(r"const _dseed=_dprev&&_dprev\.lines\|\|(\[.*?\]);", js)[1]) ==
+                  [JSON.parse(JSON.json(nt))]
+        end
+
+        @testset "draw declares the \$draw signals and wires events, effect and init" begin
+            # Why: the page reads Terra Draw state only through these signals, and
+            # the effect is the only path from $draw.mode to setMode.
+            out = _view(draw=MapLibre.draw_options(; signal="pen",
+                        modes=(:linestring, :select), properties=ds"{set: $active}"))
+            sig = JSON.parse(_unescape(_attr(out, "data-signals")))
+            @test sig == Dict("pen" => Dict("features" => [], "rejected" => [],
+                "mode" => "linestring", "drawing" => false, "selected" => [],
+                "can_undo" => false, "can_redo" => false))
+            @test occursin("data-on:hs-m_draw__window=\"\$pen.mode = evt.detail.mode; " *
+                           "\$pen.drawing = evt.detail.drawing; " *
+                           "\$pen.selected = evt.detail.selected; \$pen.can_undo = evt.detail.can_undo; " *
+                           "\$pen.can_redo = evt.detail.can_redo\"", out)
+            @test occursin("data-on:hs-m_draw_features__window=\"\$pen.features = evt.detail.features; " *
+                           "\$pen.rejected = evt.detail.rejected\"", out)
+            effect = _unescape(_attr(out, "data-effect"))
+            @test effect == "try { const m = \$pen.mode; const d = window.__hs_draw['m_']; if (d) d.mode(m); " *
+                            "const p = {set: \$active}; if (d) d.props(p) } catch (e) { console.error(e) }"
+            @test _unescape(_attr(out, "data-init")) == "window.__hs_draw['m_'].sync()"
+            @test !occursin("data-on:hs-m_draw_change", out)
+        end
+
+        @testset "draw without properties sets only the mode" begin
+            # Why: a d.props(undefined) call would stamp every line with {}.
+            out = _view(draw=MapLibre.draw_options())
+            @test _unescape(_attr(out, "data-effect")) ==
+                  "try { const m = \$draw.mode; const d = window.__hs_draw['m_']; if (d) d.mode(m) } catch (e) { console.error(e) }"
+        end
+
+        @testset "a select-only drawing renders with no double-click handler" begin
+            # Why: the double-click cancel steps through linestring mode, which it lacks.
+            js = _body(_view(draw=MapLibre.draw_options(; modes=(:select,))))
+            @test occursin("new TD.TerraDraw(", js)
+            @test !occursin("dblclick", js)
+        end
+
+        @testset "draw change_post posts after each finished edit" begin
+            # Why: the server-side preview runs on this post; the URL is JS-escaped.
+            out = _view(draw=MapLibre.draw_options(; change_post="/s/1/preview?a='b'"))
+            @test occursin("data-on:hs-m_draw_change__window=\"@post(&#39;/s/1/preview?a=\\&#39;b\\&#39;&#39;)\"", out)
+        end
+
+        @testset "draw seeds features and styles lines from by_property" begin
+            # Why: Terra Draw styles take a value or fn(feature); by_property is the
+            # only way a page gets per-feature colours without writing JS.
+            seed = [Dict("type" => "Feature", "properties" => Dict("set" => 1),
+                         "geometry" => Dict("type" => "LineString",
+                                            "coordinates" => [[0, 0], [1, 1]]))]
+            js = _body(_view(draw=MapLibre.draw_options(;
+                features=seed,
+                line_color=MapLibre.by_property("set", 0 => "#f00", 1 => "#0f0"; default="#888"),
+                line_dash=[2, 1], selected_color="#fff")))
+            # Key order in the emitted JSON varies with the JSON.jl version.
+            @test JSON.parse(match(r"const _dseed=_dprev&&_dprev\.lines\|\|(\[.*?\]);", js)[1]) ==
+                  JSON.parse(JSON.json(seed))
+            @test JSON.parse(match(r"lineStringColor:_dby\(\"set\",(\{.*?\}),\"#888\"\)", js)[1]) ==
+                  Dict("0" => "#f00", "1" => "#0f0")
+            @test occursin("lineStringDash:[2,1]", js)
+            @test occursin("selectedLineStringColor:\"#fff\"", js)
+            # Why: the docs style line_dash by stamp too; each style goes through _style_js.
+            by = MapLibre.by_property("set", 0 => [2, 1]; default=[1, 0])
+            js = _body(_view(draw=MapLibre.draw_options(; selected_color=by, line_dash=by)))
+            @test occursin("selectedLineStringColor:_dby(", js)
+            @test occursin("lineStringDash:_dby(", js)
+            @test occursin("_td.clearUndoRedoHistory();", js)
+        end
+
+        @testset "by_property needs a default and rejects keys JS would stringify differently" begin
+            # Why: String(1.0) is "1" in JS but "1.0" in Julia, so the lookup misses.
+            @test_throws UndefKeywordError MapLibre.by_property("set", 0 => "#f00")
+            @test_throws ArgumentError MapLibre.by_property("set", 1.0 => "#f00"; default="#888")
+            # Why: _dby looks up String(value), and JS String(true) is "true".
+            js = _body(_view(draw=MapLibre.draw_options(;
+                line_color=MapLibre.by_property("ok", true => "#0f0", :x => "#f00"; default="#888"))))
+            @test JSON.parse(match(r"lineStringColor:_dby\(\"ok\",(\{.*?\}),\"#888\"\)", js)[1]) ==
+                  Dict("true" => "#0f0", "x" => "#f00")
+            # Why: 1 and "1" are one case in the page; the later would silently win.
+            @test_throws ArgumentError MapLibre.by_property("set", 1 => "#f00", "1" => "#0f0"; default="#888")
+        end
+
+        @testset "draw_call emits a call on the prefix's draw controller" begin
+            # Why: buttons reach Terra Draw only through this controller.
+            @test string(MapLibre.draw_call(:undo; id_prefix="m_")) == "window.__hs_draw?.['m_']?.undo()"
+            @test string(MapLibre.draw_call(:delete_selected; id_prefix="m'_")) ==
+                  "window.__hs_draw?.['m\\'_']?.delete_selected()"
+        end
+
+        @testset "draw_call rejects an unknown action and lists the valid ones" begin
+            err = try MapLibre.draw_call(:clear; id_prefix="m_"); nothing catch e; e end
+            @test err isa ArgumentError
+            @test occursin(":undo", err.msg) && occursin(":delete_selected", err.msg)
+        end
+
+        @testset "rotate=false turns off drag, touch and keyboard rotation" begin
+            # Why: a touch rotation alone leaves the map tilted with no way back
+            # once the compass is hidden.
+            out = _view(rotate=false)
+            opts = JSON.parse(match(r"new maplibregl\.Map\((\{.*?\})\);", out)[1])
+            @test opts["dragRotate"] == false
+            @test opts["touchPitch"] == false
+            @test occursin("_m.touchZoomRotate.disableRotation();_m.keyboard.disableRotation();", out)
+            @test !occursin("disableRotation", _view())
+        end
+
+        @testset "double_click_zoom=false and nav_control add the matching map options" begin
+            out = _view(double_click_zoom=false, nav_control=:top_left, rotate=false)
+            opts = JSON.parse(match(r"new maplibregl\.Map\((\{.*?\})\);", out)[1])
+            @test opts["doubleClickZoom"] == false
+            @test occursin("_m.addControl(new maplibregl.NavigationControl({showCompass:false}),\"top-left\");", out)
+            # Why: with rotation on, the compass is the way back to north.
+            @test occursin("_m.addControl(new maplibregl.NavigationControl({showCompass:true}),\"bottom-right\");",
+                           _view(nav_control=:bottom_right))
+            @test_throws ArgumentError MapLibre.map_view(; center=(0, 0), zoom=1, style="/s",
+                                                         nav_control=:middle)
+        end
+
+        @testset "markers renders a hidden container the init JS rebuilds from" begin
+            # Why: the container stays in the page so a morph can update it; the
+            # map shows copies of its children.
+            out = HyperSignal.render(MapLibre.markers(
+                MapLibre.marker("A"; lat=1, lon=2, id_prefix="m_");
+                id="pins", id_prefix="m_"))
+            @test startswith(out, "<div id=\"pins\" hidden data-hs-markers=\"m_\"><div data-hs-marker=\"m_\"")
         end
     end
 end

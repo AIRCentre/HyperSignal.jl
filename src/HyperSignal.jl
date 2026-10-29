@@ -39,14 +39,14 @@ fragment_response(page, "#card")      # Datastar morph with selector header
 - Datastar actions: [`ds_get`](@ref), [`ds_post`](@ref), [`ds_put`](@ref),
   [`ds_delete`](@ref), bound via [`on`](@ref) / [`on_click`](@ref) /
   [`on_submit`](@ref) / [`on_change_debounced`](@ref) /
-  [`on_interval`](@ref). `on(...)` also takes raw JS expressions and
+  [`on_interval`](@ref) / [`on_keys`](@ref). `on(...)` also takes raw JS expressions and
   `window=true` for global listeners.
 - Datastar attributes: [`ds_indicator`](@ref), [`ds_ignore_morph`](@ref),
   [`ds_bind`](@ref), [`ds_signal`](@ref), [`ds_signals`](@ref),
   [`ds_show`](@ref), [`ds_text`](@ref), [`ds_json_signals`](@ref),
   [`ds_ref`](@ref), [`ds_attr`](@ref), [`ds_class`](@ref),
   [`ds_computed`](@ref), [`ds_style`](@ref), [`ds_effect`](@ref),
-  [`ds_init`](@ref). `ds_show`, `ds_text`, `ds_attr`, `ds_class`,
+  [`ds_init`](@ref), [`confirm_leave`](@ref). `ds_show`, `ds_text`, `ds_attr`, `ds_class`,
   `ds_style` and `ds_computed` take a `Symbol` for one signal
   (`ds_show(:open)`); `ds_bind` and `ds_indicator` take one for the bare
   name.
@@ -60,7 +60,8 @@ fragment_response(page, "#card")      # Datastar morph with selector header
   [`signals_response`](@ref), [`script_response`](@ref),
   [`redirect_via_fragment`](@ref), [`redirect_to`](@ref).
 - SSE: [`sse_response`](@ref), [`sse_stream`](@ref),
-  [`patch_elements`](@ref), [`patch_signals`](@ref).
+  [`patch_elements`](@ref), [`patch_signals`](@ref),
+  [`execute_script`](@ref), [`navigate`](@ref).
 - SVG: [`patch_svg`](@ref), [`inline_svg`](@ref).
 - [`cls`](@ref) class-list builder; [`DATASTAR_SUPPORTED_VERSION`](@ref).
 
@@ -90,6 +91,7 @@ using JSON
 include("elements.jl")
 include("datastar.jl")
 include("ds_str.jl")
+include("window.jl")
 include("render.jl")
 include("response.jl")
 include("sse.jl")
@@ -114,7 +116,7 @@ export DATASTAR_SUPPORTED_VERSION
 export DSAction, DSExpr, ds_get, ds_post, ds_put, ds_delete
 export ds_indicator, ds_ignore_morph, ds_bind, ds_signal, ds_signals, ds_show, ds_text, ds_json_signals
 export ds_ref, ds_attr, ds_class, ds_computed, ds_style, ds_effect, ds_init
-export on, on_click, on_submit, on_change_debounced, on_interval
+export on, on_click, on_submit, on_change_debounced, on_interval, on_keys, confirm_leave
 export parse_signals
 
 export cls, redirect_to
@@ -122,7 +124,7 @@ export cls, redirect_to
 export render
 export fragment_response, html_response, redirect_via_fragment
 export signals_response, script_response
-export sse_response, sse_stream, patch_elements, patch_signals
+export sse_response, sse_stream, patch_elements, patch_signals, execute_script, navigate
 
 export patch_svg, inline_svg
 

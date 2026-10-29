@@ -3,6 +3,38 @@
 All notable changes to this project are documented here. Format roughly
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.5.2 — 2026-10-27
+
+### Added
+- `on_keys(chord => action, …)` binds keyboard shortcuts in one
+  `keydown` listener on `window`. `:mod` is Ctrl or Cmd, modifiers match
+  exactly, and no shortcut fires while the user types in a field.
+- `confirm_leave(when = ds"$dirty")` asks before the page closes while
+  `when` is true.
+- SSE events `execute_script(js)` and `navigate(url)`. `navigate` leaves
+  the page without a `confirm_leave` prompt.
+- MapLibre extension: `map_view` takes `bounds` and `fit_padding` as an
+  alternative to `center` and `zoom`, and `rotate`, `double_click_zoom` and
+  `nav_control`.
+- MapLibre extension: `image_source(url; coordinates)` places one image by
+  its 4 corners.
+- MapLibre extension: `markers(children…; id, id_prefix)` is a hidden container of
+  `marker`s whose map markers are rebuilt whenever a patch changes it.
+- MapLibre extension: `map_view(; draw=draw_options(…))` draws lines with
+  Terra Draw and keeps its state in `$draw.*` signals. `by_property` styles
+  lines by a stamped property and `draw_call` runs undo, redo and delete.
+
+### Changed
+- `redirect_via_fragment` leaves without a `confirm_leave` prompt, like
+  `navigate`.
+- MapLibre extension: a `map_view` patched into the page starts one map, a
+  patch over a live map replaces it from the patched script, and a map
+  whose root leaves the page removes itself.
+- MapLibre extension: `map_view`'s init script has the id
+  `<id_prefix>init`.
+- MapLibre extension: `marker` throws `ArgumentError` for a `lat` outside
+  [-90, 90] or a `lon` that is not finite.
+
 ## 0.5.1 — 2026-10-13
 
 ### Added

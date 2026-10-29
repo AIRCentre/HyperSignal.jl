@@ -12,8 +12,9 @@ every escape boundary the lib draws, in the order they get crossed.
     **Never wrap user input.** Other paths carry the same trust model,
     each covered below: a `Vector{UInt8}` child (HTML bytes), a raw JS
     expression string passed to `on(...)` or a `ds_*` attribute helper
-    (the HTML attribute escape still applies), and the body of
-    [`script_response`](@ref). There is no
+    (the HTML attribute escape still applies), MapLibre's
+    `draw_options(properties=…)`, and the body of
+    [`script_response`](@ref) or [`execute_script`](@ref). There is no
     `SafeHTML`, no `unsafe=true` kwarg, no sanitizer.
 
 ```julia
@@ -143,8 +144,9 @@ or JSON-encoded otherwise — sanitize before passing.
 ## SSE responses
 
 [`sse_response`](@ref) and its event constructors
-([`patch_elements`](@ref), [`patch_signals`](@ref)) follow the same
-trust model as the other helpers, with two boundaries:
+([`patch_elements`](@ref), [`patch_signals`](@ref),
+[`execute_script`](@ref), [`navigate`](@ref)) follow the same trust
+model as the other helpers, with these boundaries:
 
 - `elements` HTML is rendered through [`render`](@ref), so text and
   attribute values are escape-walked — same guarantees as
@@ -156,6 +158,13 @@ trust model as the other helpers, with two boundaries:
   `ArgumentError` at event-build time (so the mistake surfaces at the
   call site), and [`sse_response`](@ref) re-checks as defense-in-depth
   for a directly-constructed event.
+- `execute_script` code runs as written: treat it like
+  [`script_response`](@ref) and JSON-encode any value spliced in. Only
+  `</` and `<!--` are escaped, so the code cannot close its `<script>`
+  tag; the escape reads the same only inside a JS string, so keep those
+  sequences in strings. [`navigate`](@ref) escapes its URL as a single-quoted JS string, like
+  a [`DSAction`](@ref) URL, but a `javascript:` URL still runs as code, so
+  never build it from user input.
 
 `patch_signals` JSON-encodes its argument; `JSON.json` escapes
 embedded newlines, so signals are safe to round-trip.
@@ -175,7 +184,7 @@ JS literal with the same JS-string escape as [`DSAction`](@ref)
 (backslash, single quote, `</`, `<!--`, and the four line terminators
 LF/CR/U+2028/U+2029).
 
-## MapLibre `map_view` and `marker`
+## MapLibre `map_view`, `marker`, `markers` and `draw_options`
 
 `map_view` emits an inline `<script>` built from its arguments as JSON
 or single-quoted JS strings, then rewrites every `</` in it to `<\/` and
@@ -185,6 +194,11 @@ stores `HyperSignal.render(popup)` in `data-popup`, and the map script
 passes it to MapLibre's `setHTML`, which parses raw HTML: the popup is
 safe because `render` escaped it.
 A `Raw` popup reaches `setHTML` unescaped.
+
+`draw_options(properties=…)` is a Datastar expression and runs as
+written, like a string passed to `on(...)`. Its `features` reach the
+script as JSON under the same `</` and `<!--` rewrite, and `change_post`
+goes through [`ds_post`](@ref)'s escape.
 
 ## Reporting a security issue
 
