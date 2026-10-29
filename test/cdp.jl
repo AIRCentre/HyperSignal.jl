@@ -123,9 +123,11 @@ function with_page(f, browser::Browser, routes::AbstractDict)
     srv = quiet(() -> HTTP.serve!(handler, "127.0.0.1", 0))
     try
         port = bound_port(srv)
-        # A pooled keep-alive connection can be stale when the WebSocket opens.
+        # HTTP 1 pools this connection and the WebSocket reuses it; the pool's idle
+        # monitor then closes it under the WebSocket's final flush.
+        nopool = pkgversion(HTTP) < v"2" ? (; closeimmediately=true) : (;)
         tab = JSON.parse(String(HTTP.request("PUT",
-            "http://127.0.0.1:$(browser.port)/json/new?about:blank", ["Connection" => "close"]).body))
+            "http://127.0.0.1:$(browser.port)/json/new?about:blank"; nopool...).body))
         try
             opened = false
             function session(ws)
@@ -154,8 +156,8 @@ function with_page(f, browser::Browser, routes::AbstractDict)
                 end
             end
         finally
-            HTTP.request("GET", "http://127.0.0.1:$(browser.port)/json/close/$(tab["id"])", ["Connection" => "close"];
-                         status_exception=false)
+            HTTP.request("GET", "http://127.0.0.1:$(browser.port)/json/close/$(tab["id"])";
+                         status_exception=false, nopool...)
         end
     finally
         quiet(() -> close(srv))
