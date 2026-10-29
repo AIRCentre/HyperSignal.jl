@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. Format roughly
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.5.2 — 2026-10-27
+## 0.5.2 — 2026-10-29
 
 ### Added
 - `on_keys(chord => action, …)` binds keyboard shortcuts in one
