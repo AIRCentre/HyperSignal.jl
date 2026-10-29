@@ -703,9 +703,9 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         end
     end
 
-    @testset "the count_estimate_fragment migration produces equivalent HTML" begin
-        # Why: drop-in migration of validation_studio's smallest real fragment must be
-        # byte-stable for clients caching fragments.
+    @testset "a fragment ported from a string template renders byte-identical" begin
+        # Why: a port from string templates must emit the same bytes, or clients
+        # caching fragments see a change.
         format_number(n::Int) = string(n)
         n = 122_000
         legacy = string(
@@ -940,7 +940,7 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         # Why: the lib ships AST primitives + Frag(DOCTYPE, …), not a page_layout
         # helper, so a full page must compose from primitives alone.
         nav_html = nav(
-            ul(li(class="secondary", strong(class="nav-title", "Validation Studio"))),
+            ul(li(class="secondary", strong(class="nav-title", "Example App"))),
             ul(
                 li(a(href="/dashboard", "Dashboard")),
                 li(button(type="button", on_click(ds_post("/logout")), "Log out")),
@@ -952,7 +952,7 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
                 head(
                     meta(charset="UTF-8"),
                     meta(name="viewport", content="width=device-width, initial-scale=1.0"),
-                    title("Dashboard — Validation Studio"),
+                    title("Dashboard — Example App"),
                     link(rel="stylesheet", href="/static/style.css"),
                     script(type="module", src="/static/js/datastar.js"),
                 ),
@@ -965,7 +965,7 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
         )
         out = render(page)
         @test startswith(out, "<!DOCTYPE html><html lang=\"en\">")
-        @test occursin("<title>Dashboard — Validation Studio</title>", out)
+        @test occursin("<title>Dashboard — Example App</title>", out)
         @test occursin("<link rel=\"stylesheet\" href=\"/static/style.css\">", out)
         @test occursin("<script type=\"module\" src=\"/static/js/datastar.js\"></script>", out)
         @test occursin("<nav>", out)
@@ -1200,7 +1200,7 @@ using HyperSignal.Helpers: radio_field, checkbox_field, text_field,
     end
 
     @testset "signal_dialog wires open/close to a Datastar expression" begin
-        # Why: every validation_studio modal re-rolls same three bindings (data-effect
+        # Why: every modal re-rolls the same three bindings (data-effect
         # for showModal/close, close-event sync, backdrop-click dismiss); signal_dialog
         # bakes them in.
         out = render(signal_dialog("\$modal",

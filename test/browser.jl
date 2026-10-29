@@ -443,20 +443,20 @@ end
 @testset "browser: patching an M.markers container replaces its map markers; loose markers stay" begin
     # Why: Marker moves its element into the map, so only a rebuild from the
     # container shows what a morph changed.
-    crests(labels...; lat=38.0) = MapLibre.markers(
-        (MapLibre.marker(span(class="crest", l); lat=lat + i / 10, lon=-9.0) for (i, l) in enumerate(labels))...;
-        id="crests")
+    pins(labels...; lat=38.0) = MapLibre.markers(
+        (MapLibre.marker(span(class="pin", l); lat=lat + i / 10, lon=-9.0) for (i, l) in enumerate(labels))...;
+        id="pins")
     page_html = _browser_page(Frag(
         MapLibre.map_view(; style="/style.json", center=(-9.0, 38.0), zoom=8),
         MapLibre.marker(span(class="loose", "L"); lat=38.0, lon=-9.2),
-        crests("A", "B"),
+        pins("A", "B"),
         button(id="patch", on_click(ds_get("/patch")), "patch"),
         button(id="move", on_click(ds_get("/move")), "move"),
         button(id="remove", on_click(ds_get("/remove")), "remove")))
     routes = _routes("/" => page_html,
-                     "/patch" => _ -> sse_response([patch_elements(crests("Z"))]),
-                     "/move" => _ -> sse_response([patch_elements(crests("Z"; lat=38.2))]),
-                     "/remove" => _ -> sse_response([patch_elements(""; selector="#crests", mode=:remove)]))
+                     "/patch" => _ -> sse_response([patch_elements(pins("Z"))]),
+                     "/move" => _ -> sse_response([patch_elements(pins("Z"; lat=38.2))]),
+                     "/remove" => _ -> sse_response([patch_elements(""; selector="#pins", mode=:remove)]))
     labels(page) = CDP.js(page, "Array.from(document.querySelectorAll('.maplibregl-marker')).map(function (m) { return m.textContent }).sort()")
     CDP.with_page(BROWSER[], routes) do page, base
         CDP.goto(page, base * "/"); _wait_map(page)
@@ -465,28 +465,28 @@ end
         CDP.js(page, "document.getElementById('patch').click()")
         CDP.wait_js(page, "document.querySelectorAll('.maplibregl-marker').length === 2")
         @test labels(page) == ["L", "Z"]
-        @test CDP.js(page, "document.getElementById('crests').hidden") == true
+        @test CDP.js(page, "document.getElementById('pins').hidden") == true
         # Why: MapLibre rewrites each marker's style on every pan frame; a rebuild
         # per frame would thrash the DOM.
-        CDP.js(page, "window.__z = document.querySelector('.maplibregl-marker .crest')")
+        CDP.js(page, "window.__z = document.querySelector('.maplibregl-marker .pin')")
         CDP.js(page, "$(_h()).panBy([40, 0], {duration: 0}), 0"); sleep(0.3)
-        @test CDP.js(page, "document.querySelector('.maplibregl-marker .crest') === window.__z")
+        @test CDP.js(page, "document.querySelector('.maplibregl-marker .pin') === window.__z")
         # Why: a patch that only changes data-lat must still move the marker.
-        top() = CDP.js(page, "document.querySelector('.maplibregl-marker .crest').closest('.maplibregl-marker').getBoundingClientRect().top")
+        top() = CDP.js(page, "document.querySelector('.maplibregl-marker .pin').closest('.maplibregl-marker').getBoundingClientRect().top")
         want = _map(page, "project([-9.0, 38.3]).y") - _map(page, "project([-9.0, 38.1]).y")
         before = top()
         CDP.js(page, "document.getElementById('move').click()")
         CDP.wait_for(() -> top() < before - 1; what="the moved marker")
         @test top() - before ≈ want atol = 1
         # Why: a patch may change only an attribute such as title or style.
-        CDP.js(page, "document.querySelector('#crests .crest').setAttribute('title', 't1'), 0")
-        CDP.wait_js(page, "!!document.querySelector('.maplibregl-marker .crest[title=t1]')")
+        CDP.js(page, "document.querySelector('#pins .pin').setAttribute('title', 't1'), 0")
+        CDP.wait_js(page, "!!document.querySelector('.maplibregl-marker .pin[title=t1]')")
         # Why: a morph that changes only a marker's text edits the text node in place.
-        CDP.js(page, "document.querySelector('#crests .crest').firstChild.data = 'Q', 0")
+        CDP.js(page, "document.querySelector('#pins .pin').firstChild.data = 'Q', 0")
         CDP.wait_for(() -> labels(page) == ["L", "Q"]; what="the relabelled marker")
         # Why: a removed container's markers would otherwise stay on the map.
         CDP.js(page, "document.getElementById('remove').click()")
-        CDP.wait_js(page, "!document.getElementById('crests')")
+        CDP.wait_js(page, "!document.getElementById('pins')")
         CDP.wait_js(page, "document.querySelectorAll('.maplibregl-marker').length === 1")
         @test labels(page) == ["L"]
     end
@@ -496,11 +496,11 @@ end
     # Why: a container selector without the prefix would show every map's markers
     # on each map; ids like "constructor" must not hit Object.prototype.
     mview(prefix) = MapLibre.map_view(; id_prefix=prefix, style="/style.json", center=(-9.0, 38.0), zoom=8)
-    crest(prefix, label) = MapLibre.markers(MapLibre.marker(span(label); lat=38.0, lon=-9.0, id_prefix=prefix);
+    pin(prefix, label) = MapLibre.markers(MapLibre.marker(span(label); lat=38.0, lon=-9.0, id_prefix=prefix);
                                             id=prefix == "a_" ? "constructor" : "toString", id_prefix=prefix)
     page_html = _browser_page(Frag(
         HyperSignal.style("#a_root,#b_root{width:400px;height:300px}"),
-        mview("a_"), mview("b_"), crest("a_", "A"), crest("b_", "B")))
+        mview("a_"), mview("b_"), pin("a_", "A"), pin("b_", "B")))
     CDP.with_page(BROWSER[], _routes("/" => page_html)) do page, base
         CDP.goto(page, base * "/")
         _wait_maps(page, "a_", "b_")
@@ -583,7 +583,7 @@ end
     # Why: a morph that replaces the map root never fires 'remove', so the
     # marker observer and the draw pointerup listener would keep running on a
     # dead map, and its WebGL context would stay allocated.
-    crests(label) = MapLibre.markers(MapLibre.marker(span(label); lat=38.0, lon=-9.0); id="crests")
+    pins(label) = MapLibre.markers(MapLibre.marker(span(label); lat=38.0, lon=-9.0); id="pins")
     # The draw pointerup listener, told apart by its source text.
     function draw_listeners(page)
         win = CDP.call(page, "Runtime.evaluate", Dict("expression" => "window", "objectGroup" => "listeners"))["result"]["objectId"]
@@ -592,20 +592,20 @@ end
     end
     for (view, drawing) in ((MapLibre.map_view(; style="/style.json", center=(-9.0, 38.0), zoom=8), false),
                             (_draw_view(), true))
-        CDP.with_page(BROWSER[], _routes("/" => _browser_page(Frag(view, crests("A"))))) do page, base
+        CDP.with_page(BROWSER[], _routes("/" => _browser_page(Frag(view, pins("A"))))) do page, base
             CDP.goto(page, base * "/"); _wait_map(page)
             CDP.wait_js(page, "document.querySelectorAll('.maplibregl-marker').length === 1")
             CDP.js(page, "window.__gone = false; $(_h()).on('remove', function () { window.__gone = true }); " *
                          "window.__adds = 0; const add = maplibregl.Marker.prototype.addTo; " *
                          "maplibregl.Marker.prototype.addTo = function () { window.__adds++; return add.apply(this, arguments) }; 0")
-            CDP.js(page, "document.querySelector('#crests span').firstChild.data = 'B', 0")
+            CDP.js(page, "document.querySelector('#pins span').firstChild.data = 'B', 0")
             CDP.wait_js(page, "window.__adds === 1")
             drawing && _wait_draw(page)
             @test draw_listeners(page) == drawing
             CDP.js(page, "document.getElementById('map_root').remove(), 0")
             sleep(0.3)
             @test CDP.js(page, "window.__gone") == true
-            CDP.js(page, "document.querySelector('#crests span').firstChild.data = 'C', 0")
+            CDP.js(page, "document.querySelector('#pins span').firstChild.data = 'C', 0")
             sleep(0.3)
             @test CDP.js(page, "window.__adds") == 1
             @test draw_listeners(page) == 0
@@ -665,17 +665,17 @@ end
 @testset "browser: a page change outside any markers container rebuilds no markers" begin
     # Why: every childList change would otherwise re-read each container's HTML.
     page_html = _browser_page(Frag(MapLibre.map_view(; style="/style.json", center=(-9.0, 38.0), zoom=8),
-        MapLibre.markers(MapLibre.marker(span("C"); lat=38.0, lon=-9.0); id="crests")))
+        MapLibre.markers(MapLibre.marker(span("C"); lat=38.0, lon=-9.0); id="pins")))
     CDP.with_page(BROWSER[], _routes("/" => page_html)) do page, base
         CDP.goto(page, base * "/"); _wait_map(page)
         CDP.wait_js(page, "document.querySelectorAll('.maplibregl-marker').length === 1")
         CDP.js(page, "window.__reads = 0; const d = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML'); " *
-                     "Object.defineProperty(document.getElementById('crests'), 'innerHTML', " *
+                     "Object.defineProperty(document.getElementById('pins'), 'innerHTML', " *
                      "{get: function () { window.__reads++; return d.get.call(this) }}); " *
                      "document.body.appendChild(document.createElement('p')), 0")
         sleep(0.3)
         @test CDP.js(page, "window.__reads") == 0
-        CDP.js(page, "document.getElementById('crests').appendChild(document.createElement('i')), 0")
+        CDP.js(page, "document.getElementById('pins').appendChild(document.createElement('i')), 0")
         CDP.wait_js(page, "window.__reads > 0")
     end
 end
@@ -704,13 +704,13 @@ end
     good(l) = MapLibre.marker(span(l); lat=38.0, lon=-9.0)
     page_html = _browser_page(Frag(
         MapLibre.map_view(; style="/style.json", center=(-9.0, 38.0), zoom=8),
-        bad, good("L"), MapLibre.markers(bad, good("C"); id="crests")))
+        bad, good("L"), MapLibre.markers(bad, good("C"); id="pins")))
     labels(page) = CDP.js(page, "Array.from(document.querySelectorAll('#map_root .maplibregl-marker')).map(function (m) { return m.textContent }).sort()")
     CDP.with_page(BROWSER[], _routes("/" => page_html)) do page, base
         CDP.goto(page, base * "/"); _wait_map(page)
         CDP.wait_for(() -> labels(page) == ["C", "L"]; what="the valid markers")
         @test labels(page) == ["C", "L"]
-        CDP.js(page, "document.querySelector('#crests [data-lat=\"95\"]').dataset.lat = '38.1', 0")
+        CDP.js(page, "document.querySelector('#pins [data-lat=\"95\"]').dataset.lat = '38.1', 0")
         CDP.wait_for(() -> labels(page) == ["C", "L", "X"]; what="the fixed marker")
         @test labels(page) == ["C", "L", "X"]
     end
@@ -851,7 +851,7 @@ end
         MapLibre.map_view(; style="/style.json", center=(-9.0, 38.0), zoom=8),
         MapLibre.marker(span(class="loose", "L"); lat=38.0, lon=-9.3, popup=strong("loose pop")),
         MapLibre.markers(MapLibre.marker(span(class="kept", "K"); lat=38.0, lon=-8.7, popup=strong("kept pop"));
-                         id="crests")))
+                         id="pins")))
     popup(page) = CDP.js(page, "(document.querySelector('.maplibregl-popup') || {}).textContent || ''")
     CDP.with_page(BROWSER[], _routes("/" => page_html)) do page, base
         CDP.goto(page, base * "/"); _wait_map(page)

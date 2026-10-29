@@ -66,7 +66,7 @@ using HyperSignal
 HyperSignal.@using_tags
 
 page = html(lang="en",
-    head(title("Validation Studio")),
+    head(title("Sessions")),
     body(
         article(class="card",
             h2("Start a session"),

@@ -1126,8 +1126,8 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
             # map shows copies of its children.
             out = HyperSignal.render(MapLibre.markers(
                 MapLibre.marker("A"; lat=1, lon=2, id_prefix="m_");
-                id="crests", id_prefix="m_"))
-            @test startswith(out, "<div id=\"crests\" hidden data-hs-markers=\"m_\"><div data-hs-marker=\"m_\"")
+                id="pins", id_prefix="m_"))
+            @test startswith(out, "<div id=\"pins\" hidden data-hs-markers=\"m_\"><div data-hs-marker=\"m_\"")
         end
     end
 end

@@ -144,10 +144,10 @@ must be in the page when the map loads; render it empty if it starts with
 no markers:
 
 ```julia
-crests(sets) = M.markers((M.marker(span(class="crest", "A"); lat, lon)
-                          for (lat, lon) in sets)...; id="crests")
+pins(points) = M.markers((M.marker(span(class="pin", "A"); lat, lon)
+                         for (lat, lon) in points)...; id="pins")
 # in a handler
-sse_response([patch_elements(crests(new_sets))])
+sse_response([patch_elements(pins(new_points))])
 ```
 
 ## Sources
