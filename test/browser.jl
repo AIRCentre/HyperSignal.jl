@@ -5,7 +5,9 @@ const _ASSETS = joinpath(@__DIR__, "..", "docs", "src", "notebooks", "assets")
 _js_asset(path...) = ("text/javascript", read(joinpath(path...), String))
 
 const _BROWSER_ROUTES = Dict{String, Any}(
-    "/maplibre.js" => _js_asset(_ASSETS, "maplibre", "maplibre-gl.js"),
+    # MapLibre loads its worker from `maplibre-gl-worker.mjs` next to the module.
+    "/maplibre-gl.mjs" => _js_asset(_ASSETS, "maplibre", "maplibre-gl.mjs"),
+    "/maplibre-gl-worker.mjs" => _js_asset(_ASSETS, "maplibre", "maplibre-gl-worker.mjs"),
     "/maplibre.css" => ("text/css", read(joinpath(_ASSETS, "maplibre", "maplibre-gl.css"), String)),
     "/datastar.js" => _js_asset(_ASSETS, "datastar.js"),
     "/terra-draw.js" => _js_asset(@__DIR__, "assets", "terra-draw", "terra-draw.js"),
@@ -18,8 +20,8 @@ function _browser_page(content; signals=(;))
     HyperSignal.render(Frag(DOCTYPE, html(
         head(meta(charset="utf-8"),
              link(rel="stylesheet", href="/maplibre.css"),
-             script(src="/maplibre.js"), script(src="/terra-draw.js"),
-             script(src="/terra-draw-adapter.js"),
+             script(src="/terra-draw.js"), script(src="/terra-draw-adapter.js"),
+             MapLibre.maplibre_script("/maplibre-gl.mjs"),
              script(type="module", src="/datastar.js"),
              style("body{margin:0}#map_root{width:800px;height:600px}")),
         body(ds_signals(signals), content,
@@ -248,8 +250,9 @@ end
         _wait_signals(page, s -> length(s["draw"]["features"]) == 1)
         prop(k) = _map(page, "querySourceFeatures('td-linestring').map(function(f){return f.properties.$k;})")
         CDP.wait_for(() -> !isempty(prop("lineStringDash")); what="the seed line on the map")
-        # The adapter stores the dash in line widths (3.5 px), as a JSON string.
-        @test all(d -> JSON.parse(d) ≈ [4, 2] ./ 3.5, prop("lineStringDash"))
+        # The adapter stores the dash in line widths (3.5 px). MapLibre 5 returned
+        # array properties as JSON strings; 6 returns arrays.
+        @test all(d -> d ≈ [4, 2] ./ 3.5, prop("lineStringDash"))
         p = _map(page, "project([-9.0, 38.0])")
         CDP.click(page, round(Int, p["x"]), round(Int, p["y"])); sleep(0.4)
         @test length(_signals(page)["draw"]["selected"]) == 1
@@ -611,6 +614,28 @@ end
             @test draw_listeners(page) == 0
             drawing && @test CDP.js(page, "$(_dh("map_")) === undefined")
         end
+    end
+end
+
+@testset "browser: drawing works when Datastar starts before MapLibre loads" begin
+    # Why: Datastar starts first, so the draw effect finds no handle and won't
+    # rerun. `ready` must deliver the stamp, and data-init must not throw.
+    page_html = _browser_page(Frag(_draw_view(; properties=ds"{set: $active}"),
+        # Records whether Datastar applied attributes before MapLibre loaded.
+        div(ds_init("window.__ds_before_ml = !window.maplibregl")),
+        # Datastar reports a throwing expression through console.error.
+        script("window.__errs = []; const ce = console.error; " *
+               "console.error = function () { window.__errs.push(String(arguments[0])); ce.apply(console, arguments) }"));
+        signals=(active=3,))
+    # Holding the module back makes Datastar start first, every run.
+    slow_ml = _ -> (sleep(1.5); HTTP.Response(200, ["Content-Type" => "text/javascript"],
+                                               last(_BROWSER_ROUTES["/maplibre-gl.mjs"])))
+    dh = _dh("map_")
+    CDP.with_page(BROWSER[], _routes("/" => page_html, "/maplibre-gl.mjs" => slow_ml)) do page, base
+        CDP.goto(page, base * "/"); _wait_map(page); _wait_draw(page)
+        @test CDP.js(page, "window.__ds_before_ml") === true
+        @test CDP.js(page, "$dh.state().props") == Dict("set" => 3)
+        @test CDP.js(page, "window.__errs") == []
     end
 end
 

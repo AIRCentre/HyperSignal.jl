@@ -4,7 +4,7 @@
 The Datastar protocol/client version HyperSignal is built and tested against.
 Pin your served `datastar.js` to this version; bumps land as one visible diff.
 """
-const DATASTAR_SUPPORTED_VERSION = v"1.0.4"
+const DATASTAR_SUPPORTED_VERSION = v"1.0.5"
 
 """
     DSAction(verb, url, form, extras)

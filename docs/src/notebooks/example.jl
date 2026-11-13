@@ -240,7 +240,7 @@ end
 md"""
 ## Local HTTP server
 
-`GET /maplibre-gl.{js,css}` and `GET /datastar.js` ship the vendored
+`GET /maplibre-gl{.mjs,-worker.mjs,.css}` and `GET /datastar.js` ship the vendored
 runtimes. `POST /cells` recolors the polygons (`set_source_data`).
 `POST /series` redraws the timeseries for the dragged bbox and echoes the
 box back into `$bbox` so the smoothing slider can reuse it. `POST /click`
@@ -253,7 +253,8 @@ Pluto.
 begin
     const ASSET_DIR = joinpath(@__DIR__, "assets")
     const DATASTAR_JS = read(joinpath(ASSET_DIR, "datastar.js"), String)
-    const MAPLIBRE_JS = read(joinpath(ASSET_DIR, "maplibre", "maplibre-gl.js"), String)
+    const MAPLIBRE_MJS = read(joinpath(ASSET_DIR, "maplibre", "maplibre-gl.mjs"), String)
+    const MAPLIBRE_WORKER_MJS = read(joinpath(ASSET_DIR, "maplibre", "maplibre-gl-worker.mjs"), String)
     const MAPLIBRE_CSS = read(joinpath(ASSET_DIR, "maplibre", "maplibre-gl.css"), String)
 end
 
@@ -330,9 +331,13 @@ function build_router()
     HTTP.register!(r, "GET", "/datastar.js", _ ->
         HTTP.Response(200, ["Content-Type" => "application/javascript; charset=utf-8",
                             CORS_HEADERS...], DATASTAR_JS))
-    HTTP.register!(r, "GET", "/maplibre-gl.js", _ ->
-        HTTP.Response(200, ["Content-Type" => "application/javascript; charset=utf-8",
-                            CORS_HEADERS...], MAPLIBRE_JS))
+    # MapLibre resolves its worker as `maplibre-gl-worker.mjs` next to the module.
+    for (path, body) in ("/maplibre-gl.mjs" => MAPLIBRE_MJS,
+                         "/maplibre-gl-worker.mjs" => MAPLIBRE_WORKER_MJS)
+        HTTP.register!(r, "GET", path, _ ->
+            HTTP.Response(200, ["Content-Type" => "application/javascript; charset=utf-8",
+                                CORS_HEADERS...], body))
+    end
     HTTP.register!(r, "GET", "/maplibre-gl.css", _ ->
         HTTP.Response(200, ["Content-Type" => "text/css; charset=utf-8",
                             CORS_HEADERS...], MAPLIBRE_CSS))
@@ -417,9 +422,8 @@ signals so the moveend echo can't feed back into a flyTo loop.
 
 # ╔═╡ 00000001-0000-0000-0000-000000000091
 Frag(
-    # Vendored MapLibre, served by our own HTTP route. Classic script so
-    # `maplibregl` is a global by the time map_view's init script runs.
-    script(src="$(BASE_URL)/maplibre-gl.js"),
+    # Vendored MapLibre (ES module), served by our own HTTP route.
+    M.maplibre_script("$(BASE_URL)/maplibre-gl.mjs"),
     link(rel="stylesheet", href="$(BASE_URL)/maplibre-gl.css"),
     script(src="$(BASE_URL)/datastar.js", type="module"),
     style("""
