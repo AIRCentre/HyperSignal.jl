@@ -194,10 +194,40 @@ const _MAPS_TABLE = "__hs_maps"
 const _DRAW_TABLE = "__hs_draw"
 const _DRAW_SIGNALS_TABLE = "__hs_draw_signals"
 const _WATCH_SET = "__hs_watch"
+const _WAIT_TABLE = "__hs_wait"
+# Outside the `hs-<prefix><name>` map events, so no id_prefix can collide with it.
+const _READY_EVENT = "hs:maplibre-ready"
+
+"""
+    maplibre_script(src)
+
+`<script>` that imports MapLibre GL JS 6.x from `src` (the URL of
+`maplibre-gl.mjs`), sets `window.maplibregl` and fires `hs:maplibre-ready`.
+A `map_view` script that runs earlier builds its map on that event.
+
+A dynamic `import()`, not a static one: Pluto runs inline scripts as
+function bodies, where a static `import` is a SyntaxError.
+
+MapLibre loads its worker from `maplibre-gl-worker.mjs` next to `src`: serve
+both from one directory, as JavaScript.
+"""
+function maplibre_script(src::AbstractString)
+    s = JSON.json(src)
+    HyperSignal.script(HyperSignal.Raw(HyperSignal._script_safe(
+        "import($s).then(function(m){window.maplibregl=m;" *
+        "window.dispatchEvent(new Event($(JSON.json(_READY_EVENT))));}," *
+        "function(e){console.error('maplibre_script: cannot load '+$s,e);});")))
+end
 
 # per-prefix handle keeps multiple maps on one page apart
 _handle(prefix, table=_MAPS_TABLE) = "window.$table['$(HyperSignal._js_str_escape(prefix))']"
+# `undefined` until the map script creates the table; for Datastar expressions,
+# which may run first.
+_handle_or_undef(prefix, table) = "(window.$table || {})['$(HyperSignal._js_str_escape(prefix))']"
 _event_name(id_prefix, name) = "hs-$(id_prefix)$name"
+# Runs the init script's current text: replacing the element makes the browser
+# run it, and a morph may have changed the text without running it.
+_rerun_js(s) = "const n=document.createElement('script');n.id=$s.id;n.nonce=$s.nonce;n.textContent=$s.textContent;$s.replaceWith(n);"
 
 function map_call(method::Symbol, args...; id_prefix::AbstractString)
     encoded = join((JSON.json(a) for a in args), ",")
@@ -417,6 +447,20 @@ function _init_js(; id_prefix, center, zoom, bounds, fit_padding, style,
 
     io = IOBuffer()
     print(io, "(function _hsinit(){")
+    # MapLibre 6 is an ES module that loads asynchronously, so this script can
+    # run first. One waiter per prefix reruns the script's current text on
+    # `hs:maplibre-ready`: runs before then may come from a patch with new
+    # options, and the root may be gone by then.
+    init_id = JSON.json(id_prefix * "init")
+    wt = "window.$_WAIT_TABLE"
+    pk = JSON.json(id_prefix)
+    print(io, "if(!window.maplibregl){$wt=$wt||Object.create(null);if(!$wt[$pk]){$wt[$pk]=true;",
+          "window.addEventListener($(JSON.json(_READY_EVENT)),function(){delete $wt[$pk];",
+          "const s=document.getElementById($init_id);if(s){$(_rerun_js("s"))}},{once:true});",
+          # A failed load would otherwise leave the map blank with no error.
+          "setTimeout(function(){if($wt[$pk])console.warn($(JSON.json("map_view $(id_prefix): window.maplibregl not set after 10 s; is maplibre_script on the page and maplibre-gl.mjs reachable?")));},10000);}",
+          "return;}")
+    print(io, "if(!document.getElementById($(JSON.json(container))))return;")
     # Keyed by id_prefix, which may be "constructor" or "toString".
     print(io, "window.$_MAPS_TABLE=window.$_MAPS_TABLE||Object.create(null);")
     # Datastar runs a patched script, which the browser may also run: a live
@@ -441,7 +485,7 @@ function _init_js(; id_prefix, center, zoom, bounds, fit_padding, style,
           ".observe(document.body,{childList:true,subtree:true});}")
     print(io, "const _orph=function(){if(!_m.getContainer().isConnected)_m.remove();",
           "else if(!_m.getCanvasContainer().isConnected){const s=document.getElementById($(JSON.json(id_prefix * "init")));",
-          "if(!s)return _hsinit();const n=document.createElement('script');n.id=s.id;n.nonce=s.nonce;n.textContent=s.textContent;s.replaceWith(n);}};")
+          "if(!s)return _hsinit();$(_rerun_js("s"))}};")
     print(io, "$w.add(_orph);")
     print(io, "_m.on('remove',function(){$w.delete(_orph);if($handle===_m)delete $handle;});")
     # dragRotate=false leaves touch and keyboard rotation on.
@@ -579,6 +623,9 @@ function _init_js(; id_prefix, center, zoom, bounds, fit_padding, style,
               "document.removeEventListener('mouseup',_bmu);});")
     end
 
+    # Last, once every handle exists. Datastar may have started before this
+    # script ran; the root's `ready` handlers catch up then.
+    _dispatch(io, "ready", "null")
     print(io, "})();")
     String(take!(io))
 end
@@ -756,13 +803,16 @@ function _draw_attrs!(attrs, on, id_prefix, d::DrawOptions)
     on("draw_features", "$ref.features = evt.detail.features; $ref.rejected = evt.detail.rejected")
     d.change_post === nothing ||
         on("draw_change", ds"$(HyperSignal.ds_post(d.change_post))")
-    h = _draw_handle(id_prefix)
+    h = _handle_or_undef(id_prefix, _DRAW_TABLE)
     # Signals are read before the handle: an effect that throws first
     # subscribes to nothing and never runs again.
     body = ["const m = $ref.mode", "const d = $h", "if (d) d.mode(m)"]
     d.properties === nothing || push!(body, "const p = $(d.properties)", "if (d) d.props(p)")
     eff = HyperSignal.ds_effect("try { $(join(body, "; ")) } catch (e) { console.error(e) }")
-    init = HyperSignal.ds_init("$h.sync()")
+    # Before the map script runs, the effect finds no handle and won't rerun
+    # until a signal changes; `ready` repeats it once the handle exists.
+    on("ready", "try { $(join(body, "; ")); if (d) d.sync() } catch (e) { console.error(e) }")
+    init = HyperSignal.ds_init("const d = $h; if (d) d.sync()")
     push!(attrs, eff.key => eff.value, init.key => init.value)
 end
 

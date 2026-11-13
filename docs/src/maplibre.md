@@ -21,11 +21,22 @@ const M = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
 # now M.map_view, M.fill_layer, M.geojson_source, … are available
 ```
 
-You also need the MapLibre GL JS/CSS on the page — HyperSignal vendors a
-pinned `maplibre-gl` bundle under
-`docs/src/notebooks/assets/maplibre/`; serve those two files and link
-them in your `<head>`. A map with [`draw`](#Drawing-—-draw) also needs the
-Terra Draw scripts, loaded after MapLibre.
+You also need MapLibre GL JS 6.x on the page. HyperSignal vendors a pinned
+copy under `docs/src/notebooks/assets/maplibre/`. Serve `maplibre-gl.mjs`
+and `maplibre-gl-worker.mjs` from one directory (MapLibre loads its worker
+next to the module), plus `maplibre-gl.css`. MapLibre 6 ships only ES
+modules; load it with `M.maplibre_script`, in any order relative to
+`datastar.js`:
+
+```julia
+head(link(rel="stylesheet", href="/maplibre-gl.css"),
+     M.maplibre_script("/maplibre-gl.mjs"),
+     script(type="module", src="/datastar.js"))
+```
+
+A page that loads MapLibre another way, such as a bundle, must set
+`window.maplibregl` and then dispatch `hs:maplibre-ready` on `window`. A map with [`draw`](#Drawing-—-draw) also needs the
+Terra Draw scripts.
 
 ## A map on the page — `map_view`
 
@@ -114,6 +125,12 @@ expression lives — a `$signal = evt.detail` assignment for the viewport
 / cursor / loading / `$draw` signals, `$payload = evt.detail; @post('…')` for the click
 / bbox posts, or a bare `@post('…')` for `change_post`, which sends the updated `$draw`. `@post` and `$signal` stay in attribute context (the only
 place Datastar parses them), so the script body stays plain JS.
+
+The script ends by dispatching `hs-<prefix>ready`, once
+`window.__hs_maps[prefix]` exists. Datastar can start before the map
+script runs (MapLibre 6 loads as a module), so a `data-effect` that reads
+the handle can find nothing and won't rerun. Repeat it in
+`data-on:hs-<prefix>ready__window`, as `map_view` does for `draw`.
 
 ## Markers — `marker`
 

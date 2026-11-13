@@ -10,15 +10,19 @@ vendor; per #29 we ship the library here and fetch the basemap live.)
 
 ## Version
 
-`maplibre-gl@5.24.0` — 3-Clause BSD.
+`maplibre-gl@6.18.0` — 3-Clause BSD.
 
 ## Files & source URLs
 
-| File              | Source                                                          |
-|-------------------|-----------------------------------------------------------------|
-| `maplibre-gl.js`  | https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js        |
-| `maplibre-gl.css` | https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css       |
-| `LICENSE.txt`     | https://unpkg.com/maplibre-gl@5.24.0/LICENSE.txt                |
+| File                     | Source                                                           |
+|--------------------------|------------------------------------------------------------------|
+| `maplibre-gl.mjs`        | https://unpkg.com/maplibre-gl@6.18.0/dist/maplibre-gl.mjs        |
+| `maplibre-gl-worker.mjs` | https://unpkg.com/maplibre-gl@6.18.0/dist/maplibre-gl-worker.mjs |
+| `maplibre-gl.css`        | https://unpkg.com/maplibre-gl@6.18.0/dist/maplibre-gl.css        |
+| `LICENSE.txt`            | https://unpkg.com/maplibre-gl@6.18.0/LICENSE.txt                 |
+
+6.x ships only ES modules. `maplibre-gl.mjs` loads `maplibre-gl-worker.mjs`
+from its own directory, so serve both side by side.
 
 `LICENSE.txt` is the MapLibre BSD-3 text, redistributed as the license
 requires.
@@ -26,12 +30,13 @@ requires.
 ## Refreshing
 
 ```bash
-V=5.24.0
+V=6.18.0
 cd docs/src/notebooks/assets/maplibre
-for f in dist/maplibre-gl.js dist/maplibre-gl.css LICENSE.txt; do
+for f in dist/maplibre-gl.mjs dist/maplibre-gl-worker.mjs dist/maplibre-gl.css LICENSE.txt; do
   curl -sS "https://unpkg.com/maplibre-gl@$V/$f" -o "$(basename "$f")"
 done
+# Source maps are not vendored; drop the links so devtools don't 404.
+sed -i '/^\/\/# sourceMappingURL=/d' maplibre-gl.mjs maplibre-gl-worker.mjs
 ```
 
-Then bump the version references above and the `<script>`/`<link>` tags in
-the demo notebooks.
+Then bump the version references above.

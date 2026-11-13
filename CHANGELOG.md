@@ -3,6 +3,24 @@
 All notable changes to this project are documented here. Format roughly
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Added
+- MapLibre extension: `maplibre_script(src)` loads MapLibre GL JS 6.x and sets
+  `window.maplibregl`.
+- MapLibre extension: each map dispatches `hs-<id_prefix>ready` once its
+  handle exists.
+
+### Changed
+- MapLibre extension: tested against `maplibre-gl@6.18.0` (was 5.24.0), which
+  fixes the image-source GPU texture leak (#68). Breaking for pages: 6.x has
+  no UMD `maplibre-gl.js` and needs WebGL2. Serve `maplibre-gl.mjs` and
+  `maplibre-gl-worker.mjs` from one directory and load them with
+  `maplibre_script`. `map_view` and `draw` work in any script order.
+- `DATASTAR_SUPPORTED_VERSION` is now `v"1.0.5"` (was `v"1.0.4"`), and the
+  vendored bundle in `docs/src/notebooks/assets/` matches it. Attributes, SSE
+  events and headers are unchanged.
+
 ## 0.5.2 — 2026-10-29
 
 ### Added

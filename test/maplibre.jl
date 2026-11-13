@@ -772,6 +772,35 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
             @test occursin("window.__hs_maps=window.__hs_maps||Object.create(null)", js)
         end
 
+        @testset "init waits for maplibre_script when the module has not run yet" begin
+            # Why: MapLibre 6 is a module and can load after this inline script.
+            gate = "if(!window.maplibregl){window.__hs_wait=window.__hs_wait||Object.create(null);" *
+                   "if(!window.__hs_wait[\"m_\"]){window.__hs_wait[\"m_\"]=true;"
+            @test occursin(gate, js)
+            @test findfirst(gate, js).start < findfirst("new maplibregl.Map(", js).start
+            # Why: the waiter reruns the script's current text, not this closure,
+            # so a patch made while MapLibre loads is not built with stale options.
+            @test occursin("const s=document.getElementById(\"m_init\");if(s){const n=document.createElement('script');", js)
+            # Why: a root removed before MapLibre loads must not throw "Container not found".
+            @test occursin("if(!document.getElementById(\"m_root\"))return;", js)
+            # Why: a failed module load must say so instead of leaving a blank map.
+            @test occursin("console.warn(\"map_view m_: window.maplibregl not set after 10 s", js)
+            # Why: `ready` goes last, so its handlers find every handle.
+            @test endswith(js, "document.dispatchEvent(new CustomEvent(\"hs-m_ready\",{detail:null,bubbles:true}));})();")
+        end
+
+        @testset "maplibre_script imports the module, sets the global, fires ready" begin
+            out = HyperSignal.render(MapLibre.maplibre_script("/a/maplibre-gl.mjs"))
+            # Why: Pluto runs inline scripts as function bodies; a static
+            # `import` there is a SyntaxError.
+            @test !occursin("type=\"module\"", out)
+            @test occursin("import(\"/a/maplibre-gl.mjs\").then(function(m){window.maplibregl=m;", out)
+            @test occursin("console.error('maplibre_script: cannot load '+", out)
+            @test occursin("window.dispatchEvent(new Event(\"hs:maplibre-ready\"))", out)
+            # Why: a `</script>` in src must not end the tag early.
+            @test !occursin("</script><", HyperSignal.render(MapLibre.maplibre_script("/x</script><b>")))
+        end
+
         @testset "bbox handler disables MapLibre's built-in boxZoom and listens on document" begin
             # Why: shift-drag also fires MapLibre default boxZoom; disable it. Mouseup
             # on `document`, not canvas, so off-canvas release still completes gesture.
@@ -899,7 +928,9 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
             bare = HyperSignal.render(MapLibre.map_view(;
                 id_prefix="m_", center=(0.0, 0.0), zoom=2, style="/s.json"))
             @test !occursin("data-on:hs-m_", bare)
-            @test !occursin("CustomEvent(", _script_body(bare))
+            # Only the ready event, which writes no signal and posts nothing.
+            @test count("CustomEvent(", _script_body(bare)) == 1
+            @test occursin("CustomEvent(\"hs-m_ready\"", _script_body(bare))
         end
     end
 
@@ -1021,9 +1052,14 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
             @test occursin("data-on:hs-m_draw_features__window=\"\$pen.features = evt.detail.features; " *
                            "\$pen.rejected = evt.detail.rejected\"", out)
             effect = _unescape(_attr(out, "data-effect"))
-            @test effect == "try { const m = \$pen.mode; const d = window.__hs_draw['m_']; if (d) d.mode(m); " *
+            @test effect == "try { const m = \$pen.mode; const d = (window.__hs_draw || {})['m_']; if (d) d.mode(m); " *
                             "const p = {set: \$active}; if (d) d.props(p) } catch (e) { console.error(e) }"
-            @test _unescape(_attr(out, "data-init")) == "window.__hs_draw['m_'].sync()"
+            @test _unescape(_attr(out, "data-init")) == "const d = (window.__hs_draw || {})['m_']; if (d) d.sync()"
+            # Why: Datastar may start before the map script; `ready` repeats the
+            # effect it skipped, then syncs.
+            @test _unescape(_attr(out, "data-on:hs-m_ready__window")) ==
+                  "try { const m = \$pen.mode; const d = (window.__hs_draw || {})['m_']; if (d) d.mode(m); " *
+                  "const p = {set: \$active}; if (d) d.props(p); if (d) d.sync() } catch (e) { console.error(e) }"
             @test !occursin("data-on:hs-m_draw_change", out)
         end
 
@@ -1031,7 +1067,7 @@ const MapLibre = Base.get_extension(HyperSignal, :HyperSignalMapLibreExt)
             # Why: a d.props(undefined) call would stamp every line with {}.
             out = _view(draw=MapLibre.draw_options())
             @test _unescape(_attr(out, "data-effect")) ==
-                  "try { const m = \$draw.mode; const d = window.__hs_draw['m_']; if (d) d.mode(m) } catch (e) { console.error(e) }"
+                  "try { const m = \$draw.mode; const d = (window.__hs_draw || {})['m_']; if (d) d.mode(m) } catch (e) { console.error(e) }"
         end
 
         @testset "a select-only drawing renders with no double-click handler" begin
